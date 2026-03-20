@@ -1,8 +1,44 @@
-/*
+.hybrid-search-result {
+  padding: 4px 0;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.hybrid-search-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 
-If your plugin does not need CSS, delete this file.
+.hybrid-search-name {
+  font-weight: 600;
+}
 
-*/
+.hybrid-search-score {
+  font-size: 0.8em;
+  font-family: monospace;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.hybrid-search-snippet {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hybrid-search-tags {
+  margin-top: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.hybrid-search-tag {
+  font-size: 0.75em;
+  background: var(--tag-background);
+  color: var(--tag-color);
+  padding: 1px 6px;
+  border-radius: 10px;
+}

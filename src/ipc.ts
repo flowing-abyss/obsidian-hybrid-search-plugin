@@ -10,7 +10,7 @@ export interface SearchResult {
   aliases: string[];
 }
 
-export interface SearchOptions {
+interface SearchOptions {
   mode?: 'hybrid' | 'semantic' | 'fulltext' | 'title';
   limit?: number;
   threshold?: number;
