@@ -5,6 +5,7 @@
   "main": "main.js",
   "type": "module",
   "scripts": {
+    "prepare": "husky",
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
@@ -14,16 +15,30 @@
     "format:check": "prettier --check .",
     "knip": "knip"
   },
+  "lint-staged": {
+    "*.{ts,js,mts,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css}": [
+      "prettier --write"
+    ]
+  },
   "keywords": [],
   "license": "MIT",
   "devDependencies": {
+    "@commitlint/cli": "^20.4.3",
+    "@commitlint/config-conventional": "^20.4.3",
     "@eslint/js": "^9.30.1",
     "@types/node": "^20.0.0",
     "esbuild": "0.25.5",
     "eslint": "^9.30.1",
     "eslint-plugin-obsidianmd": "0.1.9",
+    "eslint-plugin-sonarjs": "^4.0.1",
+    "husky": "^9.1.7",
     "jiti": "2.6.1",
     "knip": "^5.86.0",
+    "lint-staged": "^16.3.2",
     "prettier": "^3.8.1",
     "prettier-plugin-organize-imports": "^4.3.0",
     "tslib": "2.4.0",
