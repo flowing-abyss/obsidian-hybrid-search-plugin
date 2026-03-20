@@ -12,8 +12,8 @@ export default tseslint.config(
   sonarjs.configs.recommended,
   {
     languageOptions: {
-      // Obsidian plugins run in a browser context (Electron)
-      globals: globals.browser,
+      // Obsidian plugins run in Electron — both browser and Node.js globals available
+      globals: { ...globals.browser, ...globals.node },
       parserOptions: {
         projectService: {
           allowDefaultProject: ['*.js', '*.mjs', '*.mts'],
@@ -36,6 +36,14 @@ export default tseslint.config(
       'sonarjs/no-unused-vars': 'off',
       // MCP/Obsidian deprecations are out of scope to address
       'sonarjs/deprecation': 'off',
+    },
+  },
+  {
+    // Relax type-unsafe rules in test files — vi matchers (expect.objectContaining etc.) return any
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
     },
   },
   {
