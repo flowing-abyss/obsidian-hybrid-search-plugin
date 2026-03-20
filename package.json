@@ -9,6 +9,8 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write .",
@@ -31,10 +33,12 @@
     "@commitlint/config-conventional": "^20.4.3",
     "@eslint/js": "^9.30.1",
     "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "esbuild": "0.25.5",
     "eslint": "^9.30.1",
     "eslint-plugin-obsidianmd": "0.1.9",
     "eslint-plugin-sonarjs": "^4.0.1",
+    "globals": "^17.4.0",
     "husky": "^9.1.7",
     "jiti": "2.6.1",
     "knip": "^5.86.0",
@@ -43,7 +47,8 @@
     "prettier-plugin-organize-imports": "^4.3.0",
     "tslib": "2.4.0",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.56.1"
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "obsidian": "latest"

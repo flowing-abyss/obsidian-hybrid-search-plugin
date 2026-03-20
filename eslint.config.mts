@@ -1,6 +1,7 @@
 import eslint from '@eslint/js';
 import obsidianmd from 'eslint-plugin-obsidianmd';
 import sonarjs from 'eslint-plugin-sonarjs';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 // eslint-plugin-obsidianmd targets eslint v9; @eslint/js v9 is pinned to match
 
@@ -11,6 +12,8 @@ export default tseslint.config(
   sonarjs.configs.recommended,
   {
     languageOptions: {
+      // Obsidian plugins run in a browser context (Electron)
+      globals: globals.browser,
       parserOptions: {
         projectService: {
           allowDefaultProject: ['*.js', '*.mjs', '*.mts'],
