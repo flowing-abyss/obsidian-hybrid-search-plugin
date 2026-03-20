@@ -5,7 +5,9 @@
  */
 
 export class Workspace {
-  openLinkText(_path: string, _sourcePath: string, _newLeaf: boolean): void {}
+  openLinkText(_path: string, _sourcePath: string, _newLeaf: boolean): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 export class App {
