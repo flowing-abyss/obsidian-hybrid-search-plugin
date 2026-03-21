@@ -30,3 +30,42 @@ if (typeof HTMLElement !== 'undefined' && !('createEl' in HTMLElement.prototype)
     return el;
   };
 }
+
+if (typeof HTMLElement !== 'undefined' && !('createDiv' in HTMLElement.prototype)) {
+  (
+    HTMLElement.prototype as HTMLElement & { createDiv: (cls?: string) => HTMLDivElement }
+  ).createDiv = function (cls?: string): HTMLDivElement {
+    const div = document.createElement('div');
+    if (cls) div.className = cls;
+    this.appendChild(div);
+    return div;
+  };
+}
+
+if (typeof HTMLElement !== 'undefined' && !('addClass' in HTMLElement.prototype)) {
+  (HTMLElement.prototype as HTMLElement & { addClass: (...cls: string[]) => void }).addClass =
+    function (...cls: string[]): void {
+      this.classList.add(...cls);
+    };
+}
+
+if (typeof HTMLElement !== 'undefined' && !('removeClass' in HTMLElement.prototype)) {
+  (HTMLElement.prototype as HTMLElement & { removeClass: (...cls: string[]) => void }).removeClass =
+    function (...cls: string[]): void {
+      this.classList.remove(...cls);
+    };
+}
+
+if (typeof HTMLElement !== 'undefined' && !('show' in HTMLElement.prototype)) {
+  (HTMLElement.prototype as HTMLElement & { show: () => void }).show = function (): void {
+    // eslint-disable-next-line obsidianmd/no-static-styles-assignment
+    this.style.display = '';
+  };
+}
+
+if (typeof HTMLElement !== 'undefined' && !('hide' in HTMLElement.prototype)) {
+  (HTMLElement.prototype as HTMLElement & { hide: () => void }).hide = function (): void {
+    // eslint-disable-next-line obsidianmd/no-static-styles-assignment
+    this.style.display = 'none';
+  };
+}

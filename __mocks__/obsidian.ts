@@ -3,6 +3,7 @@
  * Only stubs what the plugin actually uses — extend as needed.
  * The real `obsidian` package is provided by the Obsidian runtime, not Node.js.
  */
+import { vi } from 'vitest';
 
 export class Workspace {
   openLinkText(_path: string, _sourcePath: string, _newLeaf: boolean): Promise<void> {
@@ -64,6 +65,7 @@ export class PluginSettingTab {
 export class Modal {
   app: App;
   contentEl: HTMLElement = document.createElement('div');
+  modalEl: HTMLElement = document.createElement('div');
   constructor(app: App) {
     this.app = app;
   }
@@ -178,3 +180,35 @@ export class Setting {
 export class Notice {
   constructor(_message: string, _timeout?: number) {}
 }
+
+export class TFile {
+  path: string;
+  constructor(path: string) {
+    this.path = path;
+  }
+}
+
+export class MarkdownRenderChild {
+  containerEl: HTMLElement;
+  constructor(containerEl: HTMLElement) {
+    this.containerEl = containerEl;
+  }
+  load(): void {}
+  unload(): void {}
+}
+
+export const MarkdownRenderer = {
+  render: vi.fn().mockResolvedValue(undefined),
+};
+
+// Passthrough debounce — returns a plain function that calls cb immediately.
+// resetTimer param is accepted and ignored.
+export const debounce = <T extends unknown[]>(
+  cb: (...args: T) => void,
+  _wait?: number,
+  _resetTimer?: boolean,
+): ((...args: T) => void) & { cancel: () => void } => {
+  const fn = (...args: T) => cb(...args);
+  fn.cancel = () => {};
+  return fn;
+};
