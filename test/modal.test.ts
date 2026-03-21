@@ -222,9 +222,12 @@ describe('SearchModal — hover preview', () => {
   });
 
   it('onSelectedChange calls updatePreview for the selected result', () => {
-    const updateSpy = vi.spyOn(modal as unknown, 'updatePreview').mockResolvedValue(undefined);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    // Assign a mock directly (vi.spyOn requires the property to exist first)
+    const updateMock = vi.fn();
+    /* eslint-disable @typescript-eslint/no-unsafe-call */
+    (modal as unknown).updatePreview = updateMock;
     (modal as unknown).onSelectedChange(sampleResult);
-    expect(updateSpy).toHaveBeenCalledWith(sampleResult.path);
+    /* eslint-enable @typescript-eslint/no-unsafe-call */
+    expect(updateMock).toHaveBeenCalledWith(sampleResult.path);
   });
 });
