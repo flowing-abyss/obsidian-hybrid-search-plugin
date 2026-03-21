@@ -154,6 +154,7 @@ describe('SearchModal', () => {
 
 type ModalInternals = {
   updatePreview: (path: string) => Promise<void>;
+  onSelectedChange: (result: SearchResult | null) => void;
   previewEl: HTMLElement | undefined;
   previewChild: { unload: () => void };
   modalEl: HTMLElement | undefined;
@@ -224,10 +225,9 @@ describe('SearchModal — hover preview', () => {
   it('onSelectedChange calls updatePreview for the selected result', () => {
     // Assign a mock directly (vi.spyOn requires the property to exist first)
     const updateMock = vi.fn();
-    /* eslint-disable @typescript-eslint/no-unsafe-call */
-    (modal as unknown).updatePreview = updateMock;
-    (modal as unknown).onSelectedChange(sampleResult);
-    /* eslint-enable @typescript-eslint/no-unsafe-call */
+    const internals = modal as unknown as ModalInternals;
+    internals.updatePreview = updateMock;
+    internals.onSelectedChange(sampleResult);
     expect(updateMock).toHaveBeenCalledWith(sampleResult.path);
   });
 });
