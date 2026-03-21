@@ -15,6 +15,7 @@ const RECENT_FILES_LIMIT = 20; // local cap for recent-files list only
 export class SearchModal extends SuggestModal<SearchResult> {
   private debounce?: ReturnType<typeof setTimeout>;
   private previewEl?: HTMLDivElement;
+  private previewMetaEl?: HTMLDivElement;
   private previewChild?: MarkdownRenderChild;
   private currentPreviewPath?: string;
   private previewCallId = 0;
@@ -50,6 +51,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewChild?.unload();
     this.previewEl?.remove();
     this.previewEl = undefined;
+    this.previewMetaEl?.remove();
+    this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
   }
 
@@ -233,6 +236,135 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.currentPreviewPath = nfcPath;
     // Re-position after render: modal may have grown taller as results loaded
     this.positionPreview();
+    this.updatePreviewMeta(nfcPath);
+  }
+
+  private updatePreviewMeta(nfcPath: string): void {
+    if (!this.settings.showPreviewMeta || !this.previewEl) return;
+
+    if (!this.previewMetaEl) {
+      this.previewMetaEl = document.body.createDiv('hybrid-search-preview-meta-panel');
+      this.hookMetaLinks();
+    }
+    this.previewMetaEl.empty();
+
+    const folder = nfcPath.includes('/') ? nfcPath.replace(/\/[^/]+$/, '') : '';
+    const cache = this.app.metadataCache.getCache(nfcPath);
+    const fm = cache?.frontmatter;
+    const aliases: string[] = Array.isArray(fm?.['aliases']) ? (fm['aliases'] as string[]) : [];
+    const tags: string[] = Array.isArray(fm?.['tags']) ? (fm['tags'] as string[]) : [];
+    const resolvedLinks: Record<string, Record<string, number>> = this.app.metadataCache
+      .resolvedLinks;
+    const outgoing = Object.keys(resolvedLinks[nfcPath] ?? {});
+    const incoming: string[] = [];
+    for (const [src, targets] of Object.entries(resolvedLinks)) {
+      if (nfcPath in targets) incoming.push(src);
+    }
+
+    if (
+      !folder &&
+      aliases.length === 0 &&
+      tags.length === 0 &&
+      outgoing.length === 0 &&
+      incoming.length === 0
+    ) {
+      this.previewMetaEl.hide();
+      return;
+    }
+
+    if (folder) {
+      const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
+      row.createSpan({
+        cls: 'hybrid-search-preview-meta-icon hybrid-search-preview-meta-icon-folder',
+      });
+      row.createSpan({ text: folder, cls: 'hybrid-search-preview-meta-folder' });
+    }
+
+    if (aliases.length > 0) {
+      const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
+      row.createSpan({
+        cls: 'hybrid-search-preview-meta-icon hybrid-search-preview-meta-icon-alias',
+      });
+      for (const alias of aliases) {
+        row.createSpan({ text: alias, cls: 'hybrid-search-preview-meta-alias' });
+      }
+    }
+
+    if (tags.length > 0) {
+      const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
+      row.createSpan({
+        cls: 'hybrid-search-preview-meta-icon hybrid-search-preview-meta-icon-tag',
+      });
+      for (const tag of tags) {
+        row.createSpan({ text: `#${tag}`, cls: 'hybrid-search-tag' });
+      }
+    }
+
+    if (outgoing.length > 0) {
+      const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
+      row.createSpan({ cls: 'hybrid-search-preview-meta-label', text: '→' });
+      for (const p of outgoing) this.createMetaLink(row, p);
+    }
+
+    if (incoming.length > 0) {
+      const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
+      row.createSpan({ cls: 'hybrid-search-preview-meta-label', text: '←' });
+      for (const p of incoming) this.createMetaLink(row, p);
+    }
+
+    this.previewMetaEl.show();
+    this.positionPreviewMeta();
+  }
+
+  private positionPreviewMeta(): void {
+    if (!this.previewMetaEl || !this.previewEl) return;
+    const rect = this.previewEl.getBoundingClientRect();
+    this.previewMetaEl.style.top = `${rect.bottom + 8}px`;
+    this.previewMetaEl.style.left = `${rect.left}px`;
+    this.previewMetaEl.style.width = `${rect.width}px`;
+  }
+
+  private hookMetaLinks(): void {
+    if (!this.previewMetaEl) return;
+    this.hookInternalLinks(this.previewMetaEl);
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+    const sl = (this.app as any).plugins?.plugins?.['supercharged-links-obsidian'];
+    if (sl && typeof sl._watchContainerDynamic === 'function') {
+      sl._watchContainerDynamic(
+        SearchModal.SL_META_WATCH_ID,
+        this.previewMetaEl,
+        sl,
+        'a.hybrid-search-preview-meta-link',
+        'hybrid-search-preview-meta-row',
+      );
+    }
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+  }
+
+  private createMetaLink(parent: HTMLElement, path: string): void {
+    const nfcPath = path.normalize('NFC');
+    const c = this.app.metadataCache.getCache(nfcPath);
+    const fm = c?.frontmatter;
+    const title =
+      (typeof fm?.['title'] === 'string' ? fm['title'] : undefined) ??
+      nfcPath.replace(/^.*\//, '').replace(/\.md$/, '');
+    const a = parent.createEl('a', {
+      text: title,
+      cls: 'internal-link hybrid-search-preview-meta-link',
+      attr: { 'data-href': nfcPath.replace(/\.md$/, '') },
+    });
+    // SuperchargedLinks compatibility: apply frontmatter data-link-* attributes
+    a.classList.add('data-link-icon', 'data-link-icon-after', 'data-link-text');
+    if (fm) {
+      for (const [key, val] of Object.entries(fm)) {
+        if (key === 'position') continue;
+        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+          const strVal = String(val);
+          a.setAttribute(`data-link-${key}`, strVal);
+          a.style.setProperty(`--data-link-${key}`, strVal);
+        }
+      }
+    }
   }
 
   private positionPreview(): void {
@@ -244,6 +376,20 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   private hookPreviewLinks(): void {
     if (!this.previewEl) return;
+    this.hookInternalLinks(this.previewEl);
+  }
+
+  private hookInternalLinks(el: HTMLElement): void {
+    // Ctrl/Cmd + hover: show Obsidian page preview popup
+    el.addEventListener('mouseover', (evt: MouseEvent) => {
+      if (!evt.ctrlKey && !evt.metaKey) return;
+      const link = (evt.target as HTMLElement).closest('a');
+      if (!link) return;
+      const href = link.getAttribute('data-href') ?? link.getAttribute('href') ?? '';
+      if (!href || /^https?:\/\//.test(href)) return;
+      this.triggerHoverPreview(evt, link, href);
+    });
+
     const handler = (evt: MouseEvent) => {
       const link = (evt.target as HTMLElement).closest('a');
       if (!link) return;
@@ -251,6 +397,11 @@ export class SearchModal extends SuggestModal<SearchResult> {
       if (!href || /^https?:\/\//.test(href)) return;
       evt.preventDefault();
       evt.stopPropagation();
+      // Ctrl/Cmd + click: show page preview, keep modal open
+      if (evt.ctrlKey || evt.metaKey) {
+        this.triggerHoverPreview(evt, link, href);
+        return;
+      }
       const file = this.app.metadataCache.getFirstLinkpathDest(href, this.currentPreviewPath ?? '');
       if (!(file instanceof TFile)) return;
       if (evt.button === 1) {
@@ -263,8 +414,20 @@ export class SearchModal extends SuggestModal<SearchResult> {
         this.close();
       }
     };
-    this.previewEl.addEventListener('click', handler);
-    this.previewEl.addEventListener('auxclick', handler);
+    el.addEventListener('click', handler);
+    el.addEventListener('auxclick', handler);
+  }
+
+  private triggerHoverPreview(evt: MouseEvent, targetEl: HTMLElement, href: string): void {
+    // @ts-ignore — 'hover-link' event is not typed in the public Obsidian API
+    this.app.workspace.trigger('hover-link', {
+      event: evt,
+      source: 'preview',
+      hoverParent: { hoverPopover: null },
+      targetEl,
+      linktext: href,
+      sourcePath: this.currentPreviewPath ?? '',
+    });
   }
 
   // ── Supercharged Links integration ──────────────────────────────────────────
@@ -274,6 +437,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   // suggestion item as it is added to the DOM.
 
   private static readonly SL_WATCH_ID = 'hybrid-search-modal';
+  private static readonly SL_META_WATCH_ID = 'hybrid-search-preview-meta';
 
   private hookSuperchargedLinks(): void {
     /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
@@ -295,12 +459,14 @@ export class SearchModal extends SuggestModal<SearchResult> {
     /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
     const sl = (this.app as any).plugins?.plugins?.['supercharged-links-obsidian'];
     if (!sl || !Array.isArray(sl.observers)) return;
-    const idx = (sl.observers as Array<[MutationObserver, string, string]>).findIndex(
-      ([, id]) => id === SearchModal.SL_WATCH_ID,
-    );
-    if (idx >= 0) {
-      (sl.observers[idx] as [MutationObserver, string, string])[0].disconnect();
-      (sl.observers as unknown[]).splice(idx, 1);
+    for (const watchId of [SearchModal.SL_WATCH_ID, SearchModal.SL_META_WATCH_ID]) {
+      const idx = (sl.observers as Array<[MutationObserver, string, string]>).findIndex(
+        ([, id]) => id === watchId,
+      );
+      if (idx >= 0) {
+        (sl.observers[idx] as [MutationObserver, string, string])[0].disconnect();
+        (sl.observers as unknown[]).splice(idx, 1);
+      }
     }
     /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
   }

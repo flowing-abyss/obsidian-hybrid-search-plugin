@@ -5,12 +5,14 @@ export interface HybridSearchSettings {
   binaryPath: string;
   defaultMode: 'hybrid' | 'semantic' | 'fulltext' | 'title';
   showMeta: boolean;
+  showPreviewMeta: boolean;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
   binaryPath: '',
   defaultMode: 'hybrid',
   showMeta: false,
+  showPreviewMeta: true,
 };
 
 /** Narrow interface — only what the SettingTab needs from the plugin */
@@ -67,6 +69,16 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.showMeta).onChange(async (value) => {
           this.plugin.settings.showMeta = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('Show note metadata in preview')
+      .setDesc('Display folder, aliases, tags, links, and backlinks below the preview panel.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showPreviewMeta).onChange(async (value) => {
+          this.plugin.settings.showPreviewMeta = value;
           await this.plugin.saveSettings();
         }),
       );
