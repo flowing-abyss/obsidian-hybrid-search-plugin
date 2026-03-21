@@ -99,7 +99,8 @@ export function registerModalKeymap(
     if (!editor) return;
     const result = getSelected(modal);
     if (!result) return;
-    const link = '[[' + result.title + ']]';
+    const linkText = result.title || result.path.replace(/^.*\//, '').replace(/\.md$/, '');
+    const link = '[[' + linkText + ']]';
     editor.replaceRange(link, editor.getCursor());
   });
 
@@ -109,7 +110,12 @@ export function registerModalKeymap(
     const editor = app.workspace.activeEditor?.editor;
     if (!editor) return;
     const results = getAll(modal);
-    const text = results.map((r) => '[[' + r.title + ']]').join('\n');
+    const text = results
+      .map((r) => {
+        const linkText = r.title || r.path.replace(/^.*\//, '').replace(/\.md$/, '');
+        return '[[' + linkText + ']]';
+      })
+      .join('\n');
     editor.replaceRange(text, editor.getCursor());
     modal.close();
   });
