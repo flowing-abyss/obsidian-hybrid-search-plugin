@@ -40,6 +40,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   onClose(): void {
     this.unhookSuperchargedLinks();
+    this.previewCallId++; // invalidate any in-flight updatePreview
     this.previewChild?.unload();
     this.modalEl.removeClass('hybrid-search-expanded');
     this.previewEl = undefined;
@@ -110,7 +111,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     void this.app.workspace.openLinkText(result.path, '', false);
   }
 
-  // @ts-ignore — internal SuggestModal API, fires on arrow-key navigation
+  // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
   onSelectedChange(result: SearchResult | null): void {
     if (result) this.debouncedPreview(result.path);
   }
