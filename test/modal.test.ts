@@ -1,3 +1,4 @@
+import { MarkdownRenderer, TFile } from 'obsidian';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SearchResult } from '../src/ipc';
 import { DEFAULT_SETTINGS } from '../src/settings';
@@ -7,9 +8,18 @@ const mockSearch = vi.fn();
 const mockClient = { search: mockSearch };
 
 const mockGetCache = vi.fn().mockReturnValue(null);
+const mockCachedRead = vi.fn().mockResolvedValue('# Note Content\n\nSome body text.');
+const mockGetAbstractFileByPath = vi.fn();
+// eslint-disable-next-line @typescript-eslint/unbound-method
+const mockRender = vi.mocked(MarkdownRenderer.render);
+
 const mockApp = {
   workspace: { openLinkText: vi.fn() },
-  vault: { adapter: { getBasePath: () => '/vault' } },
+  vault: {
+    adapter: { getBasePath: () => '/vault' },
+    cachedRead: mockCachedRead,
+    getAbstractFileByPath: mockGetAbstractFileByPath,
+  },
   metadataCache: { getCache: mockGetCache },
 };
 
@@ -28,6 +38,9 @@ describe('SearchModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSearch.mockResolvedValue([sampleResult]);
+    mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
+    mockGetAbstractFileByPath.mockReturnValue(new TFile(sampleResult.path));
+    mockRender.mockClear();
     modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
   });
 
@@ -49,7 +62,7 @@ describe('SearchModal', () => {
     expect(mockSearch).toHaveBeenCalledWith('zettel', {
       mode: DEFAULT_SETTINGS.defaultMode,
       limit: DEFAULT_SETTINGS.limit,
-      snippetLength: DEFAULT_SETTINGS.snippetLength,
+      snippetLength: 0,
     });
     expect(results).toHaveLength(1);
     vi.useRealTimers();
@@ -117,12 +130,6 @@ describe('SearchModal', () => {
     expect(el.querySelector('.hybrid-search-score')?.textContent).toBe('0.87');
   });
 
-  it('renderSuggestion shows snippet when present', () => {
-    const el = document.createElement('div');
-    modal.renderSuggestion(sampleResult, el);
-    expect(el.querySelector('.hybrid-search-snippet')?.textContent).toBe(sampleResult.snippet);
-  });
-
   it('renderSuggestion shows tags', () => {
     const el = document.createElement('div');
     modal.renderSuggestion(sampleResult, el);
@@ -140,5 +147,73 @@ describe('SearchModal', () => {
   it('onChooseSuggestion opens note in workspace', () => {
     modal.onChooseSuggestion(sampleResult, new MouseEvent('click'));
     expect(mockApp.workspace.openLinkText).toHaveBeenCalledWith(sampleResult.path, '', false);
+  });
+});
+
+type ModalInternals = {
+  updatePreview: (path: string) => Promise<void>;
+  previewEl: HTMLElement | undefined;
+  previewChild: { unload: () => void };
+  modalEl: HTMLElement | undefined;
+};
+
+describe('SearchModal — hover preview', () => {
+  let modal: SearchModal;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearch.mockResolvedValue([sampleResult]);
+    mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
+    mockGetAbstractFileByPath.mockReturnValue(new TFile(sampleResult.path));
+    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+  });
+
+  it('renderSuggestion does not render snippet element', () => {
+    const el = document.createElement('div');
+    modal.renderSuggestion(sampleResult, el);
+    expect(el.querySelector('.hybrid-search-snippet')).toBeNull();
+  });
+
+  it('updatePreview creates previewEl and adds hybrid-search-expanded to modalEl on first call', async () => {
+    const internals = modal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    expect(internals.previewEl).toBeDefined();
+    expect(internals.modalEl?.classList.contains('hybrid-search-expanded')).toBe(true);
+  });
+
+  it('updatePreview calls MarkdownRenderer.render with correct arguments', async () => {
+    const internals = modal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    expect(mockRender).toHaveBeenCalledWith(
+      mockApp,
+      '# Note Content\n\nSome body text.',
+      expect.any(HTMLElement),
+      sampleResult.path,
+      expect.any(Object),
+    );
+  });
+
+  it('updatePreview skips re-render for the same path', async () => {
+    const internals = modal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    await internals.updatePreview(sampleResult.path);
+    expect(mockRender).toHaveBeenCalledTimes(1);
+  });
+
+  it('updatePreview hides panel on cachedRead error', async () => {
+    mockCachedRead.mockRejectedValue(new Error('read error'));
+    const internals = modal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    expect(internals.previewEl?.style.display).toBe('none');
+  });
+
+  it('onClose unloads previewChild and removes hybrid-search-expanded', async () => {
+    const internals = modal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    const child = internals.previewChild;
+    const unloadSpy = vi.spyOn(child, 'unload');
+    modal.onClose();
+    expect(unloadSpy).toHaveBeenCalled();
+    expect(internals.modalEl?.classList.contains('hybrid-search-expanded')).toBe(false);
   });
 });
