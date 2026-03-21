@@ -10,8 +10,15 @@ export class Workspace {
   }
 }
 
+export class MetadataCache {
+  getCache(_path: string): { frontmatter?: Record<string, unknown> } | null {
+    return null;
+  }
+}
+
 export class App {
   workspace: Workspace = new Workspace();
+  metadataCache: MetadataCache = new MetadataCache();
   vault = {
     adapter: {
       getBasePath: () => '/test-vault',

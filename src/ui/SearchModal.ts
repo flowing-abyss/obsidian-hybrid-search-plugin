@@ -38,10 +38,22 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const container = el.createEl('div', { cls: 'hybrid-search-result' });
 
     const titleRow = container.createEl('div', { cls: 'hybrid-search-title' });
-    titleRow.createEl('span', {
+    const link = titleRow.createEl('a', {
       text: result.title || result.path,
-      cls: 'hybrid-search-name',
+      cls: 'internal-link hybrid-search-name',
+      attr: { 'data-href': result.path.replace(/\.md$/, '') },
     });
+    const fm = this.app.metadataCache.getCache(result.path)?.frontmatter;
+    if (fm) {
+      for (const [key, val] of Object.entries(fm)) {
+        if (
+          key !== 'position' &&
+          (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')
+        ) {
+          link.setAttribute(`data-link-${key}`, String(val));
+        }
+      }
+    }
     titleRow.createEl('span', {
       text: score.toFixed(2),
       cls: 'hybrid-search-score',

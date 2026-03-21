@@ -6,9 +6,11 @@ import { SearchModal } from '../src/ui/SearchModal';
 const mockSearch = vi.fn();
 const mockClient = { search: mockSearch };
 
+const mockGetCache = vi.fn().mockReturnValue(null);
 const mockApp = {
   workspace: { openLinkText: vi.fn() },
   vault: { adapter: { getBasePath: () => '/vault' } },
+  metadataCache: { getCache: mockGetCache },
 };
 
 const sampleResult: SearchResult = {
@@ -67,6 +69,35 @@ describe('SearchModal', () => {
     const el = document.createElement('div');
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-name')?.textContent).toBe('Zettelkasten');
+  });
+
+  it('renderSuggestion renders title as internal-link anchor with data-href', () => {
+    const el = document.createElement('div');
+    modal.renderSuggestion(sampleResult, el);
+    const link = el.querySelector('a.internal-link.hybrid-search-name');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('data-href')).toBe('notes/zettelkasten');
+  });
+
+  it('renderSuggestion sets data-link-* attributes from frontmatter', () => {
+    mockGetCache.mockReturnValue({ frontmatter: { status: 'done', priority: 1 } });
+    const el = document.createElement('div');
+    modal.renderSuggestion(sampleResult, el);
+    const link = el.querySelector('a.internal-link');
+    expect(link?.getAttribute('data-link-status')).toBe('done');
+    expect(link?.getAttribute('data-link-priority')).toBe('1');
+  });
+
+  it('renderSuggestion skips frontmatter arrays and position key', () => {
+    mockGetCache.mockReturnValue({
+      frontmatter: { position: {}, tags: ['a', 'b'], status: 'active' },
+    });
+    const el = document.createElement('div');
+    modal.renderSuggestion(sampleResult, el);
+    const link = el.querySelector('a.internal-link');
+    expect(link?.hasAttribute('data-link-position')).toBe(false);
+    expect(link?.hasAttribute('data-link-tags')).toBe(false);
+    expect(link?.getAttribute('data-link-status')).toBe('active');
   });
 
   it('renderSuggestion shows score', () => {
