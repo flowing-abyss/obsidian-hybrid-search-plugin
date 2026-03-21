@@ -43,19 +43,6 @@ export default class HybridSearchPlugin extends Plugin {
     });
 
     this.addSettingTab(new HybridSearchSettingTab(this.app, this));
-
-    this.app.workspace.onLayoutReady(() => {
-      this.registerSuperchargedLinks();
-    });
-  }
-
-  private registerSuperchargedLinks(): void {
-    /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-    const slPlugin = (this.app as any).plugins?.plugins?.['supercharged-links-obsidian']; // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (slPlugin && typeof slPlugin.registerViewType === 'function') {
-      slPlugin.registerViewType('markdown', slPlugin, '.hybrid-search-result', true);
-    }
-    /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
   }
 
   onunload(): void {

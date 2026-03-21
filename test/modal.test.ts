@@ -79,13 +79,24 @@ describe('SearchModal', () => {
     expect(link?.getAttribute('data-href')).toBe('notes/zettelkasten');
   });
 
-  it('renderSuggestion sets data-link-* attributes from frontmatter', () => {
+  it('renderSuggestion sets data-link-* attributes and CSS vars from frontmatter', () => {
     mockGetCache.mockReturnValue({ frontmatter: { status: 'done', priority: 1 } });
     const el = document.createElement('div');
     modal.renderSuggestion(sampleResult, el);
+    const link = el.querySelector('a.internal-link') as HTMLElement;
+    expect(link.getAttribute('data-link-status')).toBe('done');
+    expect(link.getAttribute('data-link-priority')).toBe('1');
+    expect(link.style.getPropertyValue('--data-link-status')).toBe('done');
+    expect(link.style.getPropertyValue('--data-link-priority')).toBe('1');
+  });
+
+  it('renderSuggestion adds Supercharged Links classes', () => {
+    const el = document.createElement('div');
+    modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link');
-    expect(link?.getAttribute('data-link-status')).toBe('done');
-    expect(link?.getAttribute('data-link-priority')).toBe('1');
+    expect(link?.classList.contains('data-link-icon')).toBe(true);
+    expect(link?.classList.contains('data-link-icon-after')).toBe(true);
+    expect(link?.classList.contains('data-link-text')).toBe(true);
   });
 
   it('renderSuggestion skips frontmatter arrays and position key', () => {

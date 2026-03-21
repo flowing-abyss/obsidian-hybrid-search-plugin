@@ -43,6 +43,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
       cls: 'internal-link hybrid-search-name',
       attr: { 'data-href': result.path.replace(/\.md$/, '') },
     });
+    link.classList.add('data-link-icon', 'data-link-icon-after', 'data-link-text');
     const fm = this.app.metadataCache.getCache(result.path)?.frontmatter;
     if (fm) {
       for (const [key, val] of Object.entries(fm)) {
@@ -50,7 +51,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
           key !== 'position' &&
           (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')
         ) {
-          link.setAttribute(`data-link-${key}`, String(val));
+          const strVal = String(val);
+          link.setAttribute(`data-link-${key}`, strVal);
+          link.style.setProperty(`--data-link-${key}`, strVal);
         }
       }
     }
