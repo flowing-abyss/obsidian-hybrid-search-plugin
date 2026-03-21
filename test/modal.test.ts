@@ -39,7 +39,9 @@ describe('SearchModal', () => {
     vi.clearAllMocks();
     mockSearch.mockResolvedValue([sampleResult]);
     mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
-    mockGetAbstractFileByPath.mockReturnValue(new TFile(sampleResult.path));
+    mockGetAbstractFileByPath.mockReturnValue(
+      Object.assign(new TFile(), { path: sampleResult.path }),
+    );
     mockRender.mockClear();
     modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
   });
@@ -62,7 +64,7 @@ describe('SearchModal', () => {
     expect(mockSearch).toHaveBeenCalledWith('zettel', {
       mode: DEFAULT_SETTINGS.defaultMode,
       limit: DEFAULT_SETTINGS.limit,
-      snippetLength: 0,
+      snippetLength: DEFAULT_SETTINGS.snippetLength,
     });
     expect(results).toHaveLength(1);
     vi.useRealTimers();
@@ -164,7 +166,9 @@ describe('SearchModal — hover preview', () => {
     vi.clearAllMocks();
     mockSearch.mockResolvedValue([sampleResult]);
     mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
-    mockGetAbstractFileByPath.mockReturnValue(new TFile(sampleResult.path));
+    mockGetAbstractFileByPath.mockReturnValue(
+      Object.assign(new TFile(), { path: sampleResult.path }),
+    );
     modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
   });
 
@@ -215,5 +219,12 @@ describe('SearchModal — hover preview', () => {
     modal.onClose();
     expect(unloadSpy).toHaveBeenCalled();
     expect(internals.modalEl?.classList.contains('hybrid-search-expanded')).toBe(false);
+  });
+
+  it('onSelectedChange calls updatePreview for the selected result', () => {
+    const updateSpy = vi.spyOn(modal as unknown, 'updatePreview').mockResolvedValue(undefined);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    (modal as unknown).onSelectedChange(sampleResult);
+    expect(updateSpy).toHaveBeenCalledWith(sampleResult.path);
   });
 });
