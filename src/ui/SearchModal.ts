@@ -25,7 +25,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
             limit: this.settings.limit,
             snippetLength: this.settings.snippetLength,
           })
-          .then(resolve)
+          .then((results) => resolve([...results].sort(byScoreDesc)))
           .catch(() => resolve([]));
       }, 200);
     });
@@ -49,7 +49,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     });
 
     if (result.snippet) {
-      container.createEl('div', { text: result.snippet, cls: 'hybrid-search-snippet' });
+      container.createEl('div', { text: result.snippet.trim(), cls: 'hybrid-search-snippet' });
     }
 
     if (result.tags.length > 0) {
@@ -63,6 +63,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
   onChooseSuggestion(result: SearchResult, _evt: MouseEvent | KeyboardEvent): void {
     void this.app.workspace.openLinkText(result.path, '', false);
   }
+}
+
+function byScoreDesc(a: SearchResult, b: SearchResult): number {
+  return b.score - a.score;
 }
 
 function scoreColor(score: number): string {
