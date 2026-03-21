@@ -7,6 +7,7 @@ export interface HybridSearchSettings {
   showMeta: boolean;
   showPreviewMeta: boolean;
   centerPanels: boolean;
+  showPreview: boolean;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
@@ -15,6 +16,7 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   showMeta: false,
   showPreviewMeta: true,
   centerPanels: true,
+  showPreview: true,
 };
 
 /** Narrow interface — only what the SettingTab needs from the plugin */
@@ -76,26 +78,39 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Show note metadata in preview')
-      .setDesc('Display folder, aliases, tags, links, and backlinks below the preview panel.')
+      .setName('Show preview')
+      .setDesc('Show a live preview panel next to search results when hovering or navigating.')
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showPreviewMeta).onChange(async (value) => {
-          this.plugin.settings.showPreviewMeta = value;
+        toggle.setValue(this.plugin.settings.showPreview).onChange(async (value) => {
+          this.plugin.settings.showPreview = value;
           await this.plugin.saveSettings();
+          this.display();
         }),
       );
 
-    new Setting(containerEl)
-      .setName('Center search and preview')
-      .setDesc(
-        'Shift the search panel so that the search list and preview panel together appear centered on screen. Disable if your theme positions the modal itself (e.g., left-aligned).',
-      )
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.centerPanels).onChange(async (value) => {
-          this.plugin.settings.centerPanels = value;
-          await this.plugin.saveSettings();
-        }),
-      );
+    if (this.plugin.settings.showPreview) {
+      new Setting(containerEl)
+        .setName('Show note metadata in preview')
+        .setDesc('Display folder, aliases, tags, links, and backlinks below the preview panel.')
+        .addToggle((toggle) =>
+          toggle.setValue(this.plugin.settings.showPreviewMeta).onChange(async (value) => {
+            this.plugin.settings.showPreviewMeta = value;
+            await this.plugin.saveSettings();
+          }),
+        );
+
+      new Setting(containerEl)
+        .setName('Center search and preview')
+        .setDesc(
+          'Shift the search panel so that the search list and preview panel together appear centered on screen. Disable if your theme positions the modal itself (e.g., left-aligned).',
+        )
+        .addToggle((toggle) =>
+          toggle.setValue(this.plugin.settings.centerPanels).onChange(async (value) => {
+            this.plugin.settings.centerPanels = value;
+            await this.plugin.saveSettings();
+          }),
+        );
+    }
 
     new Setting(containerEl)
       .setName('Test connection')
