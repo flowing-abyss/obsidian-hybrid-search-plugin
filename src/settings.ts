@@ -6,6 +6,7 @@ export interface HybridSearchSettings {
   defaultMode: 'hybrid' | 'semantic' | 'fulltext' | 'title';
   showMeta: boolean;
   showPreviewMeta: boolean;
+  centerPanels: boolean;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
@@ -13,6 +14,7 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   defaultMode: 'hybrid',
   showMeta: false,
   showPreviewMeta: true,
+  centerPanels: true,
 };
 
 /** Narrow interface — only what the SettingTab needs from the plugin */
@@ -79,6 +81,18 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.showPreviewMeta).onChange(async (value) => {
           this.plugin.settings.showPreviewMeta = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('Center search and preview')
+      .setDesc(
+        'Shift the search panel so that the search list and preview panel together appear centered on screen. Disable if your theme positions the modal itself (e.g., left-aligned).',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.centerPanels).onChange(async (value) => {
+          this.plugin.settings.centerPanels = value;
           await this.plugin.saveSettings();
         }),
       );

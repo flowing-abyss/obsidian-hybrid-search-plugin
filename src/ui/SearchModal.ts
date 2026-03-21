@@ -54,6 +54,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewMetaEl?.remove();
     this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
+    // Restore modal's default centering (in case positionPreview shifted it)
+    this.modalEl.removeClass('hybrid-search-modal-centered');
   }
 
   async getSuggestions(query: string): Promise<SearchResult[]> {
@@ -372,9 +374,30 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   private positionPreview(): void {
     if (!this.previewEl) return;
-    const rect = this.modalEl.getBoundingClientRect();
-    this.previewEl.style.top = `${rect.top}px`;
-    this.previewEl.style.left = `${rect.right + 12}px`;
+    const modalRect = this.modalEl.getBoundingClientRect();
+    const gap = 12;
+
+    if (this.settings.centerPanels) {
+      const previewWidth = this.previewEl.offsetWidth || 500;
+      const totalWidth = modalRect.width + gap + previewWidth;
+      const vw = window.innerWidth;
+
+      if (totalWidth + 16 <= vw) {
+        // Center the modal+preview pair horizontally
+        const pairLeft = Math.max(8, (vw - totalWidth) / 2);
+        this.modalEl.setCssProps({ '--hybrid-search-pair-left': `${pairLeft}px` });
+        this.modalEl.addClass('hybrid-search-modal-centered');
+        this.previewEl.style.top = `${modalRect.top}px`;
+        this.previewEl.style.left = `${pairLeft + modalRect.width + gap}px`;
+        return;
+      }
+      // Viewport too narrow: fall through to default placement
+    }
+
+    // Default: place preview directly to the right of wherever the modal is
+    this.modalEl.removeClass('hybrid-search-modal-centered');
+    this.previewEl.style.top = `${modalRect.top}px`;
+    this.previewEl.style.left = `${modalRect.right + gap}px`;
   }
 
   private hookPreviewLinks(): void {
