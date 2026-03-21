@@ -8,6 +8,7 @@ import {
 } from 'obsidian';
 import type { SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
+import { registerModalKeymap } from './modalKeymap';
 import { parseQuery } from './queryParser';
 
 const RECENT_FILES_LIMIT = 20; // local cap for recent-files list only
@@ -43,6 +44,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   open(): void {
     super.open();
     this.hookSuperchargedLinks();
+    registerModalKeymap(this, this.app, this.settings, this.saveSettings);
   }
 
   hidePreviewPanel(): void {
