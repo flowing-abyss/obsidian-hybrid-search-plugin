@@ -65,6 +65,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   renderSuggestion(result: SearchResult, el: HTMLElement): void {
+    // DB paths are NFD-normalized; Obsidian's internal APIs (metadataCache, vault,
+    // data-href resolution) require NFC — same fix as cli.ts line 50.
+    const nfcPath = result.path.normalize('NFC');
     const score = result.score;
     const color = scoreColor(score);
 
@@ -74,12 +77,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const link = titleRow.createEl('a', {
       text: result.title || result.path,
       cls: 'internal-link hybrid-search-name',
-      attr: { 'data-href': result.path.replace(/\.md$/, '') },
+      attr: { 'data-href': nfcPath.replace(/\.md$/, '') },
     });
     // Fallback styling when Supercharged Links is not installed:
     // mirror what SL's updateDivExtraAttributes produces so user CSS works.
     link.classList.add('data-link-icon', 'data-link-icon-after', 'data-link-text');
-    const fm = this.app.metadataCache.getCache(result.path)?.frontmatter;
+    const fm = this.app.metadataCache.getCache(nfcPath)?.frontmatter;
     if (fm) {
       for (const [key, val] of Object.entries(fm)) {
         if (key === 'position') continue;
@@ -104,11 +107,11 @@ export class SearchModal extends SuggestModal<SearchResult> {
         .forEach((tag) => tagsEl.createEl('span', { text: `#${tag}`, cls: 'hybrid-search-tag' }));
     }
 
-    el.addEventListener('mouseenter', () => void this.updatePreview(result.path));
+    el.addEventListener('mouseenter', () => void this.updatePreview(nfcPath));
   }
 
   onChooseSuggestion(result: SearchResult, _evt: MouseEvent | KeyboardEvent): void {
-    const abstract = this.app.vault.getAbstractFileByPath(result.path);
+    const abstract = this.app.vault.getAbstractFileByPath(result.path.normalize('NFC'));
     if (abstract instanceof TFile) {
       void this.app.workspace.getLeaf(false).openFile(abstract);
     }
@@ -116,11 +119,13 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
   onSelectedChange(result: SearchResult | null): void {
-    if (result) this.debouncedPreview(result.path);
+    if (result) this.debouncedPreview(result.path.normalize('NFC'));
   }
 
   private async updatePreview(path: string): Promise<void> {
-    if (path === this.currentPreviewPath) return;
+    // Normalize to NFC: DB paths are NFD, Obsidian APIs require NFC (same as cli.ts)
+    const nfcPath = path.normalize('NFC');
+    if (nfcPath === this.currentPreviewPath) return;
 
     const callId = ++this.previewCallId;
 
@@ -134,7 +139,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewChild = undefined;
     this.previewEl.empty();
 
-    const abstract = this.app.vault.getAbstractFileByPath(path);
+    const abstract = this.app.vault.getAbstractFileByPath(nfcPath);
     if (!abstract || !(abstract instanceof TFile)) return;
 
     let content: string;
@@ -149,8 +154,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     this.previewChild = new MarkdownRenderChild(this.previewEl);
     this.previewChild.load();
-    await MarkdownRenderer.render(this.app, content, this.previewEl, path, this.previewChild);
-    this.currentPreviewPath = path;
+    await MarkdownRenderer.render(this.app, content, this.previewEl, nfcPath, this.previewChild);
+    this.currentPreviewPath = nfcPath;
   }
 
   private positionPreview(): void {
