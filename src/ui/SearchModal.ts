@@ -309,13 +309,21 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (outgoing.length > 0) {
       const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
       row.createSpan({ cls: 'hybrid-search-preview-meta-label', text: '→' });
-      for (const p of outgoing) this.createMetaLink(row, p);
+      outgoing.forEach((p, i) => {
+        this.createMetaLink(row, p);
+        if (i < outgoing.length - 1)
+          row.createSpan({ text: '•', cls: 'hybrid-search-preview-meta-sep' });
+      });
     }
 
     if (incoming.length > 0) {
       const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
       row.createSpan({ cls: 'hybrid-search-preview-meta-label', text: '←' });
-      for (const p of incoming) this.createMetaLink(row, p);
+      incoming.forEach((p, i) => {
+        this.createMetaLink(row, p);
+        if (i < incoming.length - 1)
+          row.createSpan({ text: '•', cls: 'hybrid-search-preview-meta-sep' });
+      });
     }
 
     this.previewMetaEl.show();

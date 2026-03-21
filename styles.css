@@ -130,6 +130,11 @@
 
 .hybrid-search-preview-meta-alias {
   font-style: italic;
+  font-size: 11px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  padding: 0 5px;
+  border-radius: 4px;
 }
 
 .hybrid-search-preview-meta-link {
@@ -140,6 +145,13 @@
 
 .hybrid-search-preview-meta-link:hover {
   text-decoration: underline;
+}
+
+.hybrid-search-preview-meta-sep {
+  color: var(--text-faint);
+  font-size: 9px;
+  opacity: 0.6;
+  flex-shrink: 0;
 }
 
 /* Ensure Obsidian's hover page preview appears above our fixed panels */
