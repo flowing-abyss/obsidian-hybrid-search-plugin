@@ -64,7 +64,7 @@ describe('SearchModal', () => {
     expect(mockSearch).toHaveBeenCalledWith('zettel', {
       mode: DEFAULT_SETTINGS.defaultMode,
       limit: DEFAULT_SETTINGS.limit,
-      snippetLength: DEFAULT_SETTINGS.snippetLength,
+      snippetLength: 0, // snippets no longer displayed; skip server computation
     });
     expect(results).toHaveLength(1);
     vi.useRealTimers();

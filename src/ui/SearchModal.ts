@@ -1,9 +1,28 @@
-import { App, SuggestModal } from 'obsidian';
+import {
+  App,
+  debounce,
+  MarkdownRenderChild,
+  MarkdownRenderer,
+  SuggestModal,
+  TFile,
+} from 'obsidian';
 import type { SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
 
 export class SearchModal extends SuggestModal<SearchResult> {
   private debounce?: ReturnType<typeof setTimeout>;
+  private previewEl?: HTMLDivElement;
+  private previewChild?: MarkdownRenderChild;
+  private currentPreviewPath?: string;
+  private previewCallId = 0;
+
+  private readonly debouncedPreview = debounce(
+    (path: string) => {
+      void this.updatePreview(path);
+    },
+    100,
+    true, // resetTimer: true — resets on each call, fires after the last one
+  );
 
   constructor(
     app: App,
@@ -21,6 +40,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   onClose(): void {
     this.unhookSuperchargedLinks();
+    this.previewChild?.unload();
+    this.modalEl.removeClass('hybrid-search-expanded');
+    this.previewEl = undefined;
+    this.currentPreviewPath = undefined;
   }
 
   async getSuggestions(query: string): Promise<SearchResult[]> {
@@ -32,7 +55,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
           .search(query, {
             mode: this.settings.defaultMode,
             limit: this.settings.limit,
-            snippetLength: this.settings.snippetLength,
+            snippetLength: 0, // snippets no longer displayed; skip server computation
           })
           .then((results) => resolve([...results].sort(byScoreDesc)))
           .catch(() => resolve([]));
@@ -73,20 +96,57 @@ export class SearchModal extends SuggestModal<SearchResult> {
       attr: { style: `color:${color}` },
     });
 
-    if (result.snippet) {
-      container.createEl('div', { text: result.snippet.trim(), cls: 'hybrid-search-snippet' });
-    }
-
     if (result.tags.length > 0) {
       const tagsEl = container.createEl('div', { cls: 'hybrid-search-tags' });
       result.tags
         .slice(0, 5)
         .forEach((tag) => tagsEl.createEl('span', { text: `#${tag}`, cls: 'hybrid-search-tag' }));
     }
+
+    el.addEventListener('mouseenter', () => void this.updatePreview(result.path));
   }
 
   onChooseSuggestion(result: SearchResult, _evt: MouseEvent | KeyboardEvent): void {
     void this.app.workspace.openLinkText(result.path, '', false);
+  }
+
+  // @ts-ignore — internal SuggestModal API, fires on arrow-key navigation
+  onSelectedChange(result: SearchResult | null): void {
+    if (result) this.debouncedPreview(result.path);
+  }
+
+  private async updatePreview(path: string): Promise<void> {
+    if (path === this.currentPreviewPath) return;
+
+    const callId = ++this.previewCallId;
+
+    // Synchronous DOM setup — must happen before any await
+    if (!this.previewEl) {
+      this.previewEl = this.modalEl.createDiv('hybrid-search-preview');
+      this.modalEl.addClass('hybrid-search-expanded');
+    }
+    this.previewEl.show();
+    this.previewChild?.unload();
+    this.previewChild = undefined;
+    this.previewEl.empty();
+
+    const abstract = this.app.vault.getAbstractFileByPath(path);
+    if (!abstract || !(abstract instanceof TFile)) return;
+
+    let content: string;
+    try {
+      content = await this.app.vault.cachedRead(abstract);
+    } catch {
+      this.previewEl.hide();
+      return;
+    }
+
+    if (callId !== this.previewCallId) return;
+
+    this.previewChild = new MarkdownRenderChild(this.previewEl);
+    this.previewChild.load();
+    await MarkdownRenderer.render(this.app, content, this.previewEl, path, this.previewChild);
+    this.currentPreviewPath = path;
   }
 
   // ── Supercharged Links integration ──────────────────────────────────────────
