@@ -148,8 +148,13 @@ export class ButtonComponent {
 }
 
 export class Setting {
-  constructor(_containerEl: HTMLElement) {}
-  setName(_name: string): this {
+  private nameEl: HTMLElement;
+  constructor(containerEl: HTMLElement) {
+    const item = containerEl.createEl('div', { cls: 'setting-item' });
+    this.nameEl = item.createEl('div', { cls: 'setting-item-name' });
+  }
+  setName(name: string): this {
+    this.nameEl.textContent = name;
     return this;
   }
   setDesc(_desc: string): this {

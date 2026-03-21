@@ -19,11 +19,18 @@
   flex-shrink: 0;
 }
 
-.hybrid-search-tags {
+.hybrid-search-meta {
   margin-top: 3px;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  align-items: center;
+}
+
+.hybrid-search-meta-path {
+  font-size: 0.75em;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
 }
 
 .hybrid-search-tag {

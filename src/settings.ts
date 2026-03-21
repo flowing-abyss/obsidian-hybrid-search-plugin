@@ -4,15 +4,13 @@ import type { SearchClient } from './ipc';
 export interface HybridSearchSettings {
   binaryPath: string;
   defaultMode: 'hybrid' | 'semantic' | 'fulltext' | 'title';
-  limit: number;
-  snippetLength: number;
+  showMeta: boolean;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
   binaryPath: '',
   defaultMode: 'hybrid',
-  limit: 20,
-  snippetLength: 200,
+  showMeta: false,
 };
 
 /** Narrow interface — only what the SettingTab needs from the plugin */
@@ -64,31 +62,13 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Result limit')
-      .setDesc('Maximum number of results to show (5–50).')
-      .addSlider((slider) =>
-        slider
-          .setLimits(5, 50, 1)
-          .setValue(this.plugin.settings.limit)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.limit = value;
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName('Snippet length')
-      .setDesc('Character length for result snippets (100–500).')
-      .addSlider((slider) =>
-        slider
-          .setLimits(100, 500, 10)
-          .setValue(this.plugin.settings.snippetLength)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.snippetLength = value;
-            await this.plugin.saveSettings();
-          }),
+      .setName('Show path and tags')
+      .setDesc('Display folder path and tags below the note title in search results.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showMeta).onChange(async (value) => {
+          this.plugin.settings.showMeta = value;
+          await this.plugin.saveSettings();
+        }),
       );
 
     new Setting(containerEl)

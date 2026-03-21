@@ -8,6 +8,9 @@ import {
 } from 'obsidian';
 import type { SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
+import { parseQuery } from './queryParser';
+
+const RECENT_FILES_LIMIT = 20; // local cap for recent-files list only
 
 export class SearchModal extends SuggestModal<SearchResult> {
   private debounce?: ReturnType<typeof setTimeout>;
@@ -67,14 +70,21 @@ export class SearchModal extends SuggestModal<SearchResult> {
       return this.buildRecentResults();
     }
     this.isRecentMode = false;
+
+    const { query: parsedQuery, overrides } = parseQuery(query);
+
     return new Promise((resolve) => {
       clearTimeout(this.debounce);
       this.debounce = setTimeout(() => {
         this.client
-          .search(query, {
-            mode: this.settings.defaultMode,
-            limit: this.settings.limit,
+          .search(parsedQuery, {
+            mode: overrides.mode ?? this.settings.defaultMode,
+            ...(overrides.limit !== undefined && { limit: overrides.limit }),
             snippetLength: 0, // snippets no longer displayed; skip server computation
+            ...(overrides.tag !== undefined && { tag: overrides.tag }),
+            ...(overrides.scope !== undefined && { scope: overrides.scope }),
+            ...(overrides.rerank !== undefined && { rerank: overrides.rerank }),
+            ...(overrides.threshold !== undefined && { threshold: overrides.threshold }),
           })
           .then((results) => resolve([...results].sort(byScoreDesc)))
           .catch(() => resolve([]));
@@ -91,7 +101,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private async doFetchSimilar(): Promise<SearchResult[]> {
     const path = this.activePath!;
     // Try semantic similarity (requires embedding; API key or local model)
-    const semantic = await this.client.search('', { notePath: path, limit: this.settings.limit });
+    const semantic = await this.client.search('', { notePath: path });
     const filtered = semantic.filter((r) => r.path !== path);
     if (filtered.length > 0) {
       this.isRecentMode = false; // semantic scores are meaningful
@@ -100,7 +110,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     // Fallback: BFS graph traversal (works without embeddings)
     // BFS scores (0.5 for depth=1) are structural, not semantic — hide them
     this.isRecentMode = true;
-    const bfs = await this.client.search(path, { related: true, limit: this.settings.limit });
+    const bfs = await this.client.search(path, { related: true });
     return bfs.filter((r) => r.path !== path);
   }
 
@@ -108,7 +118,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const paths: string[] = this.app.workspace.getLastOpenFiles();
     const results: SearchResult[] = [];
     for (const p of paths) {
-      if (results.length >= this.settings.limit) break;
+      if (results.length >= RECENT_FILES_LIMIT) break;
       const file = this.app.vault.getAbstractFileByPath(p);
       if (!(file instanceof TFile) || file.extension !== 'md') continue;
       const cache = this.app.metadataCache.getCache(p);
@@ -161,11 +171,15 @@ export class SearchModal extends SuggestModal<SearchResult> {
       });
     }
 
-    if (result.tags.length > 0) {
-      const tagsEl = container.createEl('div', { cls: 'hybrid-search-tags' });
+    if (this.settings.showMeta) {
+      const folder = result.path.includes('/') ? result.path.replace(/\/[^/]+$/, '') : '';
+      const metaRow = container.createEl('div', { cls: 'hybrid-search-meta' });
+      if (folder) {
+        metaRow.createEl('span', { text: folder, cls: 'hybrid-search-meta-path' });
+      }
       result.tags
         .slice(0, 5)
-        .forEach((tag) => tagsEl.createEl('span', { text: `#${tag}`, cls: 'hybrid-search-tag' }));
+        .forEach((tag) => metaRow.createEl('span', { text: `#${tag}`, cls: 'hybrid-search-tag' }));
     }
 
     el.addEventListener('mouseenter', () => void this.updatePreview(nfcPath));
