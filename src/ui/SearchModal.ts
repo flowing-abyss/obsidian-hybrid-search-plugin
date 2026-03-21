@@ -14,6 +14,15 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.setPlaceholder('Hybrid search: type to search your vault...');
   }
 
+  open(): void {
+    super.open();
+    this.hookSuperchargedLinks();
+  }
+
+  onClose(): void {
+    this.unhookSuperchargedLinks();
+  }
+
   async getSuggestions(query: string): Promise<SearchResult[]> {
     if (!query.trim()) return [];
     return new Promise((resolve) => {
@@ -43,20 +52,21 @@ export class SearchModal extends SuggestModal<SearchResult> {
       cls: 'internal-link hybrid-search-name',
       attr: { 'data-href': result.path.replace(/\.md$/, '') },
     });
+    // Fallback styling when Supercharged Links is not installed:
+    // mirror what SL's updateDivExtraAttributes produces so user CSS works.
     link.classList.add('data-link-icon', 'data-link-icon-after', 'data-link-text');
     const fm = this.app.metadataCache.getCache(result.path)?.frontmatter;
     if (fm) {
       for (const [key, val] of Object.entries(fm)) {
-        if (
-          key !== 'position' &&
-          (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')
-        ) {
+        if (key === 'position') continue;
+        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
           const strVal = String(val);
           link.setAttribute(`data-link-${key}`, strVal);
           link.style.setProperty(`--data-link-${key}`, strVal);
         }
       }
     }
+
     titleRow.createEl('span', {
       text: score.toFixed(2),
       cls: 'hybrid-search-score',
@@ -77,6 +87,44 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   onChooseSuggestion(result: SearchResult, _evt: MouseEvent | KeyboardEvent): void {
     void this.app.workspace.openLinkText(result.path, '', false);
+  }
+
+  // ── Supercharged Links integration ──────────────────────────────────────────
+  // SL's registerViewType only works for workspace leaves, not floating modals.
+  // Instead we call _watchContainerDynamic directly on the modal's result list.
+  // SL will then run its full rule pipeline (icons, colours, CSS vars) on each
+  // suggestion item as it is added to the DOM.
+
+  private static readonly SL_WATCH_ID = 'hybrid-search-modal';
+
+  private hookSuperchargedLinks(): void {
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+    const sl = (this.app as any).plugins?.plugins?.['supercharged-links-obsidian'];
+    if (!sl || typeof sl._watchContainerDynamic !== 'function') return;
+    const resultsEl = this.containerEl.querySelector('.prompt-results');
+    if (!resultsEl) return;
+    sl._watchContainerDynamic(
+      SearchModal.SL_WATCH_ID,
+      resultsEl,
+      sl,
+      'a.hybrid-search-name',
+      'suggestion-item',
+    );
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+  }
+
+  private unhookSuperchargedLinks(): void {
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+    const sl = (this.app as any).plugins?.plugins?.['supercharged-links-obsidian'];
+    if (!sl || !Array.isArray(sl.observers)) return;
+    const idx = (sl.observers as Array<[MutationObserver, string, string]>).findIndex(
+      ([, id]) => id === SearchModal.SL_WATCH_ID,
+    );
+    if (idx >= 0) {
+      (sl.observers[idx] as [MutationObserver, string, string])[0].disconnect();
+      (sl.observers as unknown[]).splice(idx, 1);
+    }
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
   }
 }
 
