@@ -376,11 +376,13 @@ describe('SearchModal — hover preview', () => {
     const internals = modal as unknown as ModalInternals;
     await internals.updatePreview(sampleResult.path);
     expect(internals.previewEl).toBeDefined();
+    const capturedEl = internals.previewEl!;
     internals.hidePreviewPanel();
     expect(internals.previewEl).toBeUndefined();
     expect(internals.previewChild).toBeUndefined();
     // currentPreviewPath must be reset so re-enabling preview triggers a fresh render
     expect(internals.currentPreviewPath).toBeUndefined();
+    expect(document.body.contains(capturedEl)).toBe(false);
   });
 
   it('hidePreviewPanel is idempotent — safe to call twice', async () => {
