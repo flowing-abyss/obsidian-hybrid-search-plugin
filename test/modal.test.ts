@@ -157,7 +157,6 @@ type ModalInternals = {
   onSelectedChange: (result: SearchResult | null) => void;
   previewEl: HTMLElement | undefined;
   previewChild: { unload: () => void };
-  modalEl: HTMLElement | undefined;
 };
 
 describe('SearchModal — hover preview', () => {
@@ -179,11 +178,11 @@ describe('SearchModal — hover preview', () => {
     expect(el.querySelector('.hybrid-search-snippet')).toBeNull();
   });
 
-  it('updatePreview creates previewEl and adds hybrid-search-expanded to modalEl on first call', async () => {
+  it('updatePreview creates previewEl appended to document.body on first call', async () => {
     const internals = modal as unknown as ModalInternals;
     await internals.updatePreview(sampleResult.path);
     expect(internals.previewEl).toBeDefined();
-    expect(internals.modalEl?.classList.contains('hybrid-search-expanded')).toBe(true);
+    expect(document.body.contains(internals.previewEl ?? null)).toBe(true);
   });
 
   it('updatePreview calls MarkdownRenderer.render with correct arguments', async () => {
@@ -212,14 +211,15 @@ describe('SearchModal — hover preview', () => {
     expect(internals.previewEl?.style.display).toBe('none');
   });
 
-  it('onClose unloads previewChild and removes hybrid-search-expanded', async () => {
+  it('onClose unloads previewChild and removes previewEl from DOM', async () => {
     const internals = modal as unknown as ModalInternals;
     await internals.updatePreview(sampleResult.path);
     const child = internals.previewChild;
+    const previewEl = internals.previewEl!;
     const unloadSpy = vi.spyOn(child, 'unload');
     modal.onClose();
     expect(unloadSpy).toHaveBeenCalled();
-    expect(internals.modalEl?.classList.contains('hybrid-search-expanded')).toBe(false);
+    expect(document.body.contains(previewEl)).toBe(false);
   });
 
   it('onSelectedChange calls updatePreview for the selected result', () => {

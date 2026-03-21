@@ -42,7 +42,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.unhookSuperchargedLinks();
     this.previewCallId++; // invalidate any in-flight updatePreview
     this.previewChild?.unload();
-    this.modalEl.removeClass('hybrid-search-expanded');
+    this.previewEl?.remove();
     this.previewEl = undefined;
     this.currentPreviewPath = undefined;
   }
@@ -123,8 +123,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     // Synchronous DOM setup — must happen before any await
     if (!this.previewEl) {
-      this.previewEl = this.modalEl.createDiv('hybrid-search-preview');
-      this.modalEl.addClass('hybrid-search-expanded');
+      this.previewEl = document.body.createDiv('hybrid-search-preview');
+      this.positionPreview();
     }
     this.previewEl.show();
     this.previewChild?.unload();
@@ -148,6 +148,14 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewChild.load();
     await MarkdownRenderer.render(this.app, content, this.previewEl, path, this.previewChild);
     this.currentPreviewPath = path;
+  }
+
+  private positionPreview(): void {
+    if (!this.previewEl) return;
+    const rect = this.modalEl.getBoundingClientRect();
+    this.previewEl.style.top = `${rect.top}px`;
+    this.previewEl.style.left = `${rect.right + 12}px`;
+    this.previewEl.style.height = `${rect.height}px`;
   }
 
   // ── Supercharged Links integration ──────────────────────────────────────────
