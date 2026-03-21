@@ -13,8 +13,10 @@ const mockGetAbstractFileByPath = vi.fn();
 // eslint-disable-next-line @typescript-eslint/unbound-method
 const mockRender = vi.mocked(MarkdownRenderer.render);
 
+const mockOpenFile = vi.fn();
+const mockGetLeaf = vi.fn().mockReturnValue({ openFile: mockOpenFile });
 const mockApp = {
-  workspace: { openLinkText: vi.fn() },
+  workspace: { getLeaf: mockGetLeaf },
   vault: {
     adapter: { getBasePath: () => '/vault' },
     cachedRead: mockCachedRead,
@@ -148,7 +150,8 @@ describe('SearchModal', () => {
 
   it('onChooseSuggestion opens note in workspace', () => {
     modal.onChooseSuggestion(sampleResult, new MouseEvent('click'));
-    expect(mockApp.workspace.openLinkText).toHaveBeenCalledWith(sampleResult.path, '', false);
+    expect(mockGetLeaf).toHaveBeenCalledWith(false);
+    expect(mockOpenFile).toHaveBeenCalledWith(expect.objectContaining({ path: sampleResult.path }));
   });
 });
 

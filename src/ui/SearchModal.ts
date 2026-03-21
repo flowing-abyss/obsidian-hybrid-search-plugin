@@ -108,7 +108,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   onChooseSuggestion(result: SearchResult, _evt: MouseEvent | KeyboardEvent): void {
-    void this.app.workspace.openLinkText(result.path, '', false);
+    const abstract = this.app.vault.getAbstractFileByPath(result.path);
+    if (abstract instanceof TFile) {
+      void this.app.workspace.getLeaf(false).openFile(abstract);
+    }
   }
 
   // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
