@@ -23,7 +23,7 @@ const mockApp = {
     cachedRead: mockCachedRead,
     getAbstractFileByPath: mockGetAbstractFileByPath,
   },
-  metadataCache: { getCache: mockGetCache },
+  metadataCache: { getCache: mockGetCache, resolvedLinks: {} },
 };
 
 const sampleResult: SearchResult = {

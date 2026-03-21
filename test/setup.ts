@@ -42,6 +42,20 @@ if (typeof HTMLElement !== 'undefined' && !('createDiv' in HTMLElement.prototype
   };
 }
 
+if (typeof HTMLElement !== 'undefined' && !('createSpan' in HTMLElement.prototype)) {
+  (
+    HTMLElement.prototype as HTMLElement & {
+      createSpan: (opts?: { text?: string; cls?: string }) => HTMLSpanElement;
+    }
+  ).createSpan = function (opts?: { text?: string; cls?: string }): HTMLSpanElement {
+    const span = document.createElement('span');
+    if (opts?.text) span.textContent = opts.text;
+    if (opts?.cls) span.className = opts.cls;
+    this.appendChild(span);
+    return span;
+  };
+}
+
 if (typeof HTMLElement !== 'undefined' && !('addClass' in HTMLElement.prototype)) {
   (HTMLElement.prototype as HTMLElement & { addClass: (...cls: string[]) => void }).addClass =
     function (...cls: string[]): void {
