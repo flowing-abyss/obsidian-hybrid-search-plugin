@@ -11,6 +11,22 @@ export function registerModalKeymap(
 ): void {
   // Mod = Cmd on macOS, Ctrl on Windows/Linux
 
+  function getSelected(m: SearchModal): SearchResult | undefined {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    const chooser = (m as any).chooser;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    return chooser?.values?.[chooser?.selectedItem] as SearchResult | undefined;
+  }
+
+  function getAll(m: SearchModal): SearchResult[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    const chooser = (m as any).chooser;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    return (chooser?.values ?? []) as SearchResult[];
+  }
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+
   modal.scope.register(['Mod'], 'j', (evt: KeyboardEvent) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const chooser = (modal as any).chooser;
@@ -35,25 +51,23 @@ export function registerModalKeymap(
     chooser?.setSelectedItem(Math.max(idx - 1, 0), evt);
   });
 
+  // ── Preview toggle ────────────────────────────────────────────────────────
+
   modal.scope.register(['Mod'], 'h', (_evt: KeyboardEvent) => {
     settings.showPreview = !settings.showPreview;
     void saveSettings();
     if (!settings.showPreview) {
       modal.hidePreviewPanel();
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      const chooser = (modal as any).chooser;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const selected = chooser?.values?.[chooser?.selectedItem] as SearchResult | undefined;
+      const selected = getSelected(modal);
       if (selected) modal.triggerPreview(selected.path.normalize('NFC'));
     }
   });
 
+  // ── Open in new tab ───────────────────────────────────────────────────────
+
   modal.scope.register(['Mod'], 'l', (_evt: KeyboardEvent) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const chooser = (modal as any).chooser;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const result = chooser?.values?.[chooser?.selectedItem] as SearchResult | undefined;
+    const result = getSelected(modal);
     if (!result) return;
     const file = app.vault.getAbstractFileByPath(result.path.normalize('NFC'));
     if (file instanceof TFile) {
@@ -62,11 +76,11 @@ export function registerModalKeymap(
     }
   });
 
+  // ── Open all in new tabs ──────────────────────────────────────────────────
+
   modal.scope.register(['Mod', 'Shift'], 'l', (_evt: KeyboardEvent) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const chooser = (modal as any).chooser;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const results = (chooser?.values ?? []) as SearchResult[];
+    const results = getAll(modal);
+    if (results.length === 0) return;
     for (const r of results) {
       const file = app.vault.getAbstractFileByPath(r.path.normalize('NFC'));
       if (file instanceof TFile) {
@@ -77,25 +91,24 @@ export function registerModalKeymap(
     modal.close();
   });
 
+  // ── Insert link at cursor ─────────────────────────────────────────────────
+  // Alt = Option on macOS
+
   modal.scope.register(['Alt'], 'Enter', (_evt: KeyboardEvent) => {
     const editor = app.workspace.activeEditor?.editor;
     if (!editor) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const chooser = (modal as any).chooser;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const result = chooser?.values?.[chooser?.selectedItem] as SearchResult | undefined;
+    const result = getSelected(modal);
     if (!result) return;
     const link = '[[' + result.title + ']]';
     editor.replaceRange(link, editor.getCursor());
   });
 
+  // ── Insert all links at cursor ────────────────────────────────────────────
+
   modal.scope.register(['Alt', 'Shift'], 'Enter', (_evt: KeyboardEvent) => {
     const editor = app.workspace.activeEditor?.editor;
     if (!editor) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const chooser = (modal as any).chooser;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const results = (chooser?.values ?? []) as SearchResult[];
+    const results = getAll(modal);
     const text = results.map((r) => '[[' + r.title + ']]').join('\n');
     editor.replaceRange(text, editor.getCursor());
     modal.close();
