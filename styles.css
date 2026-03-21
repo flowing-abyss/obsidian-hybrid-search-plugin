@@ -147,12 +147,6 @@
   z-index: calc(var(--layer-modal) + 10);
 }
 
-/* Centering: shifts modal left so modal+preview pair is horizontally centered */
-.hybrid-search-modal-centered {
-  left: var(--hybrid-search-pair-left) !important;
-  transform: none !important;
-}
-
 /* Preview panel: fixed position to the right of the modal */
 .hybrid-search-preview {
   position: fixed;
