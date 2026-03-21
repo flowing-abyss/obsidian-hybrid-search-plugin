@@ -46,7 +46,7 @@ describe('SearchModal', () => {
       Object.assign(new TFile(), { path: sampleResult.path }),
     );
     mockRender.mockClear();
-    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('constructs without throwing', () => {
@@ -188,10 +188,15 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion shows meta line when showMeta is true', () => {
-    const modalWithMeta = new SearchModal(mockApp as never, mockClient as never, {
-      ...DEFAULT_SETTINGS,
-      showMeta: true,
-    });
+    const modalWithMeta = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      {
+        ...DEFAULT_SETTINGS,
+        showMeta: true,
+      },
+      vi.fn(),
+    );
     const el = document.createElement('div');
     modalWithMeta.renderSuggestion(sampleResult, el);
     const meta = el.querySelector('.hybrid-search-meta');
@@ -199,10 +204,15 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion meta line contains folder path', () => {
-    const modalWithMeta = new SearchModal(mockApp as never, mockClient as never, {
-      ...DEFAULT_SETTINGS,
-      showMeta: true,
-    });
+    const modalWithMeta = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      {
+        ...DEFAULT_SETTINGS,
+        showMeta: true,
+      },
+      vi.fn(),
+    );
     const el = document.createElement('div');
     modalWithMeta.renderSuggestion(sampleResult, el);
     const path = el.querySelector('.hybrid-search-meta-path');
@@ -210,10 +220,15 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion meta line contains tags', () => {
-    const modalWithMeta = new SearchModal(mockApp as never, mockClient as never, {
-      ...DEFAULT_SETTINGS,
-      showMeta: true,
-    });
+    const modalWithMeta = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      {
+        ...DEFAULT_SETTINGS,
+        showMeta: true,
+      },
+      vi.fn(),
+    );
     const el = document.createElement('div');
     modalWithMeta.renderSuggestion(sampleResult, el);
     const tags = el.querySelectorAll('.hybrid-search-tag');
@@ -222,10 +237,15 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion meta line shows no tags when result has no tags', () => {
-    const modalWithMeta = new SearchModal(mockApp as never, mockClient as never, {
-      ...DEFAULT_SETTINGS,
-      showMeta: true,
-    });
+    const modalWithMeta = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      {
+        ...DEFAULT_SETTINGS,
+        showMeta: true,
+      },
+      vi.fn(),
+    );
     const el = document.createElement('div');
     modalWithMeta.renderSuggestion({ ...sampleResult, tags: [] }, el);
     expect(el.querySelectorAll('.hybrid-search-tag')).toHaveLength(0);
@@ -248,7 +268,9 @@ type ModalInternals = {
   updatePreview: (path: string) => Promise<void>;
   onSelectedChange: (result: SearchResult | null) => void;
   previewEl: HTMLElement | undefined;
-  previewChild: { unload: () => void };
+  previewChild: { unload: () => void } | undefined;
+  currentPreviewPath: string | undefined;
+  hidePreviewPanel(): void;
 };
 
 describe('SearchModal — hover preview', () => {
@@ -261,7 +283,7 @@ describe('SearchModal — hover preview', () => {
     mockGetAbstractFileByPath.mockReturnValue(
       Object.assign(new TFile(), { path: sampleResult.path }),
     );
-    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('renderSuggestion does not render snippet element', () => {
@@ -306,7 +328,7 @@ describe('SearchModal — hover preview', () => {
   it('onClose unloads previewChild and removes previewEl from DOM', async () => {
     const internals = modal as unknown as ModalInternals;
     await internals.updatePreview(sampleResult.path);
-    const child = internals.previewChild;
+    const child = internals.previewChild!;
     const previewEl = internals.previewEl!;
     const unloadSpy = vi.spyOn(child, 'unload');
     modal.onClose();
@@ -321,6 +343,51 @@ describe('SearchModal — hover preview', () => {
     internals.updatePreview = updateMock;
     internals.onSelectedChange(sampleResult);
     expect(updateMock).toHaveBeenCalledWith(sampleResult.path);
+  });
+
+  it('updatePreview is skipped when showPreview is false', async () => {
+    const modalNoPreview = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      { ...DEFAULT_SETTINGS, showPreview: false },
+      vi.fn(),
+    );
+    const internals = modalNoPreview as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    expect(mockRender).not.toHaveBeenCalled();
+    expect(internals.previewEl).toBeUndefined();
+  });
+
+  it('onSelectedChange is skipped when showPreview is false', () => {
+    const modalNoPreview = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      { ...DEFAULT_SETTINGS, showPreview: false },
+      vi.fn(),
+    );
+    const updateMock = vi.fn();
+    const internals = modalNoPreview as unknown as ModalInternals;
+    internals.updatePreview = updateMock;
+    internals.onSelectedChange(sampleResult);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('hidePreviewPanel removes previewEl and resets state', async () => {
+    const internals = modal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    expect(internals.previewEl).toBeDefined();
+    internals.hidePreviewPanel();
+    expect(internals.previewEl).toBeUndefined();
+    expect(internals.previewChild).toBeUndefined();
+    // currentPreviewPath must be reset so re-enabling preview triggers a fresh render
+    expect(internals.currentPreviewPath).toBeUndefined();
+  });
+
+  it('hidePreviewPanel is idempotent — safe to call twice', async () => {
+    const internals = modal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    internals.hidePreviewPanel();
+    expect(() => internals.hidePreviewPanel()).not.toThrow();
   });
 });
 
@@ -357,6 +424,7 @@ describe('SearchModal — default behavior (S-102)', () => {
       mockApp as never,
       mockClient as never,
       DEFAULT_SETTINGS,
+      vi.fn(),
       activeFilePath,
     );
     const promise = modal.getSuggestions('');
@@ -375,6 +443,7 @@ describe('SearchModal — default behavior (S-102)', () => {
       mockApp as never,
       mockClient as never,
       DEFAULT_SETTINGS,
+      vi.fn(),
       activeFilePath,
     );
     const promise = modal.getSuggestions('');
@@ -393,6 +462,7 @@ describe('SearchModal — default behavior (S-102)', () => {
       mockApp as never,
       mockClient as never,
       DEFAULT_SETTINGS,
+      vi.fn(),
       activeFilePath,
     );
     const promise = modal.getSuggestions('');
@@ -409,7 +479,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     mockGetAbstractFileByPath.mockImplementation((p: string) =>
       Object.assign(new TFile(), { path: p, extension: 'md' }),
     );
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
     expect(mockSearch).not.toHaveBeenCalled();
     expect(results).toHaveLength(2);
@@ -423,7 +493,7 @@ describe('SearchModal — default behavior (S-102)', () => {
       const ext = p.endsWith('.png') ? 'png' : 'md';
       return Object.assign(new TFile(), { path: p, extension: ext });
     });
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
     expect(results).toHaveLength(1);
     expect(results[0]?.path).toBe('notes/a.md');
@@ -434,7 +504,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     mockGetAbstractFileByPath.mockImplementation((p: string) =>
       p === 'notes/exists.md' ? Object.assign(new TFile(), { path: p, extension: 'md' }) : null,
     );
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
     expect(results).toHaveLength(1);
     expect(results[0]?.path).toBe('notes/exists.md');
@@ -446,7 +516,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     mockGetAbstractFileByPath.mockImplementation((p: string) =>
       Object.assign(new TFile(), { path: p, extension: 'md' }),
     );
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
     expect(results.length).toBeLessThanOrEqual(20);
   });
@@ -456,7 +526,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     mockGetAbstractFileByPath.mockReturnValue(
       Object.assign(new TFile(), { path: 'notes/a.md', extension: 'md' }),
     );
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
     const el = document.createElement('div');
     modal.renderSuggestion(results[0]!, el);
@@ -465,7 +535,7 @@ describe('SearchModal — default behavior (S-102)', () => {
 
   it('renderSuggestion shows score after a real search query', async () => {
     vi.useFakeTimers();
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
     const promise = modal.getSuggestions('zettel');
     vi.runAllTimers();
     await promise;

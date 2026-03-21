@@ -33,6 +33,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     app: App,
     private client: Pick<SearchClient, 'search'>,
     private settings: HybridSearchSettings,
+    private readonly saveSettings: () => Promise<void>,
     private readonly activePath?: string,
   ) {
     super(app);
@@ -44,16 +45,25 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.hookSuperchargedLinks();
   }
 
-  onClose(): void {
-    this.unhookSuperchargedLinks();
-    this.debouncedPreview.cancel(); // prevent deferred call from firing after close
-    this.previewCallId++; // invalidate any in-flight updatePreview
+  hidePreviewPanel(): void {
+    this.debouncedPreview.cancel();
+    this.previewCallId++;
     this.previewChild?.unload();
+    this.previewChild = undefined;
     this.previewEl?.remove();
     this.previewEl = undefined;
     this.previewMetaEl?.remove();
     this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
+  }
+
+  triggerPreview(nfcPath: string): void {
+    this.debouncedPreview(nfcPath);
+  }
+
+  onClose(): void {
+    this.unhookSuperchargedLinks();
+    this.hidePreviewPanel();
     // Restore modal's default centering (in case positionPreview shifted it)
     this.modalEl.style.left = ``;
     this.modalEl.style.transform = ``;
@@ -191,7 +201,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
         .forEach((tag) => metaRow.createEl('span', { text: `#${tag}`, cls: 'hybrid-search-tag' }));
     }
 
-    el.addEventListener('mouseenter', () => void this.updatePreview(nfcPath));
+    el.addEventListener('mouseenter', () => {
+      if (!this.settings.showPreview) return;
+      void this.updatePreview(nfcPath);
+    });
   }
 
   onChooseSuggestion(result: SearchResult, _evt: MouseEvent | KeyboardEvent): void {
@@ -203,10 +216,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
   onSelectedChange(result: SearchResult | null): void {
+    if (!this.settings.showPreview) return;
     if (result) this.debouncedPreview(result.path.normalize('NFC'));
   }
 
   private async updatePreview(path: string): Promise<void> {
+    if (!this.settings.showPreview) return;
     // Normalize to NFC: DB paths are NFD, Obsidian APIs require NFC (same as cli.ts)
     const nfcPath = path.normalize('NFC');
     if (nfcPath === this.currentPreviewPath) return;

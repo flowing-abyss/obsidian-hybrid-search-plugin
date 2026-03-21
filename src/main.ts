@@ -31,7 +31,13 @@ export default class HybridSearchPlugin extends Plugin {
           return;
         }
         const activePath = this.app.workspace.getActiveFile()?.path;
-        new SearchModal(this.app, this.client, this.settings, activePath).open();
+        new SearchModal(
+          this.app,
+          this.client,
+          this.settings,
+          () => this.saveSettings(),
+          activePath,
+        ).open();
       },
     });
 
@@ -41,7 +47,13 @@ export default class HybridSearchPlugin extends Plugin {
         return;
       }
       const activePath = this.app.workspace.getActiveFile()?.path;
-      new SearchModal(this.app, this.client, this.settings, activePath).open();
+      new SearchModal(
+        this.app,
+        this.client,
+        this.settings,
+        () => this.saveSettings(),
+        activePath,
+      ).open();
     });
 
     this.addSettingTab(new HybridSearchSettingTab(this.app, this));

@@ -76,6 +76,7 @@ export class Modal {
 }
 
 export class SuggestModal<T> extends Modal {
+  scope = { register: vi.fn() };
   setPlaceholder(_placeholder: string): void {}
   getSuggestions(_query: string): T[] | Promise<T[]> {
     return [];
