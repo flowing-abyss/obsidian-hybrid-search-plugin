@@ -53,7 +53,7 @@ export function registerModalKeymap(
 
   // ── Preview toggle ────────────────────────────────────────────────────────
 
-  modal.scope.register(['Mod'], 'h', (_evt: KeyboardEvent) => {
+  modal.scope.register(['Ctrl'], 'h', (_evt: KeyboardEvent) => {
     settings.showPreview = !settings.showPreview;
     void saveSettings();
     if (!settings.showPreview) {
