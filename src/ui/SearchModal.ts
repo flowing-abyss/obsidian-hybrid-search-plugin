@@ -40,6 +40,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   onClose(): void {
     this.unhookSuperchargedLinks();
+    this.debouncedPreview.cancel(); // prevent deferred call from firing after close
     this.previewCallId++; // invalidate any in-flight updatePreview
     this.previewChild?.unload();
     this.previewEl?.remove();
@@ -132,7 +133,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     // Synchronous DOM setup — must happen before any await
     if (!this.previewEl) {
       this.previewEl = document.body.createDiv('hybrid-search-preview');
-      this.positionPreview();
+      this.hookPreviewLinks();
     }
     this.previewEl.show();
     this.previewChild?.unload();
@@ -156,6 +157,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewChild.load();
     await MarkdownRenderer.render(this.app, content, this.previewEl, nfcPath, this.previewChild);
     this.currentPreviewPath = nfcPath;
+    // Re-position after render: modal may have grown taller as results loaded
+    this.positionPreview();
   }
 
   private positionPreview(): void {
@@ -164,6 +167,31 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewEl.style.top = `${rect.top}px`;
     this.previewEl.style.left = `${rect.right + 12}px`;
     this.previewEl.style.height = `${rect.height}px`;
+  }
+
+  private hookPreviewLinks(): void {
+    if (!this.previewEl) return;
+    const handler = (evt: MouseEvent) => {
+      const link = (evt.target as HTMLElement).closest('a');
+      if (!link) return;
+      const href = link.getAttribute('data-href') ?? link.getAttribute('href') ?? '';
+      if (!href || /^https?:\/\//.test(href)) return;
+      evt.preventDefault();
+      evt.stopPropagation();
+      const file = this.app.metadataCache.getFirstLinkpathDest(href, this.currentPreviewPath ?? '');
+      if (!(file instanceof TFile)) return;
+      if (evt.button === 1) {
+        // Middle click: open in new tab, keep modal open
+        // @ts-ignore — 'tab' is a valid PaneType in modern Obsidian
+        void this.app.workspace.getLeaf('tab').openFile(file);
+      } else {
+        // Left click: open and close modal
+        void this.app.workspace.getLeaf(false).openFile(file);
+        this.close();
+      }
+    };
+    this.previewEl.addEventListener('click', handler);
+    this.previewEl.addEventListener('auxclick', handler);
   }
 
   // ── Supercharged Links integration ──────────────────────────────────────────
