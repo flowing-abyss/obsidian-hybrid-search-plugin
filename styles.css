@@ -159,4 +159,7 @@
   border-radius: 8px;
   box-shadow: var(--shadow-l2);
   z-index: var(--layer-modal);
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }

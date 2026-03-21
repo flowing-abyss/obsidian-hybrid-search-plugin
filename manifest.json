@@ -1,7 +1,7 @@
 {
   "id": "obsidian-hybrid-search",
   "name": "Hybrid Search",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.4.0",
   "description": "Fast hybrid search (BM25 + semantic) over your vault via obsidian-hybrid-search CLI.",
   "author": "flowing-abyss",
