@@ -11,7 +11,7 @@ export interface HybridSearchSettings {
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
   binaryPath: '',
   defaultMode: 'hybrid',
-  limit: 10,
+  limit: 20,
   snippetLength: 200,
 };
 

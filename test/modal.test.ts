@@ -15,8 +15,9 @@ const mockRender = vi.mocked(MarkdownRenderer.render);
 
 const mockOpenFile = vi.fn();
 const mockGetLeaf = vi.fn().mockReturnValue({ openFile: mockOpenFile });
+const mockGetLastOpenFiles = vi.fn().mockReturnValue([]);
 const mockApp = {
-  workspace: { getLeaf: mockGetLeaf },
+  workspace: { getLeaf: mockGetLeaf, getLastOpenFiles: mockGetLastOpenFiles },
   vault: {
     adapter: { getBasePath: () => '/vault' },
     cachedRead: mockCachedRead,
@@ -232,5 +233,158 @@ describe('SearchModal — hover preview', () => {
     internals.updatePreview = updateMock;
     internals.onSelectedChange(sampleResult);
     expect(updateMock).toHaveBeenCalledWith(sampleResult.path);
+  });
+});
+
+describe('SearchModal — default behavior (S-102)', () => {
+  const activeFilePath = 'notes/current.md';
+  const relatedResult: SearchResult = {
+    path: 'notes/related.md',
+    title: 'Related Note',
+    score: 0.9,
+    tags: [],
+    aliases: [],
+  };
+  const sourceResult: SearchResult = {
+    path: activeFilePath,
+    title: 'Current Note',
+    score: 1.0,
+    tags: [],
+    aliases: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearch.mockResolvedValue([relatedResult]);
+    mockGetAbstractFileByPath.mockReturnValue(
+      Object.assign(new TFile(), { path: relatedResult.path }),
+    );
+    mockGetCache.mockReturnValue(null);
+    mockGetLastOpenFiles.mockReturnValue([]);
+  });
+
+  it('getSuggestions with empty query and activePath calls search in semantic similarity mode', async () => {
+    vi.useFakeTimers();
+    const modal = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      DEFAULT_SETTINGS,
+      activeFilePath,
+    );
+    const promise = modal.getSuggestions('');
+    vi.runAllTimers();
+    await promise;
+    expect(mockSearch).toHaveBeenCalledWith('', {
+      notePath: activeFilePath,
+      limit: DEFAULT_SETTINGS.limit,
+    });
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions with empty query and activePath excludes the source note from results', async () => {
+    mockSearch.mockResolvedValue([sourceResult, relatedResult]);
+    vi.useFakeTimers();
+    const modal = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      DEFAULT_SETTINGS,
+      activeFilePath,
+    );
+    const promise = modal.getSuggestions('');
+    vi.runAllTimers();
+    const results = await promise;
+    expect(results.every((r) => r.path !== activeFilePath)).toBe(true);
+    expect(results).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions with activePath falls back to BFS when semantic returns empty', async () => {
+    // First call (notePath/semantic) returns [], second call (related/BFS) returns result
+    mockSearch.mockResolvedValueOnce([]).mockResolvedValueOnce([relatedResult]);
+    vi.useFakeTimers();
+    const modal = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      DEFAULT_SETTINGS,
+      activeFilePath,
+    );
+    const promise = modal.getSuggestions('');
+    vi.runAllTimers();
+    const results = await promise;
+    expect(results).toHaveLength(1);
+    expect(results[0]?.path).toBe(relatedResult.path);
+    expect(mockSearch).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions with empty query and no activePath returns recent files without server call', async () => {
+    mockGetLastOpenFiles.mockReturnValue(['notes/a.md', 'notes/b.md']);
+    mockGetAbstractFileByPath.mockImplementation((p: string) =>
+      Object.assign(new TFile(), { path: p, extension: 'md' }),
+    );
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const results = await modal.getSuggestions('');
+    expect(mockSearch).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results[0]?.path).toBe('notes/a.md');
+    expect(results[1]?.path).toBe('notes/b.md');
+  });
+
+  it('getSuggestions recent files filters out non-markdown files', async () => {
+    mockGetLastOpenFiles.mockReturnValue(['notes/a.md', 'notes/img.png']);
+    mockGetAbstractFileByPath.mockImplementation((p: string) => {
+      const ext = p.endsWith('.png') ? 'png' : 'md';
+      return Object.assign(new TFile(), { path: p, extension: ext });
+    });
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const results = await modal.getSuggestions('');
+    expect(results).toHaveLength(1);
+    expect(results[0]?.path).toBe('notes/a.md');
+  });
+
+  it('getSuggestions recent files filters out paths not found in vault', async () => {
+    mockGetLastOpenFiles.mockReturnValue(['notes/exists.md', 'notes/gone.md']);
+    mockGetAbstractFileByPath.mockImplementation((p: string) =>
+      p === 'notes/exists.md' ? Object.assign(new TFile(), { path: p, extension: 'md' }) : null,
+    );
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const results = await modal.getSuggestions('');
+    expect(results).toHaveLength(1);
+    expect(results[0]?.path).toBe('notes/exists.md');
+  });
+
+  it('getSuggestions recent files respects settings.limit', async () => {
+    const manyPaths = Array.from({ length: 20 }, (_, i) => `notes/note-${i}.md`);
+    mockGetLastOpenFiles.mockReturnValue(manyPaths);
+    mockGetAbstractFileByPath.mockImplementation((p: string) =>
+      Object.assign(new TFile(), { path: p, extension: 'md' }),
+    );
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const results = await modal.getSuggestions('');
+    expect(results.length).toBeLessThanOrEqual(DEFAULT_SETTINGS.limit);
+  });
+
+  it('renderSuggestion hides score when in recent mode', async () => {
+    mockGetLastOpenFiles.mockReturnValue(['notes/a.md']);
+    mockGetAbstractFileByPath.mockReturnValue(
+      Object.assign(new TFile(), { path: 'notes/a.md', extension: 'md' }),
+    );
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const results = await modal.getSuggestions('');
+    const el = document.createElement('div');
+    modal.renderSuggestion(results[0]!, el);
+    expect(el.querySelector('.hybrid-search-score')).toBeNull();
+  });
+
+  it('renderSuggestion shows score after a real search query', async () => {
+    vi.useFakeTimers();
+    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS);
+    const promise = modal.getSuggestions('zettel');
+    vi.runAllTimers();
+    await promise;
+    const el = document.createElement('div');
+    modal.renderSuggestion(sampleResult, el);
+    expect(el.querySelector('.hybrid-search-score')).not.toBeNull();
+    vi.useRealTimers();
   });
 });

@@ -38,6 +38,7 @@
 .hybrid-search-preview {
   position: fixed;
   width: 500px;
+  height: 500px;
   padding: 16px 20px;
   overflow-y: auto;
   background: var(--background-primary);

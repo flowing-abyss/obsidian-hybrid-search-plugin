@@ -16,7 +16,7 @@ describe('DEFAULT_SETTINGS', () => {
   it('has expected defaults', () => {
     expect(DEFAULT_SETTINGS.binaryPath).toBe('');
     expect(DEFAULT_SETTINGS.defaultMode).toBe('hybrid');
-    expect(DEFAULT_SETTINGS.limit).toBe(10);
+    expect(DEFAULT_SETTINGS.limit).toBe(20);
     expect(DEFAULT_SETTINGS.snippetLength).toBe(200);
   });
 });

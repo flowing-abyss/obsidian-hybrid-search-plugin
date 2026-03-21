@@ -30,7 +30,8 @@ export default class HybridSearchPlugin extends Plugin {
           new Notice('Hybrid search: client not ready.');
           return;
         }
-        new SearchModal(this.app, this.client, this.settings).open();
+        const activePath = this.app.workspace.getActiveFile()?.path;
+        new SearchModal(this.app, this.client, this.settings, activePath).open();
       },
     });
 
@@ -39,7 +40,8 @@ export default class HybridSearchPlugin extends Plugin {
         new Notice('Hybrid search: client not ready.');
         return;
       }
-      new SearchModal(this.app, this.client, this.settings).open();
+      const activePath = this.app.workspace.getActiveFile()?.path;
+      new SearchModal(this.app, this.client, this.settings, activePath).open();
     });
 
     this.addSettingTab(new HybridSearchSettingTab(this.app, this));

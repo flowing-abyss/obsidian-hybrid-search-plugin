@@ -12,6 +12,8 @@ export interface SearchResult {
 
 interface SearchOptions {
   mode?: 'hybrid' | 'semantic' | 'fulltext' | 'title';
+  related?: boolean;
+  notePath?: string;
   limit?: number;
   threshold?: number;
   snippetLength?: number;
