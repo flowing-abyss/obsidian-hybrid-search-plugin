@@ -19,14 +19,6 @@
   flex-shrink: 0;
 }
 
-.hybrid-search-snippet {
-  font-size: 0.85em;
-  color: var(--text-muted);
-  margin-top: 2px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .hybrid-search-tags {
   margin-top: 3px;
   display: flex;
@@ -40,4 +32,28 @@
   color: var(--tag-color);
   padding: 1px 6px;
   border-radius: 10px;
+}
+
+/* Expanded modal: flex row when preview panel is open */
+.hybrid-search-expanded.modal {
+  display: flex;
+  flex-direction: row;
+  width: min(90vw, 1100px);
+  max-width: 90vw;
+}
+
+/* Search list: fixed width inside the expanded modal */
+.hybrid-search-expanded .prompt {
+  flex: 0 0 480px;
+}
+
+/* Preview panel: fills remaining space */
+.hybrid-search-preview {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+  max-height: 70vh;
+  border-left: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  border-radius: 0 8px 8px 0;
 }
