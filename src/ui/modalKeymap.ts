@@ -9,7 +9,7 @@ export function registerModalKeymap(
   settings: HybridSearchSettings,
   saveSettings: () => Promise<void>,
 ): void {
-  // Ctrl = Control on all platforms (avoids macOS Cmd+H/L system shortcuts)
+  // Mod = Cmd on macOS, Ctrl on Windows/Linux
 
   function getSelected(m: SearchModal): SearchResult | undefined {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
@@ -27,7 +27,7 @@ export function registerModalKeymap(
 
   // ── Navigation ────────────────────────────────────────────────────────────
 
-  modal.scope.register(['Ctrl'], 'j', (evt: KeyboardEvent) => {
+  modal.scope.register(['Mod'], 'j', (evt: KeyboardEvent) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const chooser = (modal as any).chooser;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -39,7 +39,7 @@ export function registerModalKeymap(
     chooser?.setSelectedItem(Math.min(idx + 1, values.length - 1), evt);
   });
 
-  modal.scope.register(['Ctrl'], 'k', (evt: KeyboardEvent) => {
+  modal.scope.register(['Mod'], 'k', (evt: KeyboardEvent) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const chooser = (modal as any).chooser;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -53,7 +53,7 @@ export function registerModalKeymap(
 
   // ── Preview toggle ────────────────────────────────────────────────────────
 
-  modal.scope.register(['Ctrl'], 'h', (_evt: KeyboardEvent) => {
+  modal.scope.register(['Mod'], 'p', (_evt: KeyboardEvent) => {
     settings.showPreview = !settings.showPreview;
     void saveSettings();
     if (!settings.showPreview) {
@@ -66,7 +66,7 @@ export function registerModalKeymap(
 
   // ── Open in new tab ───────────────────────────────────────────────────────
 
-  modal.scope.register(['Ctrl'], 'l', (_evt: KeyboardEvent) => {
+  modal.scope.register(['Mod'], 'o', (_evt: KeyboardEvent) => {
     const result = getSelected(modal);
     if (!result) return;
     const file = app.vault.getAbstractFileByPath(result.path.normalize('NFC'));
@@ -78,7 +78,7 @@ export function registerModalKeymap(
 
   // ── Open all in new tabs ──────────────────────────────────────────────────
 
-  modal.scope.register(['Ctrl', 'Shift'], 'l', (_evt: KeyboardEvent) => {
+  modal.scope.register(['Mod', 'Shift'], 'o', (_evt: KeyboardEvent) => {
     const results = getAll(modal);
     if (results.length === 0) return;
     for (const r of results) {
