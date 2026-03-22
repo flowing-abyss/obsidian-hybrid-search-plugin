@@ -240,7 +240,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     el.addEventListener('mouseenter', () => {
       if (!this.settings.showPreview) return;
-      void this.updatePreview(nfcPath);
+      this.debouncedPreview(nfcPath);
     });
   }
 
