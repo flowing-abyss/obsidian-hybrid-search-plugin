@@ -9,6 +9,7 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "postversion": "git push origin master && git push origin --tags",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "lint": "eslint src",
