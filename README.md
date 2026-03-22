@@ -4,7 +4,7 @@ Fast hybrid search for Obsidian — combines BM25 full-text and semantic (vector
 
 The plugin is a thin UI layer that communicates with the [obsidian-hybrid-search](https://github.com/flowing-abyss/obsidian-hybrid-search) CLI, which runs as a background process and handles indexing and search.
 
-> **Desktop only.** Requires Obsidian ≥ 1.4.0.
+> **Desktop only.**
 
 ---
 
