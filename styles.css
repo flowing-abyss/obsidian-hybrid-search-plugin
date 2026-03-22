@@ -154,6 +154,22 @@
   flex-shrink: 0;
 }
 
+/* Mode indicator badge — shown inside the search input row */
+.hybrid-search-mode-badge {
+  font-size: 10px;
+  font-family: var(--font-monospace);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  line-height: 1;
+  align-self: center;
+  flex-shrink: 0;
+  margin-right: 14px;
+  user-select: none;
+  opacity: 0.75;
+}
+
 /* Ensure Obsidian's hover page preview appears above our fixed panels */
 .popover.hover-popover {
   z-index: calc(var(--layer-modal) + 10);

@@ -22,6 +22,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private previewCallId = 0;
   private isRecentMode = false;
 
+  private modeEl?: HTMLSpanElement;
+
   private readonly debouncedPreview = debounce(
     (path: string) => {
       void this.updatePreview(path);
@@ -43,8 +45,36 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   open(): void {
     super.open();
+    this.injectModeBadge();
     this.hookSuperchargedLinks();
     registerModalKeymap(this, this.app, this.settings, this.saveSettings);
+  }
+
+  private injectModeBadge(): void {
+    const container = this.containerEl.querySelector('.prompt-input-container');
+    if (!container) return;
+    // super.open() already called getSuggestions('') before this runs, so
+    // match the same initial label that getSuggestions would have set.
+    const initialLabel = this.activePath ? '~' : 'R';
+    this.modeEl = (container as HTMLElement).createEl('span', {
+      cls: 'hybrid-search-mode-badge',
+      text: initialLabel,
+    });
+  }
+
+  private modeLabel(mode: string, rerank: boolean): string {
+    const letters: Record<string, string> = {
+      hybrid: 'H',
+      semantic: 'S',
+      fulltext: 'F',
+      title: 'T',
+    };
+    const letter = letters[mode] ?? mode[0]?.toUpperCase() ?? '?';
+    return rerank && mode === 'hybrid' ? `${letter}*` : letter;
+  }
+
+  private updateModeBadge(label: string): void {
+    if (this.modeEl) this.modeEl.textContent = label;
   }
 
   hidePreviewPanel(): void {
@@ -76,20 +106,25 @@ export class SearchModal extends SuggestModal<SearchResult> {
       if (this.activePath) {
         // Active note open: show semantically similar notes
         this.isRecentMode = false;
+        this.updateModeBadge('~');
         return new Promise((resolve) => {
           clearTimeout(this.debounce);
           this.debounce = setTimeout(() => {
             this.fetchSimilar(resolve);
-          }, 100);
+          }, 150);
         });
       }
       // No active note: show recently opened files
       this.isRecentMode = true;
+      this.updateModeBadge('R');
       return this.buildRecentResults();
     }
     this.isRecentMode = false;
 
     const { query: parsedQuery, overrides } = parseQuery(query);
+    this.updateModeBadge(
+      this.modeLabel(overrides.mode ?? this.settings.defaultMode, overrides.rerank ?? false),
+    );
 
     return new Promise((resolve) => {
       clearTimeout(this.debounce);
@@ -106,7 +141,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
           })
           .then((results) => resolve([...results].sort(byScoreDesc)))
           .catch(() => resolve([]));
-      }, 100);
+      }, 150);
     });
   }
 
