@@ -53,6 +53,16 @@ export function parseQuery(input: string): ParsedQuery {
     tagMatches.push(t);
     return ' ';
   });
+
+  // 3b. #tag shorthand — #tagname or -#tagname (Obsidian-style tag filter)
+  remaining = remaining.replace(
+    /(^|\s)(-?)#([\w/-]+)/g,
+    (_, space: string, minus: string, t: string) => {
+      tagMatches.push(minus + t);
+      return space;
+    },
+  );
+
   if (tagMatches.length === 1) {
     overrides.tag = tagMatches[0];
   } else if (tagMatches.length > 1) {

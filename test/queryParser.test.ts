@@ -94,6 +94,48 @@ describe('parseQuery — tag operators', () => {
   });
 });
 
+describe('parseQuery — #tag shorthand', () => {
+  it('#tag extracts tag filter', () => {
+    const { query, overrides } = parseQuery('#pkm notes');
+    expect(overrides.tag).toBe('pkm');
+    expect(query).toBe('notes');
+  });
+
+  it('#tag at end of query', () => {
+    const { query, overrides } = parseQuery('notes #pkm');
+    expect(overrides.tag).toBe('pkm');
+    expect(query).toBe('notes');
+  });
+
+  it('-#tag excludes tag', () => {
+    const { query, overrides } = parseQuery('notes -#archive');
+    expect(overrides.tag).toBe('-archive');
+    expect(query).toBe('notes');
+  });
+
+  it('nested tag #category/subcategory', () => {
+    const { overrides } = parseQuery('#category/cs notes');
+    expect(overrides.tag).toBe('category/cs');
+  });
+
+  it('multiple #tags → array', () => {
+    const { overrides } = parseQuery('#pkm #cs notes');
+    expect(overrides.tag).toEqual(['pkm', 'cs']);
+  });
+
+  it('#tag mixed with tag: operator', () => {
+    const { overrides } = parseQuery('#pkm tag:cs notes');
+    expect(overrides.tag).toEqual(['cs', 'pkm']); // tag: processed before #tag
+  });
+
+  it('#tag with mode prefix', () => {
+    const { query, overrides } = parseQuery('sem: notes #pkm');
+    expect(overrides.mode).toBe('semantic');
+    expect(overrides.tag).toBe('pkm');
+    expect(query).toBe('notes');
+  });
+});
+
 describe('parseQuery — folder operators', () => {
   it('folder: extracts scope', () => {
     const { query, overrides } = parseQuery('folder:sources query');
