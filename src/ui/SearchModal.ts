@@ -80,7 +80,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
           clearTimeout(this.debounce);
           this.debounce = setTimeout(() => {
             this.fetchSimilar(resolve);
-          }, 200);
+          }, 100);
         });
       }
       // No active note: show recently opened files
@@ -106,7 +106,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
           })
           .then((results) => resolve([...results].sort(byScoreDesc)))
           .catch(() => resolve([]));
-      }, 200);
+      }, 100);
     });
   }
 
