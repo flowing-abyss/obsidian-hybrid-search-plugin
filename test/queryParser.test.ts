@@ -117,6 +117,42 @@ describe('parseQuery — folder operators', () => {
   });
 });
 
+describe('parseQuery — threshold operators', () => {
+  it('threshold:0.9 sets threshold', () => {
+    const { query, overrides } = parseQuery('запрос threshold:0.9');
+    expect(overrides.threshold).toBe(0.9);
+    expect(query).toBe('запрос');
+  });
+
+  it('th:0.9 abbreviation sets threshold', () => {
+    const { query, overrides } = parseQuery('запрос th:0.9');
+    expect(overrides.threshold).toBe(0.9);
+    expect(query).toBe('запрос');
+  });
+
+  it('th: with space', () => {
+    const { overrides } = parseQuery('запрос th: 0.5');
+    expect(overrides.threshold).toBe(0.5);
+  });
+
+  it('threshold: with mode prefix', () => {
+    const { overrides } = parseQuery('sem: notes threshold:0.7');
+    expect(overrides.mode).toBe('semantic');
+    expect(overrides.threshold).toBe(0.7);
+  });
+
+  it('@th:0.9 abbreviation sets threshold', () => {
+    const { query, overrides } = parseQuery('запрос @th:0.9');
+    expect(overrides.threshold).toBe(0.9);
+    expect(query).toBe('запрос');
+  });
+
+  it('@th without value: ignored', () => {
+    const { overrides } = parseQuery('запрос @th');
+    expect(overrides.threshold).toBeUndefined();
+  });
+});
+
 describe('parseQuery — @postfix operators', () => {
   it('@semantic sets mode', () => {
     const { query, overrides } = parseQuery('запрос @semantic');
@@ -169,6 +205,12 @@ describe('parseQuery — @postfix operators', () => {
   it('@threshold without value: ignored', () => {
     const { overrides } = parseQuery('запрос @threshold');
     expect(overrides.threshold).toBeUndefined();
+  });
+
+  it('@limit:10 sets limit', () => {
+    const { query, overrides } = parseQuery('запрос @limit:10');
+    expect(overrides.limit).toBe(10);
+    expect(query).toBe('запрос');
   });
 
   it('@lim:10 sets limit', () => {

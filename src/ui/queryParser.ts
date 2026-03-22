@@ -35,8 +35,15 @@ export function parseQuery(input: string): ParsedQuery {
   }
 
   // 2. limit:N
-  remaining = remaining.replace(/\blimit:\s*(\d+)/gi, (_, n: string) => {
+  remaining = remaining.replace(/(?<!@)\blimit:\s*(\d+)/gi, (_, n: string) => {
     overrides.limit = parseInt(n, 10);
+    return ' ';
+  });
+
+  // 2b. threshold: / th:
+  remaining = remaining.replace(/(?<!@)\bth(?:reshold)?:\s*(\d*\.?\d+)/gi, (_, n: string) => {
+    const val = parseFloat(n);
+    if (!isNaN(val)) overrides.threshold = val;
     return ' ';
   });
 
@@ -64,22 +71,29 @@ export function parseQuery(input: string): ParsedQuery {
     overrides.scope = scopeMatches;
   }
 
-  // 5. @postfix operators
+  // 5. @postfix operators — value-bearing (must run before simple to avoid partial match)
   remaining = remaining.replace(
-    /@(hybrid|hyb|semantic|sem|fulltext|full|title|rerank|threshold(?::\S+)?|lim(?::\S+)?)\b/gi,
+    /@(th(?:reshold)?|lim(?:it)?):(\S+)/gi,
+    (_, op: string, val: string) => {
+      const lower = op.toLowerCase();
+      if (lower === 'th' || lower === 'threshold') {
+        const v = parseFloat(val);
+        if (!isNaN(v)) overrides.threshold = v;
+      } else {
+        const v = parseInt(val, 10);
+        if (!isNaN(v)) overrides.limit = v;
+      }
+      return ' ';
+    },
+  );
+
+  // 5b. @postfix operators — simple (mode, rerank; bare th/lim without value stripped silently)
+  remaining = remaining.replace(
+    /@(hybrid|hyb|semantic|sem|fulltext|full|title|rerank|threshold|th|limit|lim)\b/gi,
     (_, op: string) => {
       const lower = op.toLowerCase();
-      if (lower.startsWith('threshold:')) {
-        const val = parseFloat(lower.slice('threshold:'.length));
-        if (!isNaN(val)) overrides.threshold = val;
-      } else if (lower.startsWith('lim:')) {
-        const val = parseInt(lower.slice('lim:'.length), 10);
-        if (!isNaN(val)) overrides.limit = val;
-      } else if (lower === 'rerank') {
-        overrides.rerank = true;
-      } else {
-        overrides.mode = MODE_MAP[lower];
-      }
+      if (lower === 'rerank') overrides.rerank = true;
+      else if (MODE_MAP[lower]) overrides.mode = MODE_MAP[lower];
       return ' ';
     },
   );
