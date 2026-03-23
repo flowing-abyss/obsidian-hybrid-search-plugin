@@ -48,6 +48,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.injectModeBadge();
     this.hookSuperchargedLinks();
     registerModalKeymap(this, this.app, this.settings, this.saveSettings);
+    // Pre-warm the embedding model so it is loaded by the time the user types.
+    // Ollama and local models can take several seconds on first inference after idle.
+    const mode = this.settings.defaultMode;
+    if (mode === 'hybrid' || mode === 'semantic') {
+      void this.client.search(' ', { mode, limit: 1, snippetLength: 0 }).catch(() => {});
+    }
   }
 
   private injectModeBadge(): void {
