@@ -342,7 +342,7 @@ describe('SearchModal — hover preview', () => {
     const internals = modal as unknown as ModalInternals;
     internals.updatePreview = updateMock;
     internals.onSelectedChange(sampleResult);
-    expect(updateMock).toHaveBeenCalledWith(sampleResult.path);
+    expect(updateMock).toHaveBeenCalledWith(sampleResult.path, sampleResult.snippet);
   });
 
   it('updatePreview is skipped when showPreview is false', async () => {
