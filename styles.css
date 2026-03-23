@@ -191,3 +191,20 @@
   -webkit-user-select: text;
   cursor: text;
 }
+
+/* Semantic/hybrid/fulltext search: highlight the matching block */
+.hybrid-search-semantic-match {
+  border-left: 3px solid var(--interactive-accent);
+  padding-left: 8px;
+}
+
+/* List items: border only, no padding shift (checkbox/bullet must stay in place) */
+li.hybrid-search-semantic-match {
+  padding-left: 0;
+}
+
+/* Query word highlight in preview — outline only, no background fill */
+.hybrid-search-word-match {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
+  border-radius: 2px;
+}

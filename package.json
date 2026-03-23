@@ -1,6 +1,6 @@
 {
   "name": "obsidian-hybrid-search-plugin",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Obsidian plugin — hybrid search via obsidian-hybrid-search CLI",
   "main": "main.js",
   "type": "module",

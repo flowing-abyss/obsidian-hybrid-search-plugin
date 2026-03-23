@@ -60,7 +60,16 @@ export function registerModalKeymap(
       modal.hidePreviewPanel();
     } else {
       const selected = getSelected(modal);
-      if (selected) modal.triggerPreview(selected.path.normalize('NFC'));
+      if (selected) modal.triggerPreview(selected.path.normalize('NFC'), selected.snippet);
+    }
+  });
+
+  modal.scope.register(['Mod', 'Shift'], 'p', (_evt: KeyboardEvent) => {
+    settings.scrollToSnippet = !settings.scrollToSnippet;
+    void saveSettings();
+    if (settings.showPreview && settings.scrollToSnippet) {
+      const selected = getSelected(modal);
+      if (selected) modal.triggerPreview(selected.path.normalize('NFC'), selected.snippet);
     }
   });
 

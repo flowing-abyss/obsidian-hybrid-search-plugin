@@ -8,6 +8,7 @@ export interface HybridSearchSettings {
   showPreviewMeta: boolean;
   centerPanels: boolean;
   showPreview: boolean;
+  scrollToSnippet: boolean;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
@@ -15,8 +16,9 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   defaultMode: 'hybrid',
   showMeta: false,
   showPreviewMeta: true,
-  centerPanels: true,
+  centerPanels: false,
   showPreview: true,
+  scrollToSnippet: false,
 };
 
 /** Narrow interface — only what the SettingTab needs from the plugin */
@@ -107,6 +109,18 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         .addToggle((toggle) =>
           toggle.setValue(this.plugin.settings.centerPanels).onChange(async (value) => {
             this.plugin.settings.centerPanels = value;
+            await this.plugin.saveSettings();
+          }),
+        );
+
+      new Setting(containerEl)
+        .setName('Scroll preview to relevant snippet')
+        .setDesc(
+          'Automatically scroll the preview panel to the matching passage when navigating search results.',
+        )
+        .addToggle((toggle) =>
+          toggle.setValue(this.plugin.settings.scrollToSnippet).onChange(async (value) => {
+            this.plugin.settings.scrollToSnippet = value;
             await this.plugin.saveSettings();
           }),
         );

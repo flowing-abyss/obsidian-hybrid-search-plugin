@@ -21,12 +21,14 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private currentPreviewPath?: string;
   private previewCallId = 0;
   private isRecentMode = false;
+  private currentMode: 'hybrid' | 'semantic' | 'fulltext' | 'title' = 'hybrid';
+  private currentQueryWords: string[] = [];
 
   private modeEl?: HTMLSpanElement;
 
   private readonly debouncedPreview = debounce(
-    (path: string) => {
-      void this.updatePreview(path);
+    (path: string, snippet?: string) => {
+      void this.updatePreview(path, snippet);
     },
     100,
     true, // resetTimer: true — resets on each call, fires after the last one
@@ -95,8 +97,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.currentPreviewPath = undefined;
   }
 
-  triggerPreview(nfcPath: string): void {
-    this.debouncedPreview(nfcPath);
+  triggerPreview(nfcPath: string, snippet?: string): void {
+    this.debouncedPreview(nfcPath, snippet);
   }
 
   onClose(): void {
@@ -128,6 +130,11 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.isRecentMode = false;
 
     const { query: parsedQuery, overrides } = parseQuery(query);
+    this.currentMode = overrides.mode ?? this.settings.defaultMode;
+    this.currentQueryWords = parsedQuery
+      .split(/\s+/)
+      .map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
+      .filter((w) => w.length >= 2);
     this.updateModeBadge(
       this.modeLabel(overrides.mode ?? this.settings.defaultMode, overrides.rerank ?? false),
     );
@@ -139,7 +146,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
           .search(parsedQuery, {
             mode: overrides.mode ?? this.settings.defaultMode,
             ...(overrides.limit !== undefined && { limit: overrides.limit }),
-            snippetLength: 0, // snippets no longer displayed; skip server computation
+            snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
             ...(overrides.tag !== undefined && { tag: overrides.tag }),
             ...(overrides.scope !== undefined && { scope: overrides.scope }),
             ...(overrides.rerank !== undefined && { rerank: overrides.rerank }),
@@ -246,7 +253,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     el.addEventListener('mouseenter', () => {
       if (!this.settings.showPreview) return;
-      this.debouncedPreview(nfcPath);
+      this.debouncedPreview(nfcPath, result.snippet);
     });
   }
 
@@ -260,10 +267,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
   // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
   onSelectedChange(result: SearchResult | null): void {
     if (!this.settings.showPreview) return;
-    if (result) this.debouncedPreview(result.path.normalize('NFC'));
+    if (result) this.debouncedPreview(result.path.normalize('NFC'), result.snippet);
   }
 
-  private async updatePreview(path: string): Promise<void> {
+  private async updatePreview(path: string, snippet?: string): Promise<void> {
     if (!this.settings.showPreview) return;
     // Normalize to NFC: DB paths are NFD, Obsidian APIs require NFC (same as cli.ts)
     const nfcPath = path.normalize('NFC');
@@ -297,10 +304,116 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewChild = new MarkdownRenderChild(this.previewEl);
     this.previewChild.load();
     await MarkdownRenderer.render(this.app, content, this.previewEl, nfcPath, this.previewChild);
+    if (callId !== this.previewCallId) return;
     this.currentPreviewPath = nfcPath;
+    if (snippet && this.settings.scrollToSnippet) this.applySnippetHighlight(snippet);
     // Re-position after render: modal may have grown taller as results loaded
     this.positionPreview();
     this.updatePreviewMeta(nfcPath);
+  }
+
+  private applySnippetHighlight(snippet: string): void {
+    if (!this.previewEl) return;
+    if (this.currentMode === 'title') return;
+
+    const candidates = this.currentMode === 'fulltext' ? [] : snippetScrollCandidates(snippet);
+    const scrollTarget = this.findSnippetBlock(candidates);
+
+    this.markSnippetBlock(scrollTarget, candidates);
+
+    if (this.currentMode !== 'semantic') this.highlightQueryWords();
+
+    if (scrollTarget) this.scheduleSnippetScroll(scrollTarget);
+  }
+
+  /** Find the first DOM block matching the snippet (or a query word in fulltext mode). */
+  private findSnippetBlock(candidates: string[]): HTMLElement | undefined {
+    if (!this.previewEl) return undefined;
+    const blockSelector = 'p, li, h1, h2, h3, h4, h5, h6, blockquote';
+    // Skip callout divs: ToC callouts duplicate heading text before actual headings in DOM.
+    const blocks = Array.from(this.previewEl.querySelectorAll(blockSelector)).filter(
+      (b) => !b.closest('.callout'),
+    );
+    if (this.currentMode === 'fulltext') {
+      return blocks.find((b) =>
+        this.currentQueryWords.some((w) => (b.textContent ?? '').toLowerCase().includes(w)),
+      ) as HTMLElement | undefined;
+    }
+    for (const needle of candidates) {
+      const found = blocks.find((b) => (b.textContent ?? '').toLowerCase().includes(needle));
+      if (found) return found as HTMLElement;
+    }
+    return undefined;
+  }
+
+  /** Mark the matched block with the accent class.
+   *  For <li>: mark all sibling list items that match a candidate instead of the parent <ul>. */
+  private markSnippetBlock(scrollTarget: HTMLElement | undefined, candidates: string[]): void {
+    if (!scrollTarget) return;
+    if (scrollTarget.tagName !== 'LI' || candidates.length === 0) {
+      scrollTarget.classList.add('hybrid-search-semantic-match');
+      return;
+    }
+    const parentList = scrollTarget.parentElement;
+    if (!parentList) {
+      scrollTarget.classList.add('hybrid-search-semantic-match');
+      return;
+    }
+    for (const li of parentList.querySelectorAll(':scope > li')) {
+      const text = (li.textContent ?? '').toLowerCase();
+      if (candidates.some((c) => text.includes(c))) {
+        (li as HTMLElement).classList.add('hybrid-search-semantic-match');
+      }
+    }
+  }
+
+  /** Defer scroll to let async plugins (Dataview, ToC) finish injecting content. */
+  private scheduleSnippetScroll(scrollTarget: HTMLElement): void {
+    const snapPath = this.currentPreviewPath;
+    const snapTarget = scrollTarget;
+    const doScroll = () => {
+      if (!this.previewEl || this.currentPreviewPath !== snapPath) return;
+      if (!snapTarget.isConnected) return;
+      const containerRect = this.previewEl.getBoundingClientRect();
+      const targetRect = snapTarget.getBoundingClientRect();
+      const absolutePos = targetRect.top - containerRect.top + this.previewEl.scrollTop;
+      const target = Math.max(0, absolutePos - 16);
+      if (Math.abs(this.previewEl.scrollTop - target) > 8) this.previewEl.scrollTop = target;
+    };
+    setTimeout(doScroll, 150);
+    setTimeout(doScroll, 400);
+  }
+
+  private highlightQueryWords(): void {
+    if (!this.previewEl) return;
+    const words = this.currentQueryWords;
+    if (words.length === 0) return;
+    const pattern = new RegExp(`(${words.map(escapeRegExp).join('|')})`, 'gi');
+
+    const textNodes: Text[] = [];
+    const walker = document.createTreeWalker(this.previewEl, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) textNodes.push(node as Text);
+
+    for (const textNode of textNodes) {
+      const text = textNode.textContent ?? '';
+      pattern.lastIndex = 0;
+      if (!pattern.test(text)) continue;
+      pattern.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0;
+      let m: RegExpExecArray | null;
+      while ((m = pattern.exec(text)) !== null) {
+        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const span = document.createElement('span');
+        span.className = 'hybrid-search-word-match';
+        span.textContent = m[0];
+        frag.appendChild(span);
+        last = m.index + m[0].length;
+      }
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      textNode.parentNode?.replaceChild(frag, textNode);
+    }
   }
 
   private updatePreviewMeta(nfcPath: string): void {
@@ -564,6 +677,114 @@ export class SearchModal extends SuggestModal<SearchResult> {
     }
     /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
   }
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Build an ordered list of lowercase needle strings to try when locating a snippet
+ * in the rendered DOM.
+ *
+ * Handles two snippet formats:
+ *  - Semantic/hybrid (formatChunkSnippet): "Parent > Child\nbody text"
+ *    The heading breadcrumb uses " > " as separator; DOM headings show only the
+ *    leaf component, so we split and try each part individually.
+ *  - BM25: "context...more context" — split on "..." and try each segment.
+ */
+// Markdown syntax characters that don't appear in rendered DOM text.
+// NOTE: [ and ] are intentionally excluded so footnote refs like [^1] → [1]
+// (after ^ removal) still match their DOM rendering as "[1]".
+const MD_STRIP = /[*_`#^~|\\]/g;
+
+/** Convert markdown source text to plain display text matching DOM textContent. */
+function toDisplayText(s: string): string {
+  /* eslint-disable sonarjs/slow-regex */
+  return s
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2') // [[link|alias]] → alias
+    .replace(/\[\[([^\]]+)\]\]/g, '$1') // [[link]] → link text
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) → text
+    .replace(MD_STRIP, '');
+  /* eslint-enable sonarjs/slow-regex */
+}
+
+/**
+ * For task-list lines: push extra candidates derived from the link/prose text,
+ * skipping the checkmark, tag tokens, and the pipe-separated comment.
+ */
+function addTaskCandidates(rawLine: string, domText: string, base: string, out: string[]): void {
+  // Candidate A: strip "[x]" checkmark and leading word/word tag tokens (stripped #tags)
+  // to reach the link text or prose. e.g. "[x] task/ref [Link](url) desc" → "Link desc..."
+  const noCheckmark = domText.replace(/^\[[xX ]\]\s*/, '');
+  let noTags = noCheckmark;
+  while (/^\w+(?:\/\w+)+\s/.test(noTags)) noTags = noTags.replace(/^\w+(?:\/\w+)+\s+/, '');
+  noTags = noTags.trim();
+  const extra = noTags.toLowerCase().slice(0, 60);
+  if (noTags.length >= 10 && extra !== base) out.push(extra);
+
+  // Candidate B: text after " | " in the raw line — the task comment / description prose,
+  // which reliably appears verbatim in DOM (no markdown transformation needed).
+  const pipeIdx = rawLine.indexOf(' | ');
+  if (pipeIdx !== -1) {
+    const desc = toDisplayText(rawLine.slice(pipeIdx + 3))
+      .replace(/✅\s*\d{4}-\d{2}-\d{2}.*$/, '')
+      .trim();
+    if (desc.length >= 10) out.push(desc.toLowerCase().slice(0, 60));
+  }
+}
+
+function snippetScrollCandidates(snippet: string): string[] {
+  const headingCandidates: string[] = [];
+  const bodyCandidates: string[] = [];
+
+  // Strategy 1: line-by-line — body text first, heading breadcrumbs last (reversed, leaf first)
+  for (const line of snippet.split('\n')) {
+    const stripped = toDisplayText(line).trim();
+    if (stripped.includes(' > ')) {
+      // Semantic heading breadcrumb — reverse so leaf heading is tried first
+      const parts = stripped.split(' > ').reverse();
+      for (const part of parts) {
+        const clean = part.trim();
+        if (clean.length >= 10) headingCandidates.push(clean.toLowerCase().slice(0, 60));
+      }
+    } else {
+      const raw = stripped.replace(/^\.\.\./, '').trim();
+      if (raw.length < 10) continue;
+
+      // Markdown heading lines (# …) go to headingCandidates (tried last) so that longer
+      // body-text candidates are matched first and we don't land on a wrong <p> that
+      // happens to contain the same heading words earlier in the DOM.
+      if (/^#+\s/.test(line.trimStart())) {
+        headingCandidates.push(raw.toLowerCase().slice(0, 60));
+        continue;
+      }
+
+      // Strip leading list markers: bullet (- * +) and ordered (1. 2) etc.
+      // They appear in markdown source but NOT in DOM <li> textContent.
+      // Strip list marker, then task checkbox "[ ]" / "[x]" — neither appears in DOM textContent.
+      const domText = raw
+        .replace(/^(?:[-*+]|\d+[.)]) \s*/, '')
+        .replace(/^(?:[-*+]|\d+[.)])\s+/, '')
+        .replace(/^\[[xX ]\]\s*/, '');
+      const base = domText.toLowerCase().slice(0, 60);
+      if (base.length >= 10) bodyCandidates.push(base);
+
+      addTaskCandidates(line, domText, base, bodyCandidates);
+    }
+  }
+
+  // Strategy 2: BM25 "..." segments collapsed to single line, longest first
+  const bm25: string[] = [];
+  snippet
+    .split('...')
+    .map((s) => toDisplayText(s).replace(/>/g, '').replace(/\n/g, ' ').trim())
+    .filter((s) => s.length >= 10)
+    .sort((a, b) => b.length - a.length)
+    .forEach((s) => bm25.push(s.slice(0, 60).toLowerCase()));
+
+  // Body text first → leaf heading → parent headings → BM25 segments
+  return [...new Set([...bodyCandidates, ...headingCandidates, ...bm25])];
 }
 
 function byScoreDesc(a: SearchResult, b: SearchResult): number {
