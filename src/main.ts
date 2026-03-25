@@ -48,25 +48,25 @@ export default class HybridSearchPlugin extends Plugin {
 
     this.addCommand({
       id: 'search-hybrid',
-      name: 'Hybrid',
+      name: 'Hybrid mode',
       callback: () => openSearchModal('hybrid'),
     });
 
     this.addCommand({
       id: 'search-fulltext',
-      name: 'Fulltext',
+      name: 'Fulltext mode',
       callback: () => openSearchModal('fulltext'),
     });
 
     this.addCommand({
       id: 'search-semantic',
-      name: 'Semantic',
+      name: 'Semantic mode',
       callback: () => openSearchModal('semantic'),
     });
 
     this.addCommand({
       id: 'search-title',
-      name: 'Title',
+      name: 'Title mode',
       callback: () => openSearchModal('title'),
     });
 
