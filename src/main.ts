@@ -4,6 +4,8 @@ import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab } from './settings';
 import { SearchModal } from './ui/SearchModal';
 
+type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
+
 export default class HybridSearchPlugin extends Plugin {
   settings!: HybridSearchSettings;
   client?: SearchClient;
@@ -22,23 +24,50 @@ export default class HybridSearchPlugin extends Plugin {
       );
     });
 
+    const openSearchModal = (forcedMode?: SearchMode) => {
+      if (!this.client) {
+        new Notice('Hybrid search: client not ready.');
+        return;
+      }
+      const activePath = this.app.workspace.getActiveFile()?.path;
+      new SearchModal(
+        this.app,
+        this.client,
+        this.settings,
+        () => this.saveSettings(),
+        activePath,
+        forcedMode,
+      ).open();
+    };
+
     this.addCommand({
       id: 'open-search',
       name: 'Open search',
-      callback: () => {
-        if (!this.client) {
-          new Notice('Hybrid search: client not ready.');
-          return;
-        }
-        const activePath = this.app.workspace.getActiveFile()?.path;
-        new SearchModal(
-          this.app,
-          this.client,
-          this.settings,
-          () => this.saveSettings(),
-          activePath,
-        ).open();
-      },
+      callback: () => openSearchModal(),
+    });
+
+    this.addCommand({
+      id: 'search-hybrid',
+      name: 'Hybrid',
+      callback: () => openSearchModal('hybrid'),
+    });
+
+    this.addCommand({
+      id: 'search-fulltext',
+      name: 'Fulltext',
+      callback: () => openSearchModal('fulltext'),
+    });
+
+    this.addCommand({
+      id: 'search-semantic',
+      name: 'Semantic',
+      callback: () => openSearchModal('semantic'),
+    });
+
+    this.addCommand({
+      id: 'search-title',
+      name: 'Title',
+      callback: () => openSearchModal('title'),
     });
 
     this.addRibbonIcon('search', 'Hybrid search', () => {

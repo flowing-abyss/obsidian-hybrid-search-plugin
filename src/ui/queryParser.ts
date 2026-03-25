@@ -1,4 +1,4 @@
-type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
+export type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
 interface ParsedQuery {
   query: string;

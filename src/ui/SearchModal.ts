@@ -11,6 +11,8 @@ import type { HybridSearchSettings } from '../settings';
 import { registerModalKeymap } from './modalKeymap';
 import { parseQuery } from './queryParser';
 
+type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
+
 const RECENT_FILES_LIMIT = 20; // local cap for recent-files list only
 
 export class SearchModal extends SuggestModal<SearchResult> {
@@ -40,6 +42,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     private settings: HybridSearchSettings,
     private readonly saveSettings: () => Promise<void>,
     private readonly activePath?: string,
+    private readonly forcedMode?: SearchMode,
   ) {
     super(app);
     this.setPlaceholder('Hybrid search: type to search your vault...');
@@ -52,7 +55,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     registerModalKeymap(this, this.app, this.settings, this.saveSettings);
     // Pre-warm the embedding model so it is loaded by the time the user types.
     // Ollama and local models can take several seconds on first inference after idle.
-    const mode = this.settings.defaultMode;
+    const mode = this.forcedMode ?? this.settings.defaultMode;
     if (mode === 'hybrid' || mode === 'semantic') {
       void this.client.search(' ', { mode, limit: 1, snippetLength: 0 }).catch(() => {});
     }
@@ -130,13 +133,16 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.isRecentMode = false;
 
     const { query: parsedQuery, overrides } = parseQuery(query);
-    this.currentMode = overrides.mode ?? this.settings.defaultMode;
+    this.currentMode = overrides.mode ?? this.forcedMode ?? this.settings.defaultMode;
     this.currentQueryWords = parsedQuery
       .split(/\s+/)
       .map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
       .filter((w) => w.length >= 2);
     this.updateModeBadge(
-      this.modeLabel(overrides.mode ?? this.settings.defaultMode, overrides.rerank ?? false),
+      this.modeLabel(
+        overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
+        overrides.rerank ?? false,
+      ),
     );
 
     return new Promise((resolve) => {
@@ -144,7 +150,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
       this.debounce = setTimeout(() => {
         this.client
           .search(parsedQuery, {
-            mode: overrides.mode ?? this.settings.defaultMode,
+            mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
             ...(overrides.limit !== undefined && { limit: overrides.limit }),
             snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
             ...(overrides.tag !== undefined && { tag: overrides.tag }),
