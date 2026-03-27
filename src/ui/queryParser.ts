@@ -9,6 +9,7 @@ interface ParsedQuery {
     scope?: string | string[];
     rerank?: boolean;
     threshold?: number;
+    frontmatter?: string | string[];
   };
 }
 
@@ -81,7 +82,7 @@ export function parseQuery(input: string): ParsedQuery {
     overrides.scope = scopeMatches;
   }
 
-  // 5. @postfix operators — value-bearing (must run before simple to avoid partial match)
+  // 4b. @postfix operators — value-bearing (must run before inline filters to avoid partial match)
   remaining = remaining.replace(
     /@(th(?:reshold)?|lim(?:it)?):(\S+)/gi,
     (_, op: string, val: string) => {
@@ -97,7 +98,7 @@ export function parseQuery(input: string): ParsedQuery {
     },
   );
 
-  // 5b. @postfix operators — simple (mode, rerank; bare th/lim without value stripped silently)
+  // 4c. @postfix operators — simple (mode, rerank; bare th/lim without value stripped silently)
   remaining = remaining.replace(
     /@(hybrid|hyb|semantic|sem|fulltext|full|title|rerank|threshold|th|limit|lim)\b/gi,
     (_, op: string) => {
@@ -107,6 +108,46 @@ export function parseQuery(input: string): ParsedQuery {
       return ' ';
     },
   );
+
+  // 5. Inline property filters: property:value like status:pending, priority:high
+  // Matches any word followed by colon (except known operators like limit, threshold, tag, folder)
+  // Supports exclusion prefix: -property:value
+  const KNOWN_OPERATORS = [
+    'limit',
+    'lim',
+    'threshold',
+    'th',
+    'tag',
+    'tags',
+    'folder',
+    'folders',
+    'rerank',
+    'semantic',
+    'sem',
+    'hybrid',
+    'hyb',
+    'fulltext',
+    'full',
+    'title',
+  ];
+  const fmMatches: string[] = [];
+  /* eslint-disable sonarjs/slow-regex, sonarjs/duplicates-in-character-class, sonarjs/single-char-in-character-classes */
+  remaining = remaining.replace(
+    /(?<!@)(-?)([a-zA-Z_]\w*[-]?):\s*(-?"[^"]+"|-?\S+)/gi,
+    /* eslint-enable sonarjs/slow-regex, sonarjs/duplicates-in-character-class, sonarjs/single-char-in-character-classes */
+    (_, minus: string, op: string, match: string) => {
+      if (KNOWN_OPERATORS.includes(op.toLowerCase())) return _;
+      // Remove surrounding quotes if present
+      const value = match.startsWith('"') && match.endsWith('"') ? match.slice(1, -1) : match;
+      fmMatches.push(minus + op + ':' + value);
+      return ' ';
+    },
+  );
+  if (fmMatches.length === 1) {
+    overrides.frontmatter = fmMatches[0];
+  } else if (fmMatches.length > 1) {
+    overrides.frontmatter = fmMatches;
+  }
 
   const query = remaining.trim().replace(/\s+/g, ' ');
   return { query, overrides };

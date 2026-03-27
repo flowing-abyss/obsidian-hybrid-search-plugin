@@ -159,6 +159,66 @@ describe('parseQuery — folder operators', () => {
   });
 });
 
+describe('parseQuery — property/frontmatter operators', () => {
+  it('property: extracts frontmatter filter', () => {
+    const { query, overrides } = parseQuery('meeting status:todo');
+    expect(overrides.frontmatter).toBe('status:todo');
+    expect(query).toBe('meeting');
+  });
+
+  it('prop: shorthand also works', () => {
+    const { query, overrides } = parseQuery('notes priority:high');
+    expect(overrides.frontmatter).toBe('priority:high');
+    expect(query).toBe('notes');
+  });
+
+  it('frontmatter: full form also works', () => {
+    const { query, overrides } = parseQuery('query status:done');
+    expect(overrides.frontmatter).toBe('status:done');
+    expect(query).toBe('query');
+  });
+
+  it('property: with exclusion prefix -', () => {
+    const { overrides } = parseQuery('notes -status:done');
+    expect(overrides.frontmatter).toBe('-status:done');
+  });
+
+  it('property: with quoted value', () => {
+    const { overrides } = parseQuery('notes status:"in progress"');
+    expect(overrides.frontmatter).toBe('status:in progress');
+  });
+
+  it('multiple property: operators → array (AND logic)', () => {
+    const { overrides } = parseQuery('notes status:todo priority:high');
+    expect(overrides.frontmatter).toEqual(['status:todo', 'priority:high']);
+  });
+
+  it('property: mixed with tag:', () => {
+    const { overrides } = parseQuery('notes tag:pkm status:done');
+    expect(overrides.tag).toBe('pkm');
+    expect(overrides.frontmatter).toBe('status:done');
+  });
+
+  it('property: at the end of query', () => {
+    const { query, overrides } = parseQuery('meeting notes status:todo');
+    expect(overrides.frontmatter).toBe('status:todo');
+    expect(query).toBe('meeting notes');
+  });
+
+  it('property: with mode prefix', () => {
+    const { query, overrides } = parseQuery('sem: notes status:urgent');
+    expect(overrides.mode).toBe('semantic');
+    expect(overrides.frontmatter).toBe('status:urgent');
+    expect(query).toBe('notes');
+  });
+
+  it('property: with limit', () => {
+    const { overrides } = parseQuery('notes status:todo limit:5');
+    expect(overrides.frontmatter).toBe('status:todo');
+    expect(overrides.limit).toBe(5);
+  });
+});
+
 describe('parseQuery — threshold operators', () => {
   it('threshold:0.9 sets threshold', () => {
     const { query, overrides } = parseQuery('запрос threshold:0.9');
