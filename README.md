@@ -6,8 +6,6 @@ The plugin is a thin UI layer that communicates with the [obsidian-hybrid-search
 
 > **Desktop only.**
 
----
-
 ## Requirements
 
 Install the CLI globally via npm:
@@ -17,8 +15,6 @@ npm install -g obsidian-hybrid-search
 ```
 
 The CLI must be available in your `PATH` (or you can set a custom path in plugin settings).
-
----
 
 ## Installation
 
@@ -34,8 +30,6 @@ The CLI must be available in your `PATH` (or you can set a custom path in plugin
 2. Copy them to `<your vault>/.obsidian/plugins/obsidian-hybrid-search/`.
 3. Enable **Hybrid Search** in Obsidian's plugin list.
 
----
-
 ## Usage
 
 Open the search modal with:
@@ -43,48 +37,56 @@ Open the search modal with:
 - **Ribbon icon** — click the search icon in the left sidebar.
 - **Command palette** — run `Hybrid search: Open search`.
 
-Type to search. Results appear as you type with a relevance score.
+Type to search. Results appear as you type with a relevance score:
+
+| Score   | Color  | Meaning          |
+| ------- | ------ | ---------------- |
+| >0.8    | Green  | High relevance   |
+| 0.5–0.8 | Orange | Medium relevance |
+| <0.5    | Gray   | Low relevance    |
 
 **Empty query behaviour:**
 
 - If a note is open, shows semantically similar notes.
 - If no note is open, shows recently opened files.
 
----
-
 ## Query Syntax
+
+These two queries are equivalent:
+
+```
+hybrid: zettelkasten tag:project limit:20 @rerank
+zettelkasten #project @limit:20 @rerank @hybrid
+```
+
+| Inline                | Postfix                  | Description                   |
+| --------------------- | ------------------------ | ----------------------------- |
+| _(plain text)_        | —                        | Hybrid search (default)       |
+| `hybrid:`             | `@hybrid` / `@hyb`       | Hybrid mode (BM25 + semantic) |
+| `semantic:` / `sem:`  | `@semantic` / `@sem`     | Semantic (vector) only        |
+| `fulltext:` / `full:` | `@full`                  | Full-text (BM25) only         |
+| `title:`              | `@title`                 | Fuzzy title match             |
+| `tag:`                | `#tag`                   | Filter by tag (include)       |
+| `tag:-`               | `-#tag`                  | Filter by tag (exclude)       |
+| `folder:`             | —                        | Limit to a folder             |
+| `limit:N`             | `@limit:N` / `@lim:N`    | Override result count         |
+| `threshold:N`         | `@threshold:N` / `@th:N` | Minimum score threshold       |
+| —                     | `@rerank`                | Re-rank with cross-encoder    |
 
 Filters can be combined freely.
 
-| Syntax                | Example                        | Description                          |
-| --------------------- | ------------------------------ | ------------------------------------ |
-| _(plain text)_        | `zettelkasten`                 | Hybrid search (default mode)         |
-| `hybrid:`             | `hybrid: memory`               | Force hybrid mode (BM25 + semantic)  |
-| `semantic:` / `sem:`  | `sem: attention mechanism`     | Semantic (vector) only               |
-| `fulltext:` / `full:` | `full: TODO`                   | Full-text (BM25) only                |
-| `title:`              | `title: inbox`                 | Fuzzy title match                    |
-| `tag:`                | `tag:project`                  | Filter by tag (include)              |
-| `tag:-`               | `tag:-archive`                 | Filter by tag (exclude)              |
-| `folder:`             | `folder:work`                  | Limit to a folder                    |
-| `limit:N` / `@lim:N`  | `limit:20` / `@lim:20`         | Override result count                |
-| `@rerank`             | `best practices @rerank`       | Re-rank results with a cross-encoder |
-| `@threshold:N`        | `meeting notes @threshold:0.5` | Minimum score threshold              |
+## Hotkeys
 
-Multiple `tag:` and `folder:` filters can be combined in one query.
+| Hotkey            | Action                            |
+| ----------------- | --------------------------------- |
+| `Mod+J` / `Mod+K` | Next / previous result            |
+| `Mod+P`           | Toggle preview panel              |
+| `Mod+O`           | Open selected in new tab          |
+| `Mod+Shift+O`     | Open all results in new tabs      |
+| `Alt+Enter`       | Insert wiki link to selected note |
+| `Alt+Shift+Enter` | Insert wiki links to all results  |
 
----
-
-## Settings
-
-| Setting                           | Description                                                                          |
-| --------------------------------- | ------------------------------------------------------------------------------------ |
-| **Binary path**                   | Path to the `obsidian-hybrid-search` binary. Leave empty to use `PATH`.              |
-| **Default mode**                  | Search mode used when opening the modal (`hybrid`, `semantic`, `fulltext`, `title`). |
-| **Show path and tags**            | Show folder path and tags below each result title.                                   |
-| **Show note metadata in preview** | Show folder, aliases, tags, links, and backlinks in the preview panel.               |
-| **Test connection**               | Verify the background server is running.                                             |
-
----
+_`Mod` = `Ctrl` (Windows/Linux) or `Cmd` (macOS). `Alt` = `Option` on macOS._
 
 ## License
 
