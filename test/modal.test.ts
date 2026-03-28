@@ -1,6 +1,6 @@
 import { MarkdownRenderer, TFile } from 'obsidian';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SearchResult } from '../src/ipc';
+import type { MatchAnchor, SearchResult } from '../src/ipc';
 import { DEFAULT_SETTINGS } from '../src/settings';
 import { SearchModal } from '../src/ui/SearchModal';
 
@@ -658,5 +658,93 @@ describe('findHeadingElement', () => {
       }
     ).findHeadingElement(null);
     expect(result).toBeUndefined();
+  });
+});
+
+describe('anchor-based highlight', () => {
+  let modal: SearchModal;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearch.mockResolvedValue([sampleResult]);
+    mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
+    mockGetAbstractFileByPath.mockReturnValue(
+      Object.assign(new TFile(), { path: sampleResult.path }),
+    );
+    mockRender.mockClear();
+    modal = new SearchModal(
+      mockApp as never,
+      mockClient as never,
+      { ...DEFAULT_SETTINGS, showPreview: true, scrollToSnippet: true },
+      vi.fn(),
+    );
+  });
+
+  it('updatePreview: same path + same anchor → no re-render', async () => {
+    const anchors: MatchAnchor[] = [
+      {
+        kind: 'bm25',
+        headingPath: 'Note > Section',
+        matchText: 'some body text',
+        charStart: null,
+        charEnd: null,
+      },
+    ];
+
+    // First call — renders
+    await (
+      modal as unknown as {
+        updatePreview(p: string, s?: string, a?: MatchAnchor[], i?: number): Promise<void>;
+      }
+    ).updatePreview('notes/pkm/zettelkasten.md', 'snippet', anchors, 0);
+
+    const renderCount1 = mockRender.mock.calls.length;
+
+    // Second call — same path, same anchor → should NOT re-render
+    await (
+      modal as unknown as {
+        updatePreview(p: string, s?: string, a?: MatchAnchor[], i?: number): Promise<void>;
+      }
+    ).updatePreview('notes/pkm/zettelkasten.md', 'snippet', anchors, 0);
+
+    expect(mockRender.mock.calls.length).toBe(renderCount1);
+  });
+
+  it('updatePreview: same path + different anchor → re-highlights without re-render', async () => {
+    const anchor1: MatchAnchor[] = [
+      {
+        kind: 'bm25',
+        headingPath: 'Section A',
+        matchText: 'first match',
+        charStart: null,
+        charEnd: null,
+      },
+    ];
+    const anchor2: MatchAnchor[] = [
+      {
+        kind: 'bm25',
+        headingPath: 'Section B',
+        matchText: 'second match',
+        charStart: null,
+        charEnd: null,
+      },
+    ];
+
+    await (
+      modal as unknown as {
+        updatePreview(p: string, s?: string, a?: MatchAnchor[], i?: number): Promise<void>;
+      }
+    ).updatePreview('notes/pkm/zettelkasten.md', 'snippet', anchor1, 0);
+
+    const renderCount1 = mockRender.mock.calls.length;
+
+    await (
+      modal as unknown as {
+        updatePreview(p: string, s?: string, a?: MatchAnchor[], i?: number): Promise<void>;
+      }
+    ).updatePreview('notes/pkm/zettelkasten.md', 'snippet', anchor2, 0);
+
+    // Still same number of renders (no re-render for same path)
+    expect(mockRender.mock.calls.length).toBe(renderCount1);
   });
 });

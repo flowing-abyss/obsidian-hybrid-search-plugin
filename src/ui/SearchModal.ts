@@ -99,6 +99,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewMetaEl?.remove();
     this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
+    this.currentAnchorKey = undefined;
   }
 
   private clearHighlights(): void {
@@ -173,8 +174,13 @@ export class SearchModal extends SuggestModal<SearchResult> {
     return headingEl;
   }
 
-  triggerPreview(nfcPath: string, snippet?: string): void {
-    this.debouncedPreview(nfcPath, snippet);
+  triggerPreview(
+    nfcPath: string,
+    snippet?: string,
+    anchors?: MatchAnchor[],
+    primaryIdx?: number,
+  ): void {
+    this.debouncedPreview(nfcPath, snippet, anchors, primaryIdx);
   }
 
   onClose(): void {
@@ -226,6 +232,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
             mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
             ...(overrides.limit !== undefined && { limit: overrides.limit }),
             snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
+            anchors: this.settings.showPreview && this.settings.scrollToSnippet,
             ...(overrides.tag !== undefined && { tag: overrides.tag }),
             ...(overrides.scope !== undefined && { scope: overrides.scope }),
             ...(overrides.frontmatter !== undefined && { frontmatter: overrides.frontmatter }),
@@ -333,7 +340,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     el.addEventListener('mouseenter', () => {
       if (!this.settings.showPreview) return;
-      this.debouncedPreview(nfcPath, result.snippet);
+      this.debouncedPreview(
+        nfcPath,
+        result.snippet,
+        result.previewAnchors,
+        result.primaryAnchorIndex,
+      );
     });
   }
 
@@ -347,19 +359,40 @@ export class SearchModal extends SuggestModal<SearchResult> {
   // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
   onSelectedChange(result: SearchResult | null): void {
     if (!this.settings.showPreview) return;
-    if (result) this.debouncedPreview(result.path.normalize('NFC'), result.snippet);
+    if (result) {
+      this.debouncedPreview(
+        result.path.normalize('NFC'),
+        result.snippet,
+        result.previewAnchors,
+        result.primaryAnchorIndex,
+      );
+    }
   }
 
   private async updatePreview(
     path: string,
     snippet?: string,
-    _anchors?: MatchAnchor[],
-    _primaryIdx?: number,
+    anchors?: MatchAnchor[],
+    primaryIdx?: number,
   ): Promise<void> {
     if (!this.settings.showPreview) return;
     // Normalize to NFC: DB paths are NFD, Obsidian APIs require NFC (same as cli.ts)
     const nfcPath = path.normalize('NFC');
-    if (nfcPath === this.currentPreviewPath) return;
+    const key = anchorKey(anchors, primaryIdx);
+
+    if (nfcPath === this.currentPreviewPath) {
+      // Same note — only re-highlight if anchor changed
+      if (key !== this.currentAnchorKey) {
+        this.currentAnchorKey = key;
+        this.clearHighlights();
+        if (anchors?.length && this.settings.scrollToSnippet) {
+          this.applyAnchorHighlight(anchors, primaryIdx ?? 0);
+        } else if (snippet && this.settings.scrollToSnippet) {
+          this.applySnippetHighlight(snippet);
+        }
+      }
+      return;
+    }
 
     const callId = ++this.previewCallId;
 
@@ -390,8 +423,16 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewChild.load();
     await MarkdownRenderer.render(this.app, content, this.previewEl, nfcPath, this.previewChild);
     if (callId !== this.previewCallId) return;
+
     this.currentPreviewPath = nfcPath;
-    if (snippet && this.settings.scrollToSnippet) this.applySnippetHighlight(snippet);
+    this.currentAnchorKey = key;
+
+    if (anchors?.length && this.settings.scrollToSnippet) {
+      this.applyAnchorHighlight(anchors, primaryIdx ?? 0);
+    } else if (snippet && this.settings.scrollToSnippet) {
+      this.applySnippetHighlight(snippet);
+    }
+
     // Re-position after render: modal may have grown taller as results loaded
     this.positionPreview();
     this.updatePreviewMeta(nfcPath);
@@ -499,6 +540,73 @@ export class SearchModal extends SuggestModal<SearchResult> {
       if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
       textNode.parentNode?.replaceChild(frag, textNode);
     }
+  }
+
+  private highlightQueryWordsInRegion(elements: Element[]): void {
+    const words = this.currentQueryWords;
+    if (words.length === 0) return;
+    const pattern = new RegExp(`(${words.map(escapeRegExp).join('|')})`, 'gi');
+
+    const textNodes: Text[] = [];
+    for (const el of elements) {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = walker.nextNode())) textNodes.push(node as Text);
+    }
+
+    for (const textNode of textNodes) {
+      const text = textNode.textContent ?? '';
+      pattern.lastIndex = 0;
+      if (!pattern.test(text)) continue;
+      pattern.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0;
+      let m: RegExpExecArray | null;
+      while ((m = pattern.exec(text)) !== null) {
+        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const span = document.createElement('span');
+        span.className = 'hybrid-search-word-match';
+        span.textContent = m[0];
+        frag.appendChild(span);
+        last = m.index + m[0].length;
+      }
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      textNode.parentNode?.replaceChild(frag, textNode);
+    }
+  }
+
+  private applyAnchorHighlight(anchors: MatchAnchor[], primaryIdx: number): void {
+    const mode = this.currentMode;
+    if (mode === 'title') return;
+    if (!this.previewEl) return;
+
+    const collectedBlocks: Array<{ el: HTMLElement; isPrimary: boolean }> = [];
+    const highlightRegions: Element[] = [];
+
+    for (let i = 0; i < anchors.length; i++) {
+      const anchor = anchors[i]!;
+      const block = this.findAnchorBlock(anchor);
+      if (!block) continue;
+
+      block.classList.add('hybrid-search-semantic-match');
+      collectedBlocks.push({ el: block, isPrimary: i === primaryIdx });
+
+      const headingEl = this.findHeadingElement(anchor.headingPath);
+      if (headingEl) {
+        highlightRegions.push(headingEl, ...this.getHeadingSiblings(headingEl));
+      } else {
+        highlightRegions.push(block);
+      }
+    }
+
+    if (mode !== 'semantic' && this.currentQueryWords.length > 0) {
+      this.highlightQueryWordsInRegion(
+        highlightRegions.length > 0 ? highlightRegions : [this.previewEl],
+      );
+    }
+
+    const primary = collectedBlocks.find((b) => b.isPrimary) ?? collectedBlocks[0];
+    if (primary) this.scheduleSnippetScroll(primary.el);
   }
 
   private updatePreviewMeta(nfcPath: string): void {
@@ -766,6 +874,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function anchorKey(anchors?: MatchAnchor[], idx?: number): string {
+  if (!anchors?.length) return '';
+  const a = anchors[idx ?? 0]!;
+  return `${a.headingPath ?? ''}|${a.matchText}`;
 }
 
 /**

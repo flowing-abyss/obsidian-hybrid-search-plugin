@@ -60,7 +60,13 @@ export function registerModalKeymap(
       modal.hidePreviewPanel();
     } else {
       const selected = getSelected(modal);
-      if (selected) modal.triggerPreview(selected.path.normalize('NFC'), selected.snippet);
+      if (selected)
+        modal.triggerPreview(
+          selected.path.normalize('NFC'),
+          selected.snippet,
+          selected.previewAnchors,
+          selected.primaryAnchorIndex,
+        );
     }
   });
 
@@ -69,7 +75,13 @@ export function registerModalKeymap(
     void saveSettings();
     if (settings.showPreview && settings.scrollToSnippet) {
       const selected = getSelected(modal);
-      if (selected) modal.triggerPreview(selected.path.normalize('NFC'), selected.snippet);
+      if (selected)
+        modal.triggerPreview(
+          selected.path.normalize('NFC'),
+          selected.snippet,
+          selected.previewAnchors,
+          selected.primaryAnchorIndex,
+        );
     }
   });
 
