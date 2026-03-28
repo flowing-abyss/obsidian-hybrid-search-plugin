@@ -131,10 +131,10 @@ export function parseQuery(input: string): ParsedQuery {
     'title',
   ];
   const fmMatches: string[] = [];
-  /* eslint-disable sonarjs/slow-regex, sonarjs/duplicates-in-character-class, sonarjs/single-char-in-character-classes */
+  /* eslint-disable sonarjs/slow-regex, sonarjs/duplicates-in-character-class */
   remaining = remaining.replace(
-    /(?<!@)(-?)([a-zA-Z_]\w*[-]?):\s*(-?"[^"]+"|-?\S+)/gi,
-    /* eslint-enable sonarjs/slow-regex, sonarjs/duplicates-in-character-class, sonarjs/single-char-in-character-classes */
+    /(?<!@)(-?)([a-zA-Z_][\w-]*):\s*(-?"[^"]+"|-?\S+)/gi,
+    /* eslint-enable sonarjs/slow-regex, sonarjs/duplicates-in-character-class */
     (_, minus: string, op: string, match: string) => {
       if (KNOWN_OPERATORS.includes(op.toLowerCase())) return _;
       // Remove surrounding quotes if present

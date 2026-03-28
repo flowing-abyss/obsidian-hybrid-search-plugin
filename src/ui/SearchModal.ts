@@ -155,6 +155,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
             snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
             ...(overrides.tag !== undefined && { tag: overrides.tag }),
             ...(overrides.scope !== undefined && { scope: overrides.scope }),
+            ...(overrides.frontmatter !== undefined && { frontmatter: overrides.frontmatter }),
             ...(overrides.rerank !== undefined && { rerank: overrides.rerank }),
             ...(overrides.threshold !== undefined && { threshold: overrides.threshold }),
           })

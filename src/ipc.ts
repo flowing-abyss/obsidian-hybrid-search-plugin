@@ -19,6 +19,7 @@ interface SearchOptions {
   snippetLength?: number;
   tag?: string | string[];
   scope?: string | string[];
+  frontmatter?: string | string[];
 }
 
 interface StdioResponse {

@@ -217,6 +217,16 @@ describe('parseQuery — property/frontmatter operators', () => {
     expect(overrides.frontmatter).toBe('status:todo');
     expect(overrides.limit).toBe(5);
   });
+
+  it('property: with hyphenated name', () => {
+    const { overrides } = parseQuery('notes due-date:2025-01-01');
+    expect(overrides.frontmatter).toBe('due-date:2025-01-01');
+  });
+
+  it('property: hyphenated with exclusion prefix', () => {
+    const { overrides } = parseQuery('notes -due-date:2025-01-01');
+    expect(overrides.frontmatter).toBe('-due-date:2025-01-01');
+  });
 });
 
 describe('parseQuery — threshold operators', () => {
