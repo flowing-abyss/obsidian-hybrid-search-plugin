@@ -879,7 +879,7 @@ function escapeRegExp(s: string): string {
 function anchorKey(anchors?: MatchAnchor[], idx?: number): string {
   if (!anchors?.length) return '';
   const a = anchors[idx ?? 0]!;
-  return `${a.headingPath ?? ''}|${a.matchText}`;
+  return `${a.headingPath ?? ''}\x00${a.matchText}`;
 }
 
 /**

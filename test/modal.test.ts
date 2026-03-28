@@ -265,7 +265,12 @@ describe('SearchModal', () => {
 });
 
 type ModalInternals = {
-  updatePreview: (path: string) => Promise<void>;
+  updatePreview: (
+    path: string,
+    snippet?: string,
+    anchors?: MatchAnchor[],
+    primaryIdx?: number,
+  ) => Promise<void>;
   onSelectedChange: (result: SearchResult | null) => void;
   previewEl: HTMLElement | undefined;
   previewChild: { unload: () => void } | undefined;
