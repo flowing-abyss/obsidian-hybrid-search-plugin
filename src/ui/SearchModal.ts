@@ -152,6 +152,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
           this.previewEl.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote'),
         ).filter((b) => !b.closest('.callout'));
 
+    if (!anchor.matchText) return headingEl;
+
     const needle = anchor.matchText.toLowerCase();
     const blockSel = 'p, li, h1, h2, h3, h4, h5, h6, blockquote';
 
