@@ -9,6 +9,8 @@ export interface HybridSearchSettings {
   centerPanels: boolean;
   showPreview: boolean;
   scrollToSnippet: boolean;
+  rememberLastQuery: boolean;
+  lastQuery: string;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
@@ -19,6 +21,8 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   centerPanels: false,
   showPreview: true,
   scrollToSnippet: false,
+  rememberLastQuery: true,
+  lastQuery: '',
 };
 
 /** Narrow interface — only what the SettingTab needs from the plugin */
@@ -125,6 +129,16 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
         );
     }
+
+    new Setting(containerEl)
+      .setName('Remember last search query')
+      .setDesc('Restore the previous search query when reopening the search modal.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.rememberLastQuery).onChange(async (value) => {
+          this.plugin.settings.rememberLastQuery = value;
+          await this.plugin.saveSettings();
+        }),
+      );
 
     new Setting(containerEl)
       .setName('Test connection')

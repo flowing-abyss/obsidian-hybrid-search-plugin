@@ -54,6 +54,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.injectModeBadge();
     this.hookSuperchargedLinks();
     registerModalKeymap(this, this.app, this.settings, this.saveSettings);
+    if (this.settings.rememberLastQuery && this.settings.lastQuery) {
+      this.inputEl.value = this.settings.lastQuery;
+      this.inputEl.dispatchEvent(new Event('input'));
+    }
     // Pre-warm the embedding model so it is loaded by the time the user types.
     // Ollama and local models can take several seconds on first inference after idle.
     const mode = this.forcedMode ?? this.settings.defaultMode;
@@ -192,6 +196,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   onClose(): void {
+    if (this.settings.rememberLastQuery) {
+      this.settings.lastQuery = this.inputEl.value.trim();
+      void this.saveSettings();
+    }
     this.unhookSuperchargedLinks();
     this.hidePreviewPanel();
     // Restore modal's default centering (in case positionPreview shifted it)
