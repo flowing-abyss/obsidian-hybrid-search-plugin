@@ -342,7 +342,12 @@ describe('SearchModal — hover preview', () => {
     const internals = modal as unknown as ModalInternals;
     internals.updatePreview = updateMock;
     internals.onSelectedChange(sampleResult);
-    expect(updateMock).toHaveBeenCalledWith(sampleResult.path, sampleResult.snippet);
+    expect(updateMock).toHaveBeenCalledWith(
+      sampleResult.path,
+      sampleResult.snippet,
+      undefined,
+      undefined,
+    );
   });
 
   it('updatePreview is skipped when showPreview is false', async () => {
@@ -545,5 +550,113 @@ describe('SearchModal — default behavior (S-102)', () => {
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-score')).not.toBeNull();
     vi.useRealTimers();
+  });
+});
+
+describe('getHeadingSiblings', () => {
+  let modal: SearchModal;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearch.mockResolvedValue([sampleResult]);
+    mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
+    mockGetAbstractFileByPath.mockReturnValue(
+      Object.assign(new TFile(), { path: sampleResult.path }),
+    );
+    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+  });
+
+  it('returns siblings until next same-level heading', () => {
+    const container = document.createElement('div');
+    const makeEl = (tag: string, text?: string) => {
+      const el = document.createElement(tag);
+      if (text) el.textContent = text;
+      return el;
+    };
+    container.append(
+      makeEl('h2', 'Section A'),
+      makeEl('p', 'Para 1'),
+      makeEl('p', 'Para 2'),
+      makeEl('h3', 'Subsection'),
+      makeEl('p', 'Sub para'),
+      makeEl('h2', 'Section B'),
+      makeEl('p', 'B para'),
+    );
+    const h2a = container.querySelector('h2') as HTMLElement;
+    const siblings = (
+      modal as unknown as {
+        getHeadingSiblings(h: HTMLElement): Element[];
+      }
+    ).getHeadingSiblings(h2a);
+    // Should include p, p, h3, p — stop at second h2
+    expect(siblings.length).toBe(4);
+    expect(siblings[0]!.tagName).toBe('P');
+    expect(siblings[2]!.tagName).toBe('H3');
+    // Should NOT include "B para"
+    expect(siblings.some((el) => el.textContent?.includes('B para'))).toBe(false);
+  });
+
+  it('returns all remaining siblings when no closing heading', () => {
+    const container = document.createElement('div');
+    const h2El = document.createElement('h2');
+    h2El.textContent = 'Heading';
+    const p1 = document.createElement('p');
+    p1.textContent = 'First paragraph';
+    const p2 = document.createElement('p');
+    p2.textContent = 'Second paragraph';
+    container.append(h2El, p1, p2);
+    const h2 = container.querySelector('h2') as HTMLElement;
+    const siblings = (
+      modal as unknown as {
+        getHeadingSiblings(h: HTMLElement): Element[];
+      }
+    ).getHeadingSiblings(h2);
+    expect(siblings.length).toBe(2);
+  });
+});
+
+describe('findHeadingElement', () => {
+  let modal: SearchModal;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearch.mockResolvedValue([sampleResult]);
+    mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
+    mockGetAbstractFileByPath.mockReturnValue(
+      Object.assign(new TFile(), { path: sampleResult.path }),
+    );
+    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+  });
+
+  it('finds leaf heading by headingPath', () => {
+    const preview = document.createElement('div');
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Parent';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Child section';
+    const p = document.createElement('p');
+    p.textContent = 'Content';
+    preview.append(h2, h3, p);
+    (modal as unknown as { previewEl: HTMLElement }).previewEl = preview;
+
+    const result = (
+      modal as unknown as {
+        findHeadingElement(hp: string | null): HTMLElement | undefined;
+      }
+    ).findHeadingElement('Parent > Child section');
+
+    expect(result).toBeDefined();
+    expect(result!.tagName).toBe('H3');
+    expect(result!.textContent?.trim()).toBe('Child section');
+  });
+
+  it('returns undefined for null headingPath', () => {
+    (modal as unknown as { previewEl: HTMLElement }).previewEl = document.createElement('div');
+    const result = (
+      modal as unknown as {
+        findHeadingElement(hp: string | null): HTMLElement | undefined;
+      }
+    ).findHeadingElement(null);
+    expect(result).toBeUndefined();
   });
 });

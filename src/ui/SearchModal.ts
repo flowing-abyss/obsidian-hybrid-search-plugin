@@ -6,7 +6,7 @@ import {
   SuggestModal,
   TFile,
 } from 'obsidian';
-import type { SearchClient, SearchResult } from '../ipc';
+import type { MatchAnchor, SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
 import { registerModalKeymap } from './modalKeymap';
 import { parseQuery } from './queryParser';
@@ -21,6 +21,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private previewMetaEl?: HTMLDivElement;
   private previewChild?: MarkdownRenderChild;
   private currentPreviewPath?: string;
+  private currentAnchorKey?: string;
   private previewCallId = 0;
   private isRecentMode = false;
   private currentMode: 'hybrid' | 'semantic' | 'fulltext' | 'title' = 'hybrid';
@@ -29,8 +30,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private modeEl?: HTMLSpanElement;
 
   private readonly debouncedPreview = debounce(
-    (path: string, snippet?: string) => {
-      void this.updatePreview(path, snippet);
+    (path: string, snippet?: string, anchors?: MatchAnchor[], primaryIdx?: number) => {
+      void this.updatePreview(path, snippet, anchors, primaryIdx);
     },
     100,
     true, // resetTimer: true — resets on each call, fires after the last one
@@ -98,6 +99,76 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewMetaEl?.remove();
     this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
+  }
+
+  private clearHighlights(): void {
+    if (!this.previewEl) return;
+    for (const el of this.previewEl.querySelectorAll('.hybrid-search-semantic-match')) {
+      el.classList.remove('hybrid-search-semantic-match');
+    }
+    // Unwrap word-match spans: replace each with a plain text node
+    for (const span of Array.from(this.previewEl.querySelectorAll('.hybrid-search-word-match'))) {
+      span.replaceWith(document.createTextNode(span.textContent ?? ''));
+    }
+  }
+
+  private findHeadingElement(headingPath: string | null): HTMLElement | undefined {
+    if (!this.previewEl || !headingPath) return undefined;
+    const leaf = headingPath.split(' > ').pop()?.trim().toLowerCase();
+    if (!leaf) return undefined;
+    const headings = Array.from(this.previewEl.querySelectorAll('h1, h2, h3, h4, h5, h6')).filter(
+      (h) => !h.closest('.callout'),
+    );
+    return headings.find((h) => (h.textContent ?? '').trim().toLowerCase() === leaf) as
+      | HTMLElement
+      | undefined;
+  }
+
+  private getHeadingSiblings(headingEl: HTMLElement): Element[] {
+    const level = parseInt(headingEl.tagName[1]!, 10); // H3 → 3
+    const parent = headingEl.parentElement;
+    if (!parent) return [];
+    const siblings: Element[] = [];
+    let found = false;
+    for (const child of parent.children) {
+      if (child === headingEl) {
+        found = true;
+        continue;
+      }
+      if (!found) continue;
+      const m = /^H([1-6])$/.exec(child.tagName);
+      if (m && parseInt(m[1]!, 10) <= level) break;
+      siblings.push(child);
+    }
+    return siblings;
+  }
+
+  private findAnchorBlock(anchor: MatchAnchor): HTMLElement | undefined {
+    if (!this.previewEl) return undefined;
+    const headingEl = this.findHeadingElement(anchor.headingPath);
+    const region: Element[] = headingEl
+      ? [headingEl, ...this.getHeadingSiblings(headingEl)]
+      : Array.from(
+          this.previewEl.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote'),
+        ).filter((b) => !b.closest('.callout'));
+
+    const needle = anchor.matchText.toLowerCase();
+    const blockSel = 'p, li, h1, h2, h3, h4, h5, h6, blockquote';
+
+    for (const el of region) {
+      if (el.closest('.callout')) continue;
+      if (el.matches(blockSel)) {
+        if ((el.textContent ?? '').toLowerCase().includes(needle)) return el as HTMLElement;
+      }
+      // Check nested blocks inside container elements (e.g. div.callout excluded above)
+      for (const nested of el.querySelectorAll(blockSel)) {
+        if ((nested.textContent ?? '').toLowerCase().includes(needle)) {
+          return nested as HTMLElement;
+        }
+      }
+    }
+    // Fallback A: heading element itself
+    return headingEl;
   }
 
   triggerPreview(nfcPath: string, snippet?: string): void {
@@ -277,7 +348,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (result) this.debouncedPreview(result.path.normalize('NFC'), result.snippet);
   }
 
-  private async updatePreview(path: string, snippet?: string): Promise<void> {
+  private async updatePreview(
+    path: string,
+    snippet?: string,
+    _anchors?: MatchAnchor[],
+    _primaryIdx?: number,
+  ): Promise<void> {
     if (!this.settings.showPreview) return;
     // Normalize to NFC: DB paths are NFD, Obsidian APIs require NFC (same as cli.ts)
     const nfcPath = path.normalize('NFC');
