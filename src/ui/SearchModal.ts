@@ -170,7 +170,15 @@ export class SearchModal extends SuggestModal<SearchResult> {
         }
       }
     }
-    // Fallback A: heading element itself
+    // Fallback A: search inside callout titles and content (for notes whose content is entirely callout blocks)
+    for (const titleEl of this.previewEl.querySelectorAll('.callout-title-inner')) {
+      if ((titleEl.textContent ?? '').toLowerCase().includes(needle)) return titleEl as HTMLElement;
+    }
+    for (const contentEl of this.previewEl.querySelectorAll('.callout-content p')) {
+      if ((contentEl.textContent ?? '').toLowerCase().includes(needle))
+        return contentEl as HTMLElement;
+    }
+    // Fallback B: heading element itself
     return headingEl;
   }
 
