@@ -1,6 +1,14 @@
 import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
 
+export interface MatchAnchor {
+  kind: 'bm25' | 'semantic';
+  headingPath: string | null;
+  matchText: string;
+  charStart: number | null;
+  charEnd: number | null;
+}
+
 export interface SearchResult {
   path: string;
   title: string;
@@ -8,6 +16,8 @@ export interface SearchResult {
   snippet?: string;
   tags: string[];
   aliases: string[];
+  previewAnchors?: MatchAnchor[];
+  primaryAnchorIndex?: number;
 }
 
 interface SearchOptions {
@@ -20,6 +30,7 @@ interface SearchOptions {
   tag?: string | string[];
   scope?: string | string[];
   frontmatter?: string | string[];
+  anchors?: boolean;
 }
 
 interface StdioResponse {
