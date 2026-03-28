@@ -196,7 +196,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   onClose(): void {
-    if (this.settings.rememberLastQuery) {
+    if (this.settings.rememberLastQuery && this.inputEl) {
       this.settings.lastQuery = this.inputEl.value.trim();
       void this.saveSettings();
     }
