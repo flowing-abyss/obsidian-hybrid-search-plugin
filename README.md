@@ -72,6 +72,7 @@ zettelkasten #project @limit:20 @rerank @hybrid
 | `limit:N`             | `@limit:N` / `@lim:N`    | Override result count         |
 | `threshold:N`         | `@threshold:N` / `@th:N` | Minimum score threshold       |
 | —                     | `@rerank`                | Re-rank with cross-encoder    |
+| `key:value`           | —                        | Filter by frontmatter field   |
 
 Filters can be combined freely.
 
