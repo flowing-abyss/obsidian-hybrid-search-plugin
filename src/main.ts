@@ -17,11 +17,9 @@ export default class HybridSearchPlugin extends Plugin {
     const vault = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.() ?? '';
     this.client = new SearchClient(bin, vault);
 
-    this.client.waitReady().catch(() => {
-      new Notice(
-        'Hybrid search: server did not start. Check that Obsidian-hybrid-search is installed.',
-        8000,
-      );
+    this.client.waitReady(30_000, bin).catch((err: unknown) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      new Notice(`Hybrid search: server did not start.\n\n${detail}`, 0);
     });
 
     const openSearchModal = (forcedMode?: SearchMode) => {
