@@ -62,7 +62,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       .setDesc('Search mode used when opening the modal.')
       .addDropdown((dropdown) =>
         dropdown
-          .addOption('hybrid', 'Hybrid (bm25 + semantic)')
+          .addOption('hybrid', 'Hybrid (bm25 + trigram + semantic)')
           .addOption('fulltext', 'Fulltext (bm25 only)')
           .addOption('semantic', 'Semantic (vector only)')
           .addOption('title', 'Title (fuzzy)')
