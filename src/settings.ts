@@ -46,7 +46,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Binary path')
-      .setDesc('Path to Obsidian-hybrid-search binary. Leave empty to use path.')
+      .setDesc(
+        'Absolute path to the obsidian-hybrid-search binary. Leave empty to search in PATH. Common locations: /opt/homebrew/bin/obsidian-hybrid-search, /usr/local/bin/obsidian-hybrid-search, ~/.npm/bin/obsidian-hybrid-search.',
+      )
       .addText((text) =>
         text
           .setPlaceholder('Obsidian-hybrid-search')

@@ -1,5 +1,7 @@
 import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface MatchAnchor {
   kind: 'bm25' | 'semantic';
@@ -42,21 +44,88 @@ interface StdioResponse {
 
 /** Extra directories added to PATH on spawn so the binary is found regardless
  *  of how Obsidian was launched (autostart, .desktop file, etc.).
- *  On macOS these paths are already present; on Linux they often aren't. */
+ *  On macOS these paths are already present when launched from Terminal;
+ *  when launched from Finder they often aren't. */
 function augmentedPath(): string {
-  const extra = [
+  const home = process.env.HOME ?? '';
+
+  const extras: string[] = [
     '/usr/local/bin',
     '/usr/bin',
-    `${process.env.HOME ?? ''}/.local/bin`,
-    `${process.env.HOME ?? ''}/.npm/bin`,
-    `${process.env.HOME ?? ''}/.npm-global/bin`,
-    `${process.env.HOME ?? ''}/.yarn/bin`,
-    `${process.env.HOME ?? ''}/.pnpm`,
-  ]
-    .filter(Boolean)
-    .join(':');
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/opt/local/bin',
+    path.join(home, '.local', 'bin'),
+    path.join(home, '.npm', 'bin'),
+    path.join(home, '.npm-global', 'bin'),
+    path.join(home, '.yarn', 'bin'),
+    path.join(home, '.pnpm'),
+    path.join(home, '.volta', 'bin'),
+    path.join(home, '.asdf', 'shims'),
+    path.join(home, '.config', 'npm', 'node_global', 'bin'),
+  ];
+
+  // nvm
+  const nvmBase = path.join(home, '.nvm', 'versions', 'node');
+  if (fs.existsSync(nvmBase)) {
+    try {
+      for (const v of fs.readdirSync(nvmBase)) {
+        extras.push(path.join(nvmBase, v, 'bin'));
+      }
+    } catch {
+      /* ignore permission errors */
+    }
+  }
+
+  // fnm (typical install paths)
+  for (const fnmBase of [
+    path.join(home, '.local', 'share', 'fnm', 'node-versions'),
+    path.join(home, '.fnm', 'node-versions'),
+  ]) {
+    if (fs.existsSync(fnmBase)) {
+      try {
+        for (const v of fs.readdirSync(fnmBase)) {
+          extras.push(path.join(fnmBase, v, 'installation', 'bin'));
+        }
+      } catch {
+        /* ignore permission errors */
+      }
+    }
+  }
+
   const existing = process.env.PATH ?? '';
-  return existing ? `${existing}:${extra}` : extra;
+  return existing ? `${existing}:${extras.join(':')}` : extras.join(':');
+}
+
+/** Try to turn a bare command name into an absolute path by scanning the
+ *  augmented PATH.  If the caller already supplied an absolute/relative path
+ *  we leave it untouched so that any ENOENT is reported on the exact path
+ *  they configured. */
+function resolveBinary(binaryPath: string): string {
+  // Absolute or relative path — trust the user
+  if (path.isAbsolute(binaryPath) || binaryPath.includes(path.sep)) {
+    return binaryPath;
+  }
+
+  const searchDirs = augmentedPath()
+    .split(':')
+    .map((d) => d.trim())
+    .filter(Boolean);
+
+  for (const dir of searchDirs) {
+    const candidate = path.join(dir, binaryPath);
+    try {
+      const st = fs.statSync(candidate);
+      if (st.isFile()) {
+        return candidate;
+      }
+    } catch {
+      // candidate doesn't exist — keep looking
+    }
+  }
+
+  // Not found anywhere — fall back to the bare name and let spawn() report ENOENT
+  return binaryPath;
 }
 
 export class SearchClient {
@@ -69,9 +138,13 @@ export class SearchClient {
   private buffer = '';
   private spawnError: Error | null = null;
   private stderrLines: string[] = [];
+  private binaryPath: string;
+  private resolvedPath: string;
 
   constructor(binaryPath: string, vaultPath: string) {
-    this.proc = spawn(binaryPath, ['serve', '--stdio'], {
+    this.binaryPath = binaryPath;
+    this.resolvedPath = resolveBinary(binaryPath);
+    this.proc = spawn(this.resolvedPath, ['serve', '--stdio'], {
       env: { ...process.env, PATH: augmentedPath(), OBSIDIAN_VAULT_PATH: vaultPath },
     });
 
@@ -118,20 +191,32 @@ export class SearchClient {
   }
 
   /** Human-readable diagnostics string, shown in error notices. */
-  private diagnostics(binaryPath: string): string {
-    const parts: string[] = [`binary: "${binaryPath}"`];
+  private diagnostics(): string {
+    const parts: string[] = [`binary: "${this.binaryPath}"`, `resolved: "${this.resolvedPath}"`];
+
+    let exists = false;
+    let isFile = false;
+    try {
+      const st = fs.statSync(this.resolvedPath);
+      exists = true;
+      isFile = st.isFile();
+    } catch {
+      /* path does not exist */
+    }
+    parts.push(`exists: ${exists}, isFile: ${isFile}`);
+
     if (this.spawnError) parts.push(`spawn error: ${this.spawnError.message}`);
     if (this.stderrLines.length) parts.push(`stderr: ${this.stderrLines.slice(-3).join(' | ')}`);
     parts.push(`PATH: ${process.env.PATH ?? '(empty)'}`);
     return parts.join('\n');
   }
 
-  waitReady(timeoutMs = 30_000, binaryPath = 'obsidian-hybrid-search'): Promise<void> {
+  waitReady(timeoutMs = 30_000): Promise<void> {
     if (this.ready) return Promise.resolve();
     if (this.spawnError) return Promise.reject(this.spawnError);
     return new Promise((resolve, reject) => {
       const t = setTimeout(() => {
-        const diag = this.diagnostics(binaryPath);
+        const diag = this.diagnostics();
         reject(new Error(`Search server timed out.\n${diag}`));
       }, timeoutMs);
       this.readyCallbacks.push(() => {
@@ -140,7 +225,7 @@ export class SearchClient {
       });
       this.rejectCallbacks.push((err) => {
         clearTimeout(t);
-        const diag = this.diagnostics(binaryPath);
+        const diag = this.diagnostics();
         reject(new Error(`${err.message}\n${diag}`));
       });
     });
