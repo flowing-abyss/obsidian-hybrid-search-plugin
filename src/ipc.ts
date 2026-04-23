@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 export interface MatchAnchor {
@@ -47,7 +48,7 @@ interface StdioResponse {
  *  On macOS these paths are already present when launched from Terminal;
  *  when launched from Finder they often aren't. */
 function augmentedPath(): string {
-  const home = process.env.HOME ?? '';
+  const home = os.homedir();
 
   const extras: string[] = [
     '/usr/local/bin',
@@ -64,6 +65,18 @@ function augmentedPath(): string {
     path.join(home, '.asdf', 'shims'),
     path.join(home, '.config', 'npm', 'node_global', 'bin'),
   ];
+
+  // Windows npm global paths
+  if (process.platform === 'win32') {
+    if (process.env.APPDATA) {
+      extras.push(path.join(process.env.APPDATA, 'npm'));
+    }
+    if (process.env.LOCALAPPDATA) {
+      extras.push(path.join(process.env.LOCALAPPDATA, 'npm'));
+    }
+    // Fallback using homedir if env vars are missing
+    extras.push(path.join(home, 'AppData', 'Roaming', 'npm'));
+  }
 
   // nvm
   const nvmBase = path.join(home, '.nvm', 'versions', 'node');
@@ -94,7 +107,9 @@ function augmentedPath(): string {
   }
 
   const existing = process.env.PATH ?? '';
-  return existing ? `${existing}:${extras.join(':')}` : extras.join(':');
+  return existing
+    ? `${existing}${path.delimiter}${extras.join(path.delimiter)}`
+    : extras.join(path.delimiter);
 }
 
 /** Try to turn a bare command name into an absolute path by scanning the
@@ -102,25 +117,43 @@ function augmentedPath(): string {
  *  we leave it untouched so that any ENOENT is reported on the exact path
  *  they configured. */
 function resolveBinary(binaryPath: string): string {
-  // Absolute or relative path — trust the user
+  // Absolute or relative path — trust the user, but on Windows try adding
+  // executable extensions if the exact path is missing.
   if (path.isAbsolute(binaryPath) || binaryPath.includes(path.sep)) {
+    if (process.platform === 'win32' && !path.extname(binaryPath)) {
+      for (const ext of ['.exe', '.cmd', '.bat']) {
+        const candidate = binaryPath + ext;
+        try {
+          if (fs.statSync(candidate).isFile()) {
+            return candidate;
+          }
+        } catch {
+          /* keep looking */
+        }
+      }
+    }
     return binaryPath;
   }
 
   const searchDirs = augmentedPath()
-    .split(':')
+    .split(path.delimiter)
     .map((d) => d.trim())
     .filter(Boolean);
 
   for (const dir of searchDirs) {
-    const candidate = path.join(dir, binaryPath);
-    try {
-      const st = fs.statSync(candidate);
-      if (st.isFile()) {
-        return candidate;
+    const candidates: string[] = [path.join(dir, binaryPath)];
+    if (process.platform === 'win32' && !path.extname(binaryPath)) {
+      candidates.push(...['.exe', '.cmd', '.bat'].map((ext) => path.join(dir, binaryPath + ext)));
+    }
+    for (const candidate of candidates) {
+      try {
+        const st = fs.statSync(candidate);
+        if (st.isFile()) {
+          return candidate;
+        }
+      } catch {
+        // candidate doesn't exist — keep looking
       }
-    } catch {
-      // candidate doesn't exist — keep looking
     }
   }
 
@@ -144,8 +177,12 @@ export class SearchClient {
   constructor(binaryPath: string, vaultPath: string) {
     this.binaryPath = binaryPath;
     this.resolvedPath = resolveBinary(binaryPath);
+    const needsShell =
+      process.platform === 'win32' &&
+      (this.resolvedPath.endsWith('.cmd') || this.resolvedPath.endsWith('.bat'));
     this.proc = spawn(this.resolvedPath, ['serve', '--stdio'], {
       env: { ...process.env, PATH: augmentedPath(), OBSIDIAN_VAULT_PATH: vaultPath },
+      shell: needsShell,
     });
 
     this.proc.stdout!.on('data', (chunk: Buffer) => {
