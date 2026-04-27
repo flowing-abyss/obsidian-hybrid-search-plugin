@@ -141,10 +141,16 @@ function resolveBinary(binaryPath: string): string {
     .filter(Boolean);
 
   for (const dir of searchDirs) {
-    const candidates: string[] = [path.join(dir, binaryPath)];
-    if (process.platform === 'win32' && !path.extname(binaryPath)) {
-      candidates.push(...['.exe', '.cmd', '.bat'].map((ext) => path.join(dir, binaryPath + ext)));
-    }
+    // On Windows, check .exe/.cmd/.bat BEFORE the bare name.  npm installs both a
+    // Unix shell script (no extension) and a .cmd wrapper; statSync reports isFile:true
+    // for both, but only .cmd is executable by the Windows process model.
+    const candidates: string[] =
+      process.platform === 'win32' && !path.extname(binaryPath)
+        ? [
+            ...['.exe', '.cmd', '.bat'].map((ext) => path.join(dir, binaryPath + ext)),
+            path.join(dir, binaryPath),
+          ]
+        : [path.join(dir, binaryPath)];
     for (const candidate of candidates) {
       try {
         const st = fs.statSync(candidate);
