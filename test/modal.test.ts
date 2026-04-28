@@ -46,7 +46,7 @@ describe('SearchModal', () => {
       Object.assign(new TFile(), { path: sampleResult.path }),
     );
     mockRender.mockClear();
-    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+    modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('constructs without throwing', () => {
@@ -130,13 +130,13 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion creates title element with note name', () => {
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-name')?.textContent).toBe('Zettelkasten');
   });
 
   it('renderSuggestion renders title as internal-link anchor with data-href', () => {
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link.hybrid-search-name');
     expect(link).not.toBeNull();
@@ -145,7 +145,7 @@ describe('SearchModal', () => {
 
   it('renderSuggestion sets data-link-* attributes and CSS vars from frontmatter', () => {
     mockGetCache.mockReturnValue({ frontmatter: { status: 'done', priority: 1 } });
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link') as HTMLElement;
     expect(link.getAttribute('data-link-status')).toBe('done');
@@ -155,7 +155,7 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion adds Supercharged Links classes', () => {
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link');
     expect(link?.classList.contains('data-link-icon')).toBe(true);
@@ -167,7 +167,7 @@ describe('SearchModal', () => {
     mockGetCache.mockReturnValue({
       frontmatter: { position: {}, tags: ['a', 'b'], status: 'active' },
     });
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link');
     expect(link?.hasAttribute('data-link-position')).toBe(false);
@@ -176,13 +176,13 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion shows score', () => {
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-score')?.textContent).toBe('0.87');
   });
 
   it('renderSuggestion does not show tags when showMeta is false', () => {
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-meta')).toBeNull();
   });
@@ -190,14 +190,14 @@ describe('SearchModal', () => {
   it('renderSuggestion shows meta line when showMeta is true', () => {
     const modalWithMeta = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       {
         ...DEFAULT_SETTINGS,
         showMeta: true,
       },
       vi.fn(),
     );
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modalWithMeta.renderSuggestion(sampleResult, el);
     const meta = el.querySelector('.hybrid-search-meta');
     expect(meta).not.toBeNull();
@@ -206,14 +206,14 @@ describe('SearchModal', () => {
   it('renderSuggestion meta line contains folder path', () => {
     const modalWithMeta = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       {
         ...DEFAULT_SETTINGS,
         showMeta: true,
       },
       vi.fn(),
     );
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modalWithMeta.renderSuggestion(sampleResult, el);
     const path = el.querySelector('.hybrid-search-meta-path');
     expect(path?.textContent).toBe('notes/pkm');
@@ -222,14 +222,14 @@ describe('SearchModal', () => {
   it('renderSuggestion meta line contains tags', () => {
     const modalWithMeta = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       {
         ...DEFAULT_SETTINGS,
         showMeta: true,
       },
       vi.fn(),
     );
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modalWithMeta.renderSuggestion(sampleResult, el);
     const tags = el.querySelectorAll('.hybrid-search-tag');
     expect(tags).toHaveLength(2);
@@ -239,20 +239,20 @@ describe('SearchModal', () => {
   it('renderSuggestion meta line shows no tags when result has no tags', () => {
     const modalWithMeta = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       {
         ...DEFAULT_SETTINGS,
         showMeta: true,
       },
       vi.fn(),
     );
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modalWithMeta.renderSuggestion({ ...sampleResult, tags: [] }, el);
     expect(el.querySelectorAll('.hybrid-search-tag')).toHaveLength(0);
   });
 
   it('renderSuggestion falls back to path when title is empty', () => {
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion({ ...sampleResult, title: '' }, el);
     expect(el.querySelector('.hybrid-search-name')?.textContent).toBe(sampleResult.path);
   });
@@ -288,11 +288,11 @@ describe('SearchModal — hover preview', () => {
     mockGetAbstractFileByPath.mockReturnValue(
       Object.assign(new TFile(), { path: sampleResult.path }),
     );
-    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+    modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('renderSuggestion does not render snippet element', () => {
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-snippet')).toBeNull();
   });
@@ -301,7 +301,7 @@ describe('SearchModal — hover preview', () => {
     const internals = modal as unknown as ModalInternals;
     await internals.updatePreview(sampleResult.path);
     expect(internals.previewEl).toBeDefined();
-    expect(document.body.contains(internals.previewEl ?? null)).toBe(true);
+    expect(activeDocument.body.contains(internals.previewEl ?? null)).toBe(true);
   });
 
   it('updatePreview calls MarkdownRenderer.render with correct arguments', async () => {
@@ -338,7 +338,7 @@ describe('SearchModal — hover preview', () => {
     const unloadSpy = vi.spyOn(child, 'unload');
     modal.onClose();
     expect(unloadSpy).toHaveBeenCalled();
-    expect(document.body.contains(previewEl)).toBe(false);
+    expect(activeDocument.body.contains(previewEl)).toBe(false);
   });
 
   it('onSelectedChange calls updatePreview for the selected result', () => {
@@ -358,7 +358,7 @@ describe('SearchModal — hover preview', () => {
   it('updatePreview is skipped when showPreview is false', async () => {
     const modalNoPreview = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       { ...DEFAULT_SETTINGS, showPreview: false },
       vi.fn(),
     );
@@ -371,7 +371,7 @@ describe('SearchModal — hover preview', () => {
   it('onSelectedChange is skipped when showPreview is false', () => {
     const modalNoPreview = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       { ...DEFAULT_SETTINGS, showPreview: false },
       vi.fn(),
     );
@@ -392,7 +392,7 @@ describe('SearchModal — hover preview', () => {
     expect(internals.previewChild).toBeUndefined();
     // currentPreviewPath must be reset so re-enabling preview triggers a fresh render
     expect(internals.currentPreviewPath).toBeUndefined();
-    expect(document.body.contains(capturedEl)).toBe(false);
+    expect(activeDocument.body.contains(capturedEl)).toBe(false);
   });
 
   it('hidePreviewPanel is idempotent — safe to call twice', async () => {
@@ -434,7 +434,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     vi.useFakeTimers();
     const modal = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       DEFAULT_SETTINGS,
       vi.fn(),
       activeFilePath,
@@ -453,7 +453,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     vi.useFakeTimers();
     const modal = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       DEFAULT_SETTINGS,
       vi.fn(),
       activeFilePath,
@@ -472,7 +472,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     vi.useFakeTimers();
     const modal = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       DEFAULT_SETTINGS,
       vi.fn(),
       activeFilePath,
@@ -491,7 +491,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     mockGetAbstractFileByPath.mockImplementation((p: string) =>
       Object.assign(new TFile(), { path: p, extension: 'md' }),
     );
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+    const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
     expect(mockSearch).not.toHaveBeenCalled();
     expect(results).toHaveLength(2);
@@ -499,59 +499,30 @@ describe('SearchModal — default behavior (S-102)', () => {
     expect(results[1]?.path).toBe('notes/b.md');
   });
 
-  it('getSuggestions recent files filters out non-markdown files', async () => {
-    mockGetLastOpenFiles.mockReturnValue(['notes/a.md', 'notes/img.png']);
-    mockGetAbstractFileByPath.mockImplementation((p: string) => {
-      const ext = p.endsWith('.png') ? 'png' : 'md';
-      return Object.assign(new TFile(), { path: p, extension: ext });
-    });
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
-    const results = await modal.getSuggestions('');
-    expect(results).toHaveLength(1);
-    expect(results[0]?.path).toBe('notes/a.md');
-  });
-
-  it('getSuggestions recent files filters out paths not found in vault', async () => {
-    mockGetLastOpenFiles.mockReturnValue(['notes/exists.md', 'notes/gone.md']);
-    mockGetAbstractFileByPath.mockImplementation((p: string) =>
-      p === 'notes/exists.md' ? Object.assign(new TFile(), { path: p, extension: 'md' }) : null,
-    );
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
-    const results = await modal.getSuggestions('');
-    expect(results).toHaveLength(1);
-    expect(results[0]?.path).toBe('notes/exists.md');
-  });
-
   it('getSuggestions recent files caps at RECENT_FILES_LIMIT', async () => {
     const manyPaths = Array.from({ length: 50 }, (_, i) => `notes/note-${i}.md`);
     mockGetLastOpenFiles.mockReturnValue(manyPaths);
-    mockGetAbstractFileByPath.mockImplementation((p: string) =>
-      Object.assign(new TFile(), { path: p, extension: 'md' }),
-    );
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+    const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
     expect(results.length).toBeLessThanOrEqual(20);
   });
 
   it('renderSuggestion hides score when in recent mode', async () => {
     mockGetLastOpenFiles.mockReturnValue(['notes/a.md']);
-    mockGetAbstractFileByPath.mockReturnValue(
-      Object.assign(new TFile(), { path: 'notes/a.md', extension: 'md' }),
-    );
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+    const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(results[0]!, el);
     expect(el.querySelector('.hybrid-search-score')).toBeNull();
   });
 
   it('renderSuggestion shows score after a real search query', async () => {
     vi.useFakeTimers();
-    const modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+    const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const promise = modal.getSuggestions('zettel');
     vi.runAllTimers();
     await promise;
-    const el = document.createElement('div');
+    const el = activeDocument.createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-score')).not.toBeNull();
     vi.useRealTimers();
@@ -568,13 +539,13 @@ describe('getHeadingSiblings', () => {
     mockGetAbstractFileByPath.mockReturnValue(
       Object.assign(new TFile(), { path: sampleResult.path }),
     );
-    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+    modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('returns siblings until next same-level heading', () => {
-    const container = document.createElement('div');
+    const container = activeDocument.createDiv();
     const makeEl = (tag: string, text?: string) => {
-      const el = document.createElement(tag);
+      const el = activeDocument.createEl(tag);
       if (text) el.textContent = text;
       return el;
     };
@@ -602,12 +573,12 @@ describe('getHeadingSiblings', () => {
   });
 
   it('returns all remaining siblings when no closing heading', () => {
-    const container = document.createElement('div');
-    const h2El = document.createElement('h2');
+    const container = activeDocument.createDiv();
+    const h2El = activeDocument.createEl('h2');
     h2El.textContent = 'Heading';
-    const p1 = document.createElement('p');
+    const p1 = activeDocument.createEl('p');
     p1.textContent = 'First paragraph';
-    const p2 = document.createElement('p');
+    const p2 = activeDocument.createEl('p');
     p2.textContent = 'Second paragraph';
     container.append(h2El, p1, p2);
     const h2 = container.querySelector('h2') as HTMLElement;
@@ -630,16 +601,16 @@ describe('findHeadingElement', () => {
     mockGetAbstractFileByPath.mockReturnValue(
       Object.assign(new TFile(), { path: sampleResult.path }),
     );
-    modal = new SearchModal(mockApp as never, mockClient as never, DEFAULT_SETTINGS, vi.fn());
+    modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('finds leaf heading by headingPath', () => {
-    const preview = document.createElement('div');
-    const h2 = document.createElement('h2');
+    const preview = activeDocument.createDiv();
+    const h2 = activeDocument.createEl('h2');
     h2.textContent = 'Parent';
-    const h3 = document.createElement('h3');
+    const h3 = activeDocument.createEl('h3');
     h3.textContent = 'Child section';
-    const p = document.createElement('p');
+    const p = activeDocument.createEl('p');
     p.textContent = 'Content';
     preview.append(h2, h3, p);
     (modal as unknown as { previewEl: HTMLElement }).previewEl = preview;
@@ -656,7 +627,7 @@ describe('findHeadingElement', () => {
   });
 
   it('returns undefined for null headingPath', () => {
-    (modal as unknown as { previewEl: HTMLElement }).previewEl = document.createElement('div');
+    (modal as unknown as { previewEl: HTMLElement }).previewEl = activeDocument.createDiv();
     const result = (
       modal as unknown as {
         findHeadingElement(hp: string | null): HTMLElement | undefined;
@@ -679,7 +650,7 @@ describe('anchor-based highlight', () => {
     mockRender.mockClear();
     modal = new SearchModal(
       mockApp as never,
-      mockClient as never,
+      mockClient,
       { ...DEFAULT_SETTINGS, showPreview: true, scrollToSnippet: true },
       vi.fn(),
     );

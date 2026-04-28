@@ -289,15 +289,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   private buildRecentResults(): SearchResult[] {
-    const paths: string[] = this.app.workspace.getLastOpenFiles();
+    const recentPaths = this.app.workspace.getLastOpenFiles().slice(0, RECENT_FILES_LIMIT);
     const results: SearchResult[] = [];
-    const seen = new Set<string>();
-    for (const p of paths) {
-      if (results.length >= RECENT_FILES_LIMIT) break;
-      if (seen.has(p)) continue;
-      seen.add(p);
-      const file = this.app.vault.getAbstractFileByPath(p);
-      if (!(file instanceof TFile) || file.extension !== 'md') continue;
+    for (const p of recentPaths) {
       const cache = this.app.metadataCache.getCache(p);
       const fm = cache?.frontmatter;
       const title =
