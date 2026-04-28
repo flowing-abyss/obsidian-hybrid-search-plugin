@@ -328,8 +328,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
         if (key === 'position') continue;
         if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
           const strVal = String(val);
-          link.setAttribute(`data-link-${key}`, strVal);
-          link.style.setProperty(`--data-link-${key}`, strVal);
+          try {
+            link.setAttribute(`data-link-${key}`, strVal);
+            link.style.setProperty(`--data-link-${key}`, strVal);
+          } catch {
+            // skip frontmatter keys that produce invalid attribute names
+          }
         }
       }
     }
@@ -761,8 +765,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
         if (key === 'position') continue;
         if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
           const strVal = String(val);
-          a.setAttribute(`data-link-${key}`, strVal);
-          a.style.setProperty(`--data-link-${key}`, strVal);
+          try {
+            a.setAttribute(`data-link-${key}`, strVal);
+            a.style.setProperty(`--data-link-${key}`, strVal);
+          } catch {
+            // skip frontmatter keys that produce invalid attribute names
+          }
         }
       }
     }
