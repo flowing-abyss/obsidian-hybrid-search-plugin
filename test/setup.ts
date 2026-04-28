@@ -98,10 +98,11 @@ if (typeof globalThis !== 'undefined') {
       typeof window !== 'undefined'
         ? window
         : {
-            setTimeout: (...args: Parameters<typeof setTimeout>) =>
-              activeWindow.setTimeout(...args),
-            clearTimeout: (...args: Parameters<typeof clearTimeout>) =>
-              activeWindow.clearTimeout(...args),
+            setTimeout: (handler: TimerHandler, timeout?: number, ...rest: unknown[]): number =>
+              globalThis.setTimeout(handler as VoidFunction, timeout, ...rest),
+            clearTimeout: (id?: number): void => {
+              globalThis.clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
+            },
           };
     (globalThis as Record<string, unknown>).activeWindow = win;
   }
