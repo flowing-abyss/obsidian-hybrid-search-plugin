@@ -16,7 +16,7 @@ type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 const RECENT_FILES_LIMIT = 20; // local cap for recent-files list only
 
 export class SearchModal extends SuggestModal<SearchResult> {
-  private debounce?: number;
+  private debounce?: ReturnType<typeof setTimeout>;
   private previewEl?: HTMLDivElement;
   private previewMetaEl?: HTMLDivElement;
   private previewChild?: MarkdownRenderChild;
@@ -113,7 +113,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     }
     // Unwrap word-match spans: replace each with a plain text node
     for (const span of Array.from(this.previewEl.querySelectorAll('.hybrid-search-word-match'))) {
-      span.replaceWith(activeDocument.createTextNode(span.textContent ?? ''));
+      // eslint-disable-next-line obsidianmd/prefer-active-doc
+      span.replaceWith(document.createTextNode(span.textContent ?? ''));
     }
   }
 
@@ -214,8 +215,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
         this.isRecentMode = false;
         this.updateModeBadge('~');
         return new Promise((resolve) => {
-          activeWindow.clearTimeout(this.debounce);
-          this.debounce = activeWindow.setTimeout(() => {
+          // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+          clearTimeout(this.debounce);
+          // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+          this.debounce = setTimeout(() => {
             this.fetchSimilar(resolve);
           }, 150);
         });
@@ -241,8 +244,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
     );
 
     return new Promise((resolve) => {
-      activeWindow.clearTimeout(this.debounce);
-      this.debounce = activeWindow.setTimeout(() => {
+      // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+      clearTimeout(this.debounce);
+      // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+      this.debounce = setTimeout(() => {
         this.client
           .search(parsedQuery, {
             mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
@@ -414,7 +419,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     // Synchronous DOM setup — must happen before any await
     if (!this.previewEl) {
-      this.previewEl = activeDocument.body.createDiv('hybrid-search-preview');
+      // eslint-disable-next-line obsidianmd/prefer-active-doc
+      this.previewEl = document.body.createDiv('hybrid-search-preview');
       this.hookPreviewLinks();
     }
     this.previewEl.show();
@@ -522,18 +528,21 @@ export class SearchModal extends SuggestModal<SearchResult> {
       const target = Math.max(0, absolutePos - 16);
       if (Math.abs(this.previewEl.scrollTop - target) > 8) this.previewEl.scrollTop = target;
     };
-    activeWindow.setTimeout(doScroll, 150);
-    activeWindow.setTimeout(doScroll, 400);
+    // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+    setTimeout(doScroll, 150);
+    // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+    setTimeout(doScroll, 400);
   }
 
   private highlightQueryWords(): void {
+    /* eslint-disable obsidianmd/prefer-active-doc, obsidianmd/prefer-create-el */
     if (!this.previewEl) return;
     const words = this.currentQueryWords;
     if (words.length === 0) return;
     const pattern = new RegExp(`(${words.map(escapeRegExp).join('|')})`, 'gi');
 
     const textNodes: Text[] = [];
-    const walker = activeDocument.createTreeWalker(this.previewEl, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(this.previewEl, NodeFilter.SHOW_TEXT);
     let node: Node | null;
     while ((node = walker.nextNode())) textNodes.push(node as Text);
 
@@ -542,33 +551,32 @@ export class SearchModal extends SuggestModal<SearchResult> {
       pattern.lastIndex = 0;
       if (!pattern.test(text)) continue;
       pattern.lastIndex = 0;
-      // eslint-disable-next-line obsidianmd/prefer-create-el
-      const frag = activeDocument.createDocumentFragment();
+      const frag = document.createDocumentFragment();
       let last = 0;
       let m: RegExpExecArray | null;
       while ((m = pattern.exec(text)) !== null) {
-        if (m.index > last)
-          frag.appendChild(activeDocument.createTextNode(text.slice(last, m.index)));
-        // eslint-disable-next-line obsidianmd/prefer-create-el
-        const span = activeDocument.createElement('span');
+        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const span = document.createElement('span');
         span.className = 'hybrid-search-word-match';
         span.textContent = m[0];
         frag.appendChild(span);
         last = m.index + m[0].length;
       }
-      if (last < text.length) frag.appendChild(activeDocument.createTextNode(text.slice(last)));
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
       textNode.parentNode?.replaceChild(frag, textNode);
     }
+    /* eslint-enable obsidianmd/prefer-active-doc, obsidianmd/prefer-create-el */
   }
 
   private highlightQueryWordsInRegion(elements: Element[]): void {
+    /* eslint-disable obsidianmd/prefer-active-doc, obsidianmd/prefer-create-el */
     const words = this.currentQueryWords;
     if (words.length === 0) return;
     const pattern = new RegExp(`(${words.map(escapeRegExp).join('|')})`, 'gi');
 
     const textNodes: Text[] = [];
     for (const el of elements) {
-      const walker = activeDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       let node: Node | null;
       while ((node = walker.nextNode())) textNodes.push(node as Text);
     }
@@ -578,23 +586,21 @@ export class SearchModal extends SuggestModal<SearchResult> {
       pattern.lastIndex = 0;
       if (!pattern.test(text)) continue;
       pattern.lastIndex = 0;
-      // eslint-disable-next-line obsidianmd/prefer-create-el
-      const frag = activeDocument.createDocumentFragment();
+      const frag = document.createDocumentFragment();
       let last = 0;
       let m: RegExpExecArray | null;
       while ((m = pattern.exec(text)) !== null) {
-        if (m.index > last)
-          frag.appendChild(activeDocument.createTextNode(text.slice(last, m.index)));
-        // eslint-disable-next-line obsidianmd/prefer-create-el
-        const span = activeDocument.createElement('span');
+        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const span = document.createElement('span');
         span.className = 'hybrid-search-word-match';
         span.textContent = m[0];
         frag.appendChild(span);
         last = m.index + m[0].length;
       }
-      if (last < text.length) frag.appendChild(activeDocument.createTextNode(text.slice(last)));
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
       textNode.parentNode?.replaceChild(frag, textNode);
     }
+    /* eslint-enable obsidianmd/prefer-active-doc, obsidianmd/prefer-create-el */
   }
 
   private applyAnchorHighlight(anchors: MatchAnchor[], primaryIdx: number): void {
@@ -635,7 +641,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (!this.settings.showPreviewMeta || !this.previewEl) return;
 
     if (!this.previewMetaEl) {
-      this.previewMetaEl = activeDocument.body.createDiv('hybrid-search-preview-meta-panel');
+      // eslint-disable-next-line obsidianmd/prefer-active-doc
+      this.previewMetaEl = document.body.createDiv('hybrid-search-preview-meta-panel');
       this.hookMetaLinks();
     }
     this.previewMetaEl.empty();

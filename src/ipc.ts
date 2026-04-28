@@ -258,16 +258,19 @@ export class SearchClient {
     if (this.ready) return Promise.resolve();
     if (this.spawnError) return Promise.reject(this.spawnError);
     return new Promise((resolve, reject) => {
-      const t = activeWindow.setTimeout(() => {
+      // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+      const t = setTimeout(() => {
         const diag = this.diagnostics();
         reject(new Error(`Search server timed out.\n${diag}`));
       }, timeoutMs);
       this.readyCallbacks.push(() => {
-        activeWindow.clearTimeout(t);
+        // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+        clearTimeout(t);
         resolve();
       });
       this.rejectCallbacks.push((err) => {
-        activeWindow.clearTimeout(t);
+        // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+        clearTimeout(t);
         const diag = this.diagnostics();
         reject(new Error(`${err.message}\n${diag}`));
       });

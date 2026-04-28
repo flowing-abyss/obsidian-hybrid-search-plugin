@@ -18,7 +18,7 @@ if (typeof HTMLElement !== 'undefined' && !('createEl' in HTMLElement.prototype)
     tag: K,
     opts?: { text?: string; cls?: string; attr?: Record<string, string> },
   ): HTMLElementTagNameMap[K] {
-    const el = activeDocument.createEl(tag);
+    const el = document.createElement(tag);
     if (opts?.text) el.textContent = opts.text;
     if (opts?.cls) el.className = opts.cls;
     if (opts?.attr) {
@@ -37,7 +37,7 @@ if (typeof HTMLElement !== 'undefined' && !('createDiv' in HTMLElement.prototype
       createDiv: (cls?: string | { cls?: string }) => HTMLDivElement;
     }
   ).createDiv = function (cls?: string | { cls?: string }): HTMLDivElement {
-    const div = activeDocument.createDiv();
+    const div = document.createElement('div');
     if (typeof cls === 'string') {
       div.className = cls;
     } else if (cls?.cls) {
@@ -54,7 +54,7 @@ if (typeof HTMLElement !== 'undefined' && !('createSpan' in HTMLElement.prototyp
       createSpan: (opts?: { text?: string; cls?: string }) => HTMLSpanElement;
     }
   ).createSpan = function (opts?: { text?: string; cls?: string }): HTMLSpanElement {
-    const span = activeDocument.createSpan();
+    const span = document.createElement('span');
     if (opts?.text) span.textContent = opts.text;
     if (opts?.cls) span.className = opts.cls;
     this.appendChild(span);
