@@ -130,13 +130,13 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion creates title element with note name', () => {
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-name')?.textContent).toBe('Zettelkasten');
   });
 
   it('renderSuggestion renders title as internal-link anchor with data-href', () => {
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link.hybrid-search-name');
     expect(link).not.toBeNull();
@@ -145,7 +145,7 @@ describe('SearchModal', () => {
 
   it('renderSuggestion sets data-link-* attributes and CSS vars from frontmatter', () => {
     mockGetCache.mockReturnValue({ frontmatter: { status: 'done', priority: 1 } });
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link') as HTMLElement;
     expect(link.getAttribute('data-link-status')).toBe('done');
@@ -155,7 +155,7 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion adds Supercharged Links classes', () => {
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link');
     expect(link?.classList.contains('data-link-icon')).toBe(true);
@@ -167,7 +167,7 @@ describe('SearchModal', () => {
     mockGetCache.mockReturnValue({
       frontmatter: { position: {}, tags: ['a', 'b'], status: 'active' },
     });
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link');
     expect(link?.hasAttribute('data-link-position')).toBe(false);
@@ -176,13 +176,13 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion shows score', () => {
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-score')?.textContent).toBe('0.87');
   });
 
   it('renderSuggestion does not show tags when showMeta is false', () => {
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-meta')).toBeNull();
   });
@@ -197,7 +197,7 @@ describe('SearchModal', () => {
       },
       vi.fn(),
     );
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modalWithMeta.renderSuggestion(sampleResult, el);
     const meta = el.querySelector('.hybrid-search-meta');
     expect(meta).not.toBeNull();
@@ -213,7 +213,7 @@ describe('SearchModal', () => {
       },
       vi.fn(),
     );
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modalWithMeta.renderSuggestion(sampleResult, el);
     const path = el.querySelector('.hybrid-search-meta-path');
     expect(path?.textContent).toBe('notes/pkm');
@@ -229,7 +229,7 @@ describe('SearchModal', () => {
       },
       vi.fn(),
     );
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modalWithMeta.renderSuggestion(sampleResult, el);
     const tags = el.querySelectorAll('.hybrid-search-tag');
     expect(tags).toHaveLength(2);
@@ -246,13 +246,13 @@ describe('SearchModal', () => {
       },
       vi.fn(),
     );
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modalWithMeta.renderSuggestion({ ...sampleResult, tags: [] }, el);
     expect(el.querySelectorAll('.hybrid-search-tag')).toHaveLength(0);
   });
 
   it('renderSuggestion falls back to path when title is empty', () => {
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion({ ...sampleResult, title: '' }, el);
     expect(el.querySelector('.hybrid-search-name')?.textContent).toBe(sampleResult.path);
   });
@@ -292,7 +292,7 @@ describe('SearchModal — hover preview', () => {
   });
 
   it('renderSuggestion does not render snippet element', () => {
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-snippet')).toBeNull();
   });
@@ -511,7 +511,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     mockGetLastOpenFiles.mockReturnValue(['notes/a.md']);
     const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(results[0]!, el);
     expect(el.querySelector('.hybrid-search-score')).toBeNull();
   });
@@ -522,7 +522,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     const promise = modal.getSuggestions('zettel');
     vi.runAllTimers();
     await promise;
-    const el = activeDocument.createDiv();
+    const el = document.createElement("div");
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-score')).not.toBeNull();
     vi.useRealTimers();
@@ -543,9 +543,9 @@ describe('getHeadingSiblings', () => {
   });
 
   it('returns siblings until next same-level heading', () => {
-    const container = activeDocument.createDiv();
-    const makeEl = (tag: string, text?: string) => {
-      const el = activeDocument.createEl(tag);
+    const container = document.createElement("div");
+    const makeEl = (tag: keyof HTMLElementTagNameMap, text?: string) => {
+      const el = document.createElement(tag);
       if (text) el.textContent = text;
       return el;
     };
@@ -573,12 +573,12 @@ describe('getHeadingSiblings', () => {
   });
 
   it('returns all remaining siblings when no closing heading', () => {
-    const container = activeDocument.createDiv();
-    const h2El = activeDocument.createEl('h2');
+    const container = document.createElement("div");
+    const h2El = document.createElement('h2');
     h2El.textContent = 'Heading';
-    const p1 = activeDocument.createEl('p');
+    const p1 = document.createElement('p');
     p1.textContent = 'First paragraph';
-    const p2 = activeDocument.createEl('p');
+    const p2 = document.createElement('p');
     p2.textContent = 'Second paragraph';
     container.append(h2El, p1, p2);
     const h2 = container.querySelector('h2') as HTMLElement;
@@ -605,12 +605,12 @@ describe('findHeadingElement', () => {
   });
 
   it('finds leaf heading by headingPath', () => {
-    const preview = activeDocument.createDiv();
-    const h2 = activeDocument.createEl('h2');
+    const preview = document.createElement("div");
+    const h2 = document.createElement('h2');
     h2.textContent = 'Parent';
-    const h3 = activeDocument.createEl('h3');
+    const h3 = document.createElement('h3');
     h3.textContent = 'Child section';
-    const p = activeDocument.createEl('p');
+    const p = document.createElement('p');
     p.textContent = 'Content';
     preview.append(h2, h3, p);
     (modal as unknown as { previewEl: HTMLElement }).previewEl = preview;
@@ -627,7 +627,7 @@ describe('findHeadingElement', () => {
   });
 
   it('returns undefined for null headingPath', () => {
-    (modal as unknown as { previewEl: HTMLElement }).previewEl = activeDocument.createDiv();
+    (modal as unknown as { previewEl: HTMLElement }).previewEl = document.createElement("div");
     const result = (
       modal as unknown as {
         findHeadingElement(hp: string | null): HTMLElement | undefined;
