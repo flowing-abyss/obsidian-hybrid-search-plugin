@@ -258,16 +258,16 @@ export class SearchClient {
     if (this.ready) return Promise.resolve();
     if (this.spawnError) return Promise.reject(this.spawnError);
     return new Promise((resolve, reject) => {
-      const t = setTimeout(() => {
+      const t = activeWindow.setTimeout(() => {
         const diag = this.diagnostics();
         reject(new Error(`Search server timed out.\n${diag}`));
       }, timeoutMs);
       this.readyCallbacks.push(() => {
-        clearTimeout(t);
+        activeWindow.clearTimeout(t);
         resolve();
       });
       this.rejectCallbacks.push((err) => {
-        clearTimeout(t);
+        activeWindow.clearTimeout(t);
         const diag = this.diagnostics();
         reject(new Error(`${err.message}\n${diag}`));
       });

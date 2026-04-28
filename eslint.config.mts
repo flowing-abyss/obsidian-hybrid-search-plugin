@@ -3,7 +3,7 @@ import obsidianmd from 'eslint-plugin-obsidianmd';
 import sonarjs from 'eslint-plugin-sonarjs';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
-// eslint-plugin-obsidianmd targets eslint v9; @eslint/js v9 is pinned to match
+// eslint-plugin-obsidianmd requires @eslint/js ^9.30.1, so eslint v10 is blocked
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -18,6 +18,7 @@ export default tseslint.config(
         projectService: {
           allowDefaultProject: ['*.js', '*.mjs', '*.mts'],
         },
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         tsconfigRootDir: import.meta.dirname,
       },
     },

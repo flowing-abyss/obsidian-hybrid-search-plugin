@@ -18,7 +18,7 @@ if (typeof HTMLElement !== 'undefined' && !('createEl' in HTMLElement.prototype)
     tag: K,
     opts?: { text?: string; cls?: string; attr?: Record<string, string> },
   ): HTMLElementTagNameMap[K] {
-    const el = document.createElement(tag);
+    const el = activeDocument.createEl(tag);
     if (opts?.text) el.textContent = opts.text;
     if (opts?.cls) el.className = opts.cls;
     if (opts?.attr) {
@@ -33,10 +33,16 @@ if (typeof HTMLElement !== 'undefined' && !('createEl' in HTMLElement.prototype)
 
 if (typeof HTMLElement !== 'undefined' && !('createDiv' in HTMLElement.prototype)) {
   (
-    HTMLElement.prototype as HTMLElement & { createDiv: (cls?: string) => HTMLDivElement }
-  ).createDiv = function (cls?: string): HTMLDivElement {
-    const div = document.createElement('div');
-    if (cls) div.className = cls;
+    HTMLElement.prototype as HTMLElement & {
+      createDiv: (cls?: string | { cls?: string }) => HTMLDivElement;
+    }
+  ).createDiv = function (cls?: string | { cls?: string }): HTMLDivElement {
+    const div = activeDocument.createDiv();
+    if (typeof cls === 'string') {
+      div.className = cls;
+    } else if (cls?.cls) {
+      div.className = cls.cls;
+    }
     this.appendChild(div);
     return div;
   };
@@ -48,7 +54,7 @@ if (typeof HTMLElement !== 'undefined' && !('createSpan' in HTMLElement.prototyp
       createSpan: (opts?: { text?: string; cls?: string }) => HTMLSpanElement;
     }
   ).createSpan = function (opts?: { text?: string; cls?: string }): HTMLSpanElement {
-    const span = document.createElement('span');
+    const span = activeDocument.createSpan();
     if (opts?.text) span.textContent = opts.text;
     if (opts?.cls) span.className = opts.cls;
     this.appendChild(span);
@@ -83,3 +89,24 @@ if (typeof HTMLElement !== 'undefined' && !('hide' in HTMLElement.prototype)) {
     this.style.display = 'none';
   };
 }
+
+// Polyfill Obsidian's activeWindow / activeDocument globals for tests
+/* eslint-disable obsidianmd/prefer-active-doc */
+if (typeof globalThis !== 'undefined') {
+  if (!('activeWindow' in globalThis)) {
+    const win =
+      typeof window !== 'undefined'
+        ? window
+        : {
+            setTimeout: (...args: Parameters<typeof setTimeout>) =>
+              activeWindow.setTimeout(...args),
+            clearTimeout: (...args: Parameters<typeof clearTimeout>) =>
+              activeWindow.clearTimeout(...args),
+          };
+    (globalThis as Record<string, unknown>).activeWindow = win;
+  }
+  if (!('activeDocument' in globalThis) && typeof document !== 'undefined') {
+    (globalThis as Record<string, unknown>).activeDocument = document;
+  }
+}
+/* eslint-enable obsidianmd/prefer-active-doc */
