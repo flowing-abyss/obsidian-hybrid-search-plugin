@@ -8,6 +8,8 @@ import {
 } from 'obsidian';
 import type { MatchAnchor, SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
+import { GraphPanel } from './GraphPanel';
+import { hookInternalLinks } from './linkHandler';
 import { registerModalKeymap } from './modalKeymap';
 import { parseQuery } from './queryParser';
 
@@ -28,6 +30,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private currentQueryWords: string[] = [];
 
   private modeEl?: HTMLSpanElement;
+  private graphPanel?: GraphPanel;
 
   private readonly debouncedPreview = debounce(
     (path: string, snippet?: string, anchors?: MatchAnchor[], primaryIdx?: number) => {
@@ -54,6 +57,11 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.injectModeBadge();
     this.hookSuperchargedLinks();
     registerModalKeymap(this, this.app, this.settings, this.saveSettings);
+    this.graphPanel?.unload();
+    this.graphPanel = new GraphPanel(this.app, {
+      onCloseModal: () => this.close(),
+    });
+    if (!this.settings.showGraphPanel) this.graphPanel.hide();
     if (this.settings.rememberLastQuery && this.settings.lastQuery) {
       this.inputEl.value = this.settings.lastQuery;
       this.inputEl.dispatchEvent(new Event('input'));
@@ -93,6 +101,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (this.modeEl) this.modeEl.textContent = label;
   }
 
+  getGraphPanel(): GraphPanel | undefined {
+    return this.graphPanel;
+  }
+
   hidePreviewPanel(): void {
     this.debouncedPreview.cancel();
     this.previewCallId++;
@@ -104,6 +116,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
     this.currentAnchorKey = undefined;
+    this.graphPanel?.hide();
   }
 
   private clearHighlights(): void {
@@ -194,6 +207,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
     primaryIdx?: number,
   ): void {
     this.debouncedPreview(nfcPath, snippet, anchors, primaryIdx);
+    if (this.settings.showGraphPanel) {
+      this.graphPanel?.show(nfcPath);
+      this.positionGraphPanel();
+    }
   }
 
   onClose(): void {
@@ -203,6 +220,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     }
     this.unhookSuperchargedLinks();
     this.hidePreviewPanel();
+    this.graphPanel?.unload();
+    this.graphPanel = undefined;
     // Restore modal's default centering (in case positionPreview shifted it)
     this.modalEl.style.left = ``;
     this.modalEl.style.transform = ``;
@@ -360,12 +379,17 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     el.addEventListener('mouseenter', () => {
       if (!this.settings.showPreview) return;
+      const nfcPath = result.path.normalize('NFC');
       this.debouncedPreview(
         nfcPath,
         result.snippet,
         result.previewAnchors,
         result.primaryAnchorIndex,
       );
+      if (this.settings.showGraphPanel) {
+        this.graphPanel?.show(nfcPath);
+        this.positionGraphPanel();
+      }
     });
   }
 
@@ -380,12 +404,17 @@ export class SearchModal extends SuggestModal<SearchResult> {
   onSelectedChange(result: SearchResult | null): void {
     if (!this.settings.showPreview) return;
     if (result) {
+      const nfcPath = result.path.normalize('NFC');
       this.debouncedPreview(
-        result.path.normalize('NFC'),
+        nfcPath,
         result.snippet,
         result.previewAnchors,
         result.primaryAnchorIndex,
       );
+      if (this.settings.showGraphPanel) {
+        this.graphPanel?.show(nfcPath);
+        this.positionGraphPanel();
+      }
     }
   }
 
@@ -456,6 +485,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     // Re-position after render: modal may have grown taller as results loaded
     this.positionPreview();
+    this.positionGraphPanel();
     this.updatePreviewMeta(nfcPath);
   }
 
@@ -806,48 +836,36 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewEl.style.left = `${modalRect.right + gap}px`;
   }
 
+  positionGraphPanel(): void {
+    if (!this.graphPanel?.isVisible()) return;
+    const graphEl = this.graphPanel.getElement();
+    const modalRect = this.modalEl.getBoundingClientRect();
+    const gap = 12;
+    const referenceEl = this.previewEl && this.previewEl.isShown() ? this.previewEl : this.modalEl;
+    const refRect = referenceEl.getBoundingClientRect();
+
+    graphEl.style.top = `${modalRect.top}px`;
+    graphEl.style.left = `${refRect.right + gap}px`;
+  }
+
   private hookPreviewLinks(): void {
     if (!this.previewEl) return;
     this.hookInternalLinks(this.previewEl);
   }
 
   private hookInternalLinks(el: HTMLElement): void {
-    // Ctrl/Cmd + hover: show Obsidian page preview popup
-    el.addEventListener('mouseover', (evt: MouseEvent) => {
-      if (!evt.ctrlKey && !evt.metaKey) return;
-      const link = (evt.target as HTMLElement).closest('a');
-      if (!link) return;
-      const href = link.getAttribute('data-href') ?? link.getAttribute('href') ?? '';
-      if (!href || /^https?:\/\//.test(href)) return;
-      this.triggerHoverPreview(evt, link, href);
+    hookInternalLinks(el, this.app, () => this.currentPreviewPath ?? '', {
+      onHoverPreview: (evt, targetEl, href) => this.triggerHoverPreview(evt, targetEl, href),
+      onOpenFile: (file, background, closeModal) => {
+        if (background) {
+          // @ts-ignore - 'tab' is a valid PaneType in modern Obsidian.
+          void this.app.workspace.getLeaf('tab').openFile(file);
+        } else {
+          void this.app.workspace.getLeaf(false).openFile(file);
+          if (closeModal) this.close();
+        }
+      },
     });
-
-    const handler = (evt: MouseEvent) => {
-      const link = (evt.target as HTMLElement).closest('a');
-      if (!link) return;
-      const href = link.getAttribute('data-href') ?? link.getAttribute('href') ?? '';
-      if (!href || /^https?:\/\//.test(href)) return;
-      evt.preventDefault();
-      evt.stopPropagation();
-      // Ctrl/Cmd + click: show page preview, keep modal open
-      if (evt.ctrlKey || evt.metaKey) {
-        this.triggerHoverPreview(evt, link, href);
-        return;
-      }
-      const file = this.app.metadataCache.getFirstLinkpathDest(href, this.currentPreviewPath ?? '');
-      if (!(file instanceof TFile)) return;
-      if (evt.button === 1) {
-        // Middle click: open in new tab, keep modal open
-        // @ts-ignore — 'tab' is a valid PaneType in modern Obsidian
-        void this.app.workspace.getLeaf('tab').openFile(file);
-      } else {
-        // Left click: open and close modal
-        void this.app.workspace.getLeaf(false).openFile(file);
-        this.close();
-      }
-    };
-    el.addEventListener('click', handler);
-    el.addEventListener('auxclick', handler);
   }
 
   private triggerHoverPreview(evt: MouseEvent, targetEl: HTMLElement, href: string): void {

@@ -8,6 +8,7 @@ export interface HybridSearchSettings {
   showPreviewMeta: boolean;
   centerPanels: boolean;
   showPreview: boolean;
+  showGraphPanel: boolean;
   scrollToSnippet: boolean;
   rememberLastQuery: boolean;
   lastQuery: string;
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   showPreviewMeta: true,
   centerPanels: false,
   showPreview: true,
+  showGraphPanel: false,
   scrollToSnippet: false,
   rememberLastQuery: true,
   lastQuery: '',
@@ -93,6 +95,18 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           this.plugin.settings.showPreview = value;
           await this.plugin.saveSettings();
           this.display();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('Show graph panel')
+      .setDesc(
+        'Show an interactive local graph panel to the right of the preview when hovering or navigating search results.',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showGraphPanel).onChange(async (value) => {
+          this.plugin.settings.showGraphPanel = value;
+          await this.plugin.saveSettings();
         }),
       );
 

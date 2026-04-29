@@ -85,6 +85,22 @@ export function registerModalKeymap(
     }
   });
 
+  // ── Graph panel toggle ────────────────────────────────────────────────────
+
+  modal.scope.register(['Mod'], 'g', (_evt: KeyboardEvent) => {
+    settings.showGraphPanel = !settings.showGraphPanel;
+    void saveSettings();
+    if (!settings.showGraphPanel) {
+      modal.getGraphPanel()?.hide();
+      return;
+    }
+    const selected = getSelected(modal);
+    if (selected) {
+      modal.getGraphPanel()?.show(selected.path.normalize('NFC'));
+      modal.positionGraphPanel();
+    }
+  });
+
   // ── Open in new tab ───────────────────────────────────────────────────────
 
   modal.scope.register(['Mod'], 'o', (_evt: KeyboardEvent) => {

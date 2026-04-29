@@ -28,6 +28,10 @@ describe('DEFAULT_SETTINGS', () => {
   it('showPreview defaults to true', () => {
     expect(DEFAULT_SETTINGS.showPreview).toBe(true);
   });
+
+  it('showGraphPanel defaults to false', () => {
+    expect(DEFAULT_SETTINGS.showGraphPanel).toBe(false);
+  });
 });
 
 describe('HybridSearchSettingTab', () => {
@@ -115,6 +119,19 @@ describe('HybridSearchSettingTab', () => {
     expect(plugin.settings.showPreview).toBe(true);
     expect(plugin.saveSettings).toHaveBeenCalled();
   });
+
+  it('showGraphPanel toggle updates settings', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS, showGraphPanel: false } };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const graphToggle = Setting.instances.find((s) => s.getName() === 'Show graph panel');
+    expect(graphToggle).toBeDefined();
+    graphToggle!.toggleComponents[0]!.triggerChange(true);
+    expect(plugin.settings.showGraphPanel).toBe(true);
+    expect(plugin.saveSettings).toHaveBeenCalled();
+  });
 });
 
 describe('HybridSearchSettingTab — showPreview conditional UI', () => {
@@ -136,6 +153,11 @@ describe('HybridSearchSettingTab — showPreview conditional UI', () => {
   it('renders Show preview toggle', async () => {
     const tab = await makeTab({ ...DEFAULT_SETTINGS });
     expect(settingNames(tab)).toContain('Show preview');
+  });
+
+  it('renders Show graph panel toggle', async () => {
+    const tab = await makeTab({ ...DEFAULT_SETTINGS });
+    expect(settingNames(tab)).toContain('Show graph panel');
   });
 
   it('renders showPreviewMeta and centerPanels when showPreview is true', async () => {

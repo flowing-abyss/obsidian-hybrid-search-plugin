@@ -27,6 +27,14 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          body: |
+            ## What's new
+
+            - Added an optional local graph panel next to the search preview.
+            - The graph shows incoming and outgoing note links from Obsidian's metadata cache.
+            - Graph nodes support Supercharged Links styling and icons.
+            - Use `Mod+G` (`Cmd+G` on macOS, `Ctrl+G` on Windows/Linux) to toggle the graph panel.
+            - Expand individual graph nodes to follow outgoing links without leaving the search modal.
           files: |
             main.js
             styles.css

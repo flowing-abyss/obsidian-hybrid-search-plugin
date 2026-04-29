@@ -82,6 +82,7 @@ Filters can be combined freely.
 | ----------------- | --------------------------------- |
 | `Mod+J` / `Mod+K` | Next / previous result            |
 | `Mod+P`           | Toggle preview panel              |
+| `Mod+G`           | Toggle local graph panel          |
 | `Mod+O`           | Open selected in new tab          |
 | `Mod+Shift+O`     | Open all results in new tabs      |
 | `Alt+Enter`       | Insert wiki link to selected note |

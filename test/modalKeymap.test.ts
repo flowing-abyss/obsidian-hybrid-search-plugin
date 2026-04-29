@@ -20,6 +20,12 @@ describe('registerModalKeymap', () => {
   const mockTriggerPreview = vi.fn();
   const mockHidePreviewPanel = vi.fn();
   const mockClose = vi.fn();
+  const mockGraphPanel = {
+    hide: vi.fn(),
+    show: vi.fn(),
+  };
+  const mockGetGraphPanel = vi.fn(() => mockGraphPanel);
+  const mockPositionGraphPanel = vi.fn();
 
   const mockOpenFile = vi.fn();
   const mockGetLeaf = vi.fn().mockReturnValue({ openFile: mockOpenFile });
@@ -36,6 +42,8 @@ describe('registerModalKeymap', () => {
     },
     triggerPreview: mockTriggerPreview,
     hidePreviewPanel: mockHidePreviewPanel,
+    getGraphPanel: mockGetGraphPanel,
+    positionGraphPanel: mockPositionGraphPanel,
     close: mockClose,
   } as unknown as Parameters<typeof registerModalKeymap>[0];
 
@@ -81,8 +89,8 @@ describe('registerModalKeymap', () => {
     return r.handler;
   }
 
-  it('registers eight keybindings', () => {
-    expect(registrations).toHaveLength(8);
+  it('registers nine keybindings', () => {
+    expect(registrations).toHaveLength(9);
   });
 
   describe('Mod+J — move down', () => {
@@ -161,6 +169,26 @@ describe('registerModalKeymap', () => {
       const handler = findHandler(['Mod', 'Shift'], 'p');
       handler(new KeyboardEvent('keydown'));
       expect(mockTriggerPreview).toHaveBeenCalled();
+    });
+  });
+
+  describe('Mod+G — toggle graph panel', () => {
+    it('hides graph panel when disabled', () => {
+      settings.showGraphPanel = true;
+      const handler = findHandler(['Mod'], 'g');
+      handler(new KeyboardEvent('keydown'));
+      expect(settings.showGraphPanel).toBe(false);
+      expect(mockSaveSettings).toHaveBeenCalled();
+      expect(mockGraphPanel.hide).toHaveBeenCalled();
+    });
+
+    it('shows graph panel for selected item when enabled', () => {
+      settings.showGraphPanel = false;
+      const handler = findHandler(['Mod'], 'g');
+      handler(new KeyboardEvent('keydown'));
+      expect(settings.showGraphPanel).toBe(true);
+      expect(mockGraphPanel.show).toHaveBeenCalledWith('b.md');
+      expect(mockPositionGraphPanel).toHaveBeenCalled();
     });
   });
 

@@ -6,14 +6,26 @@
 import { vi } from 'vitest';
 
 export class Workspace {
+  trigger = vi.fn();
+  getLeaf = vi.fn().mockReturnValue({ openFile: vi.fn().mockResolvedValue(undefined) });
+  activeEditor?: {
+    editor: { replaceRange: ReturnType<typeof vi.fn>; getCursor: ReturnType<typeof vi.fn> };
+  };
+
   openLinkText(_path: string, _sourcePath: string, _newLeaf: boolean): Promise<void> {
     return Promise.resolve();
   }
 }
 
 export class MetadataCache {
+  resolvedLinks: Record<string, Record<string, number>> = {};
+
   getCache(_path: string): { frontmatter?: Record<string, unknown> } | null {
     return null;
+  }
+
+  getFirstLinkpathDest(path: string, _sourcePath: string): TFile | null {
+    return new TFile(path.endsWith('.md') ? path : `${path}.md`);
   }
 }
 
@@ -56,7 +68,7 @@ export class Plugin {
 export class PluginSettingTab {
   app: App;
   plugin: Plugin;
-  containerEl: HTMLElement = document.createElement('div');
+  containerEl: HTMLElement = activeDocument.createDiv();
   constructor(app: App, plugin: Plugin) {
     this.app = app;
     this.plugin = plugin;
@@ -67,8 +79,8 @@ export class PluginSettingTab {
 
 export class Modal {
   app: App;
-  contentEl: HTMLElement = document.createElement('div');
-  modalEl: HTMLElement = document.createElement('div');
+  contentEl: HTMLElement = activeDocument.createDiv();
+  modalEl: HTMLElement = activeDocument.createDiv();
   constructor(app: App) {
     this.app = app;
   }
@@ -188,10 +200,10 @@ export class Setting {
   buttonComponents: ButtonComponent[] = [];
   constructor(containerEl: HTMLElement) {
     Setting.instances.push(this);
-    const item = document.createElement('div');
+    const item = activeDocument.createDiv();
     item.className = 'setting-item';
     containerEl.appendChild(item);
-    const nameEl = document.createElement('div');
+    const nameEl = activeDocument.createDiv();
     nameEl.className = 'setting-item-name';
     item.appendChild(nameEl);
     this.nameEl = nameEl;

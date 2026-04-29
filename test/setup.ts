@@ -31,6 +31,30 @@ if (typeof HTMLElement !== 'undefined' && !('createEl' in HTMLElement.prototype)
   };
 }
 
+if (typeof HTMLElement !== 'undefined' && !('createSvg' in HTMLElement.prototype)) {
+  (
+    HTMLElement.prototype as HTMLElement & {
+      createSvg: <K extends keyof SVGElementTagNameMap>(tag: K) => SVGElementTagNameMap[K];
+    }
+  ).createSvg = function <K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    this.appendChild(el);
+    return el;
+  };
+}
+
+if (typeof SVGElement !== 'undefined' && !('createSvg' in SVGElement.prototype)) {
+  (
+    SVGElement.prototype as SVGElement & {
+      createSvg: <K extends keyof SVGElementTagNameMap>(tag: K) => SVGElementTagNameMap[K];
+    }
+  ).createSvg = function <K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    this.appendChild(el);
+    return el;
+  };
+}
+
 if (typeof HTMLElement !== 'undefined' && !('createDiv' in HTMLElement.prototype)) {
   (
     HTMLElement.prototype as HTMLElement & {
@@ -76,10 +100,26 @@ if (typeof HTMLElement !== 'undefined' && !('removeClass' in HTMLElement.prototy
     };
 }
 
+if (typeof HTMLElement !== 'undefined' && !('toggleClass' in HTMLElement.prototype)) {
+  (
+    HTMLElement.prototype as HTMLElement & {
+      toggleClass: (cls: string, enabled: boolean) => void;
+    }
+  ).toggleClass = function (cls: string, enabled: boolean): void {
+    this.classList.toggle(cls, enabled);
+  };
+}
+
 if (typeof HTMLElement !== 'undefined' && !('show' in HTMLElement.prototype)) {
   (HTMLElement.prototype as HTMLElement & { show: () => void }).show = function (): void {
     // eslint-disable-next-line obsidianmd/no-static-styles-assignment
     this.style.display = '';
+  };
+}
+
+if (typeof HTMLElement !== 'undefined' && !('isShown' in HTMLElement.prototype)) {
+  (HTMLElement.prototype as HTMLElement & { isShown: () => boolean }).isShown = function () {
+    return this.style.display !== 'none';
   };
 }
 
@@ -93,6 +133,12 @@ if (typeof HTMLElement !== 'undefined' && !('hide' in HTMLElement.prototype)) {
 // Polyfill Obsidian's activeWindow / activeDocument globals for tests
 
 if (typeof globalThis !== 'undefined') {
+  if (!('requestAnimationFrame' in globalThis)) {
+    (globalThis as Record<string, unknown>).requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    };
+  }
   if (!('activeWindow' in globalThis)) {
     const win =
       typeof window !== 'undefined'

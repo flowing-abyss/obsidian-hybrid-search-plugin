@@ -208,3 +208,168 @@ li.hybrid-search-semantic-match {
   box-shadow: 0 0 0 2px var(--interactive-accent);
   border-radius: 2px;
 }
+
+/* Graph panel */
+.ohs-graph-panel {
+  position: fixed;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-m);
+  z-index: var(--layer-modal);
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  max-width: 440px;
+  overflow: hidden;
+}
+
+.ohs-graph-viewport {
+  position: relative;
+  flex: 1;
+  padding: 16px;
+  min-height: 120px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.ohs-graph-edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ohs-graph-edge {
+  stroke: var(--background-modifier-border);
+  stroke-width: 1.5;
+}
+
+.ohs-graph-layers {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.ohs-graph-layer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ohs-graph-node-item {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.ohs-graph-node {
+  font-size: 0.82em;
+  line-height: 1.35;
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--background-secondary) !important;
+  border: 1px solid var(--background-modifier-border);
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background 0.1s;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.ohs-graph-node-item .ohs-graph-node {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.ohs-graph-node:hover {
+  background: var(--background-modifier-hover) !important;
+}
+
+.ohs-graph-source {
+  font-weight: 600;
+  background: var(--background-secondary-alt) !important;
+  color: var(--text-normal) !important;
+  border-color: var(--interactive-accent);
+  cursor: default;
+}
+
+.ohs-graph-expand-btn {
+  width: 22px;
+  min-height: 30px;
+  border: 1px solid var(--background-modifier-border);
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.ohs-graph-expand-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.ohs-graph-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: 0.78em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ohs-graph-stats {
+  white-space: nowrap;
+}
+
+.ohs-graph-depth-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ohs-graph-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9em;
+  padding: 0;
+}
+
+.ohs-graph-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.ohs-graph-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
