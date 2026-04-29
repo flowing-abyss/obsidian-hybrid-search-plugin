@@ -117,6 +117,7 @@ if (typeof globalThis !== 'undefined') {
 // jsdom's Document does not extend HTMLElement, so the HTMLElement.prototype
 // polyfills above don't cover activeDocument.createDiv() etc.
 type ObsidianCreateElOpts = { text?: string; cls?: string; attr?: Record<string, string> };
+
 if (typeof Document !== 'undefined') {
   if (!('createEl' in Document.prototype)) {
     (
@@ -130,7 +131,7 @@ if (typeof Document !== 'undefined') {
       tag: K,
       opts?: ObsidianCreateElOpts,
     ): HTMLElementTagNameMap[K] {
-      const el = activeDocument.createEl(tag);
+      const el = createEl(tag);
       if (opts?.text) el.textContent = opts.text;
       if (opts?.cls) el.className = opts.cls;
       if (opts?.attr) {
@@ -147,7 +148,7 @@ if (typeof Document !== 'undefined') {
         createDiv: (opts?: string | { cls?: string }) => HTMLDivElement;
       }
     ).createDiv = function (opts?: string | { cls?: string }): HTMLDivElement {
-      const div = activeDocument.createDiv();
+      const div = createDiv();
       if (typeof opts === 'string') {
         div.className = opts;
       } else if (opts?.cls) {
@@ -162,7 +163,7 @@ if (typeof Document !== 'undefined') {
         createSpan: (opts?: { text?: string; cls?: string }) => HTMLSpanElement;
       }
     ).createSpan = function (opts?: { text?: string; cls?: string }): HTMLSpanElement {
-      const span = activeDocument.createSpan();
+      const span = createSpan();
       if (opts?.text) span.textContent = opts.text;
       if (opts?.cls) span.className = opts.cls;
       return span;
