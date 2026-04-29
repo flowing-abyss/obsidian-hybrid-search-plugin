@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Setting } from '../__mocks__/obsidian';
 import type { HybridSearchSettings } from '../src/settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab } from '../src/settings';
 
@@ -30,6 +31,11 @@ describe('DEFAULT_SETTINGS', () => {
 });
 
 describe('HybridSearchSettingTab', () => {
+  beforeEach(() => {
+    Setting.clearInstances();
+    vi.clearAllMocks();
+  });
+
   it('constructs without throwing', async () => {
     const { App } = await import('obsidian');
     const app = new App();
@@ -39,7 +45,7 @@ describe('HybridSearchSettingTab', () => {
   it('display() renders without throwing', async () => {
     const { App } = await import('obsidian');
     const app = new App();
-    const tab = new HybridSearchSettingTab(app as never, mockPlugin as never);
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     expect(() => tab.display()).not.toThrow();
   });
@@ -47,7 +53,7 @@ describe('HybridSearchSettingTab', () => {
   it('display() does not render limit slider', async () => {
     const { App } = await import('obsidian');
     const app = new App();
-    const tab = new HybridSearchSettingTab(app as never, mockPlugin as never);
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
     const { containerEl } = tab;
@@ -61,7 +67,7 @@ describe('HybridSearchSettingTab', () => {
   it('display() renders show meta toggle', async () => {
     const { App } = await import('obsidian');
     const app = new App();
-    const tab = new HybridSearchSettingTab(app as never, mockPlugin as never);
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
     const { containerEl } = tab;
@@ -70,6 +76,45 @@ describe('HybridSearchSettingTab', () => {
     );
     expect(names).toContain('Show path and tags');
   });
+
+  it('binaryPath onChange updates settings and saves', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS } };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const binarySetting = Setting.instances.find((s) => s.textComponents.length > 0);
+    expect(binarySetting).toBeDefined();
+    binarySetting!.textComponents[0]!.triggerChange('/usr/local/bin/ohs');
+    expect(plugin.settings.binaryPath).toBe('/usr/local/bin/ohs');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+  });
+
+  it('defaultMode onChange updates settings', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS } };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const modeSetting = Setting.instances.find((s) => s.dropdownComponents.length > 0);
+    expect(modeSetting).toBeDefined();
+    modeSetting!.dropdownComponents[0]!.triggerChange('semantic');
+    expect(plugin.settings.defaultMode).toBe('semantic');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+  });
+
+  it('showPreview toggle updates settings', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS, showPreview: false } };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const previewToggle = Setting.instances.find((s) => s.getName() === 'Show preview');
+    expect(previewToggle).toBeDefined();
+    previewToggle!.toggleComponents[0]!.triggerChange(true);
+    expect(plugin.settings.showPreview).toBe(true);
+    expect(plugin.saveSettings).toHaveBeenCalled();
+  });
 });
 
 describe('HybridSearchSettingTab — showPreview conditional UI', () => {
@@ -77,7 +122,7 @@ describe('HybridSearchSettingTab — showPreview conditional UI', () => {
     const { App } = await import('obsidian');
     const app = new App();
     const plugin = { ...mockPlugin, settings };
-    const tab = new HybridSearchSettingTab(app as never, plugin as never);
+    const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
     return tab;
   }

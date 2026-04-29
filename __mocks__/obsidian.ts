@@ -28,7 +28,10 @@ export class App {
 }
 
 export class Plugin {
-  app: App = new App();
+  app: App;
+  constructor(app?: App) {
+    this.app = app ?? new App();
+  }
   addRibbonIcon(_icon: string, _title: string, _cb: (evt: MouseEvent) => void) {}
   addCommand(_cmd: {
     id: string;
@@ -86,27 +89,38 @@ export class SuggestModal<T> extends Modal {
 }
 
 export class TextComponent {
+  private cb?: (value: string) => void;
   setValue(_value: string): this {
     return this;
   }
   setPlaceholder(_placeholder: string): this {
     return this;
   }
-  onChange(_cb: (value: string) => void): this {
+  onChange(cb: (value: string) => void): this {
+    this.cb = cb;
     return this;
+  }
+  triggerChange(value: string): void {
+    this.cb?.(value);
   }
 }
 
 export class ToggleComponent {
+  private cb?: (value: boolean) => void;
   setValue(_value: boolean): this {
     return this;
   }
-  onChange(_cb: (value: boolean) => void): this {
+  onChange(cb: (value: boolean) => void): this {
+    this.cb = cb;
     return this;
+  }
+  triggerChange(value: boolean): void {
+    this.cb?.(value);
   }
 }
 
 export class DropdownComponent {
+  private cb?: (value: string) => void;
   addOption(_value: string, _display: string): this {
     return this;
   }
@@ -116,12 +130,17 @@ export class DropdownComponent {
   getValue(): string {
     return '';
   }
-  onChange(_cb: (value: string) => void): this {
+  onChange(cb: (value: string) => void): this {
+    this.cb = cb;
     return this;
+  }
+  triggerChange(value: string): void {
+    this.cb?.(value);
   }
 }
 
 export class SliderComponent {
+  private cb?: (value: number) => void;
   setLimits(_min: number, _max: number, _step: number): this {
     return this;
   }
@@ -131,54 +150,87 @@ export class SliderComponent {
   setDynamicTooltip(): this {
     return this;
   }
-  onChange(_cb: (value: number) => void): this {
+  onChange(cb: (value: number) => void): this {
+    this.cb = cb;
     return this;
+  }
+  triggerChange(value: number): void {
+    this.cb?.(value);
   }
 }
 
 export class ButtonComponent {
+  private cb?: (evt: MouseEvent) => void;
   setButtonText(_text: string): this {
     return this;
   }
   setCta(): this {
     return this;
   }
-  onClick(_cb: (evt: MouseEvent) => void): this {
+  onClick(cb: (evt: MouseEvent) => void): this {
+    this.cb = cb;
     return this;
+  }
+  triggerClick(evt?: MouseEvent): void {
+    this.cb?.(evt ?? new MouseEvent('click'));
   }
 }
 
 export class Setting {
+  static readonly instances: Setting[] = [];
+  static clearInstances(): void {
+    Setting.instances.length = 0;
+  }
   private nameEl: HTMLElement;
+  textComponents: TextComponent[] = [];
+  toggleComponents: ToggleComponent[] = [];
+  dropdownComponents: DropdownComponent[] = [];
+  buttonComponents: ButtonComponent[] = [];
   constructor(containerEl: HTMLElement) {
-    const item = containerEl.createEl('div', { cls: 'setting-item' });
-    this.nameEl = item.createEl('div', { cls: 'setting-item-name' });
+    Setting.instances.push(this);
+    const item = document.createElement('div');
+    item.className = 'setting-item';
+    containerEl.appendChild(item);
+    const nameEl = document.createElement('div');
+    nameEl.className = 'setting-item-name';
+    item.appendChild(nameEl);
+    this.nameEl = nameEl;
   }
   setName(name: string): this {
     this.nameEl.textContent = name;
     return this;
   }
+  getName(): string {
+    return this.nameEl.textContent ?? '';
+  }
   setDesc(_desc: string): this {
     return this;
   }
-  addText(_cb: (text: TextComponent) => void): this {
-    _cb(new TextComponent());
+  addText(cb: (text: TextComponent) => void): this {
+    const t = new TextComponent();
+    this.textComponents.push(t);
+    cb(t);
     return this;
   }
-  addToggle(_cb: (toggle: ToggleComponent) => void): this {
-    _cb(new ToggleComponent());
+  addToggle(cb: (toggle: ToggleComponent) => void): this {
+    const t = new ToggleComponent();
+    this.toggleComponents.push(t);
+    cb(t);
     return this;
   }
-  addDropdown(_cb: (dropdown: DropdownComponent) => void): this {
-    _cb(new DropdownComponent());
+  addDropdown(cb: (dropdown: DropdownComponent) => void): this {
+    const d = new DropdownComponent();
+    this.dropdownComponents.push(d);
+    cb(d);
     return this;
   }
   addSlider(_cb: (slider: SliderComponent) => void): this {
-    _cb(new SliderComponent());
     return this;
   }
-  addButton(_cb: (btn: ButtonComponent) => void): this {
-    _cb(new ButtonComponent());
+  addButton(cb: (btn: ButtonComponent) => void): this {
+    const b = new ButtonComponent();
+    this.buttonComponents.push(b);
+    cb(b);
     return this;
   }
 }
