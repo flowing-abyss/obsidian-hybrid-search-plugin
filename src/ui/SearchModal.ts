@@ -116,7 +116,6 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
     this.currentAnchorKey = undefined;
-    this.graphPanel?.hide();
   }
 
   private clearHighlights(): void {
@@ -206,7 +205,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
     anchors?: MatchAnchor[],
     primaryIdx?: number,
   ): void {
-    this.debouncedPreview(nfcPath, snippet, anchors, primaryIdx);
+    if (this.settings.showPreview) {
+      this.debouncedPreview(nfcPath, snippet, anchors, primaryIdx);
+    }
     if (this.settings.showGraphPanel) {
       this.graphPanel?.show(nfcPath);
       this.positionGraphPanel();
@@ -378,14 +379,15 @@ export class SearchModal extends SuggestModal<SearchResult> {
     }
 
     el.addEventListener('mouseenter', () => {
-      if (!this.settings.showPreview) return;
       const nfcPath = result.path.normalize('NFC');
-      this.debouncedPreview(
-        nfcPath,
-        result.snippet,
-        result.previewAnchors,
-        result.primaryAnchorIndex,
-      );
+      if (this.settings.showPreview) {
+        this.debouncedPreview(
+          nfcPath,
+          result.snippet,
+          result.previewAnchors,
+          result.primaryAnchorIndex,
+        );
+      }
       if (this.settings.showGraphPanel) {
         this.graphPanel?.show(nfcPath);
         this.positionGraphPanel();
@@ -402,19 +404,19 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
   onSelectedChange(result: SearchResult | null): void {
-    if (!this.settings.showPreview) return;
-    if (result) {
-      const nfcPath = result.path.normalize('NFC');
+    if (!result) return;
+    const nfcPath = result.path.normalize('NFC');
+    if (this.settings.showPreview) {
       this.debouncedPreview(
         nfcPath,
         result.snippet,
         result.previewAnchors,
         result.primaryAnchorIndex,
       );
-      if (this.settings.showGraphPanel) {
-        this.graphPanel?.show(nfcPath);
-        this.positionGraphPanel();
-      }
+    }
+    if (this.settings.showGraphPanel) {
+      this.graphPanel?.show(nfcPath);
+      this.positionGraphPanel();
     }
   }
 
@@ -814,11 +816,17 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     if (this.settings.centerPanels) {
       const previewWidth = this.previewEl.offsetWidth || 500;
-      const totalWidth = modalRect.width + gap + previewWidth;
+      let totalWidth = modalRect.width + gap + previewWidth;
+
+      if (this.graphPanel?.isVisible()) {
+        const graphWidth = this.graphPanel.getElement().offsetWidth || 380;
+        totalWidth += gap + graphWidth;
+      }
+
       const vw = window.innerWidth;
 
       if (totalWidth + 16 <= vw) {
-        // Center the modal+preview pair horizontally
+        // Center the modal+preview(+graph) pair horizontally
         const pairLeft = Math.max(8, (vw - totalWidth) / 2);
         this.modalEl.style.left = `${pairLeft}px`;
         this.modalEl.style.transform = `none`;
@@ -841,6 +849,25 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const graphEl = this.graphPanel.getElement();
     const modalRect = this.modalEl.getBoundingClientRect();
     const gap = 12;
+
+    // When preview is hidden, handle centering ourselves
+    if (this.settings.centerPanels && !this.previewEl?.isShown()) {
+      const graphWidth = graphEl.offsetWidth || 380;
+      const totalWidth = modalRect.width + gap + graphWidth;
+      const vw = window.innerWidth;
+
+      if (totalWidth + 16 <= vw) {
+        const pairLeft = Math.max(8, (vw - totalWidth) / 2);
+        this.modalEl.style.left = `${pairLeft}px`;
+        this.modalEl.style.transform = `none`;
+        graphEl.style.top = `${modalRect.top}px`;
+        graphEl.style.left = `${pairLeft + modalRect.width + gap}px`;
+        return;
+      }
+      this.modalEl.style.left = ``;
+      this.modalEl.style.transform = ``;
+    }
+
     const referenceEl = this.previewEl && this.previewEl.isShown() ? this.previewEl : this.modalEl;
     const refRect = referenceEl.getBoundingClientRect();
 
