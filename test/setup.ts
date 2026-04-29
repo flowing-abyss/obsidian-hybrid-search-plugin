@@ -91,7 +91,7 @@ if (typeof HTMLElement !== 'undefined' && !('hide' in HTMLElement.prototype)) {
 }
 
 // Polyfill Obsidian's activeWindow / activeDocument globals for tests
-/* eslint-disable obsidianmd/prefer-active-doc */
+
 if (typeof globalThis !== 'undefined') {
   if (!('activeWindow' in globalThis)) {
     const win =
@@ -110,7 +110,6 @@ if (typeof globalThis !== 'undefined') {
     (globalThis as Record<string, unknown>).activeDocument = document;
   }
 }
-/* eslint-enable obsidianmd/prefer-active-doc */
 
 // Polyfill Obsidian's DOM helper methods on Document.
 // Obsidian adds createEl/createDiv/createSpan to both HTMLElement and Document.
@@ -131,7 +130,7 @@ if (typeof Document !== 'undefined') {
       tag: K,
       opts?: ObsidianCreateElOpts,
     ): HTMLElementTagNameMap[K] {
-      const el = createEl(tag);
+      const el = document.createElement(tag);
       if (opts?.text) el.textContent = opts.text;
       if (opts?.cls) el.className = opts.cls;
       if (opts?.attr) {
@@ -148,7 +147,7 @@ if (typeof Document !== 'undefined') {
         createDiv: (opts?: string | { cls?: string }) => HTMLDivElement;
       }
     ).createDiv = function (opts?: string | { cls?: string }): HTMLDivElement {
-      const div = createDiv();
+      const div = document.createElement('div');
       if (typeof opts === 'string') {
         div.className = opts;
       } else if (opts?.cls) {
@@ -163,7 +162,7 @@ if (typeof Document !== 'undefined') {
         createSpan: (opts?: { text?: string; cls?: string }) => HTMLSpanElement;
       }
     ).createSpan = function (opts?: { text?: string; cls?: string }): HTMLSpanElement {
-      const span = createSpan();
+      const span = document.createElement('span');
       if (opts?.text) span.textContent = opts.text;
       if (opts?.cls) span.className = opts.cls;
       return span;

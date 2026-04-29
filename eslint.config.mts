@@ -48,6 +48,15 @@ export default tseslint.config(
     },
   },
   {
+    // test/setup.ts bootstraps Obsidian DOM globals — it must use raw document.createElement
+    // before those globals exist. Disable the rules that auto-replace it with Obsidian helpers.
+    files: ['test/setup.ts'],
+    rules: {
+      'obsidianmd/prefer-active-doc': 'off',
+      'obsidianmd/prefer-create-el': 'off',
+    },
+  },
+  {
     ignores: ['dist/', 'node_modules/', 'main.js', 'esbuild.config.mjs', 'version-bump.mjs'],
   },
 );
