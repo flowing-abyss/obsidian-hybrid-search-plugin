@@ -292,6 +292,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const recentPaths = this.app.workspace.getLastOpenFiles().slice(0, RECENT_FILES_LIMIT);
     const results: SearchResult[] = [];
     for (const p of recentPaths) {
+      if (!(this.app.vault.getAbstractFileByPath(p) instanceof TFile)) continue;
       const cache = this.app.metadataCache.getCache(p);
       const fm = cache?.frontmatter;
       const title =
