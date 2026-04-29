@@ -18,7 +18,7 @@ if (typeof HTMLElement !== 'undefined' && !('createEl' in HTMLElement.prototype)
     tag: K,
     opts?: { text?: string; cls?: string; attr?: Record<string, string> },
   ): HTMLElementTagNameMap[K] {
-    const el = document.createElement(tag);
+    const el = activeDocument.createEl(tag);
     if (opts?.text) el.textContent = opts.text;
     if (opts?.cls) el.className = opts.cls;
     if (opts?.attr) {
@@ -37,7 +37,7 @@ if (typeof HTMLElement !== 'undefined' && !('createDiv' in HTMLElement.prototype
       createDiv: (cls?: string | { cls?: string }) => HTMLDivElement;
     }
   ).createDiv = function (cls?: string | { cls?: string }): HTMLDivElement {
-    const div = document.createElement('div');
+    const div = activeDocument.createDiv();
     if (typeof cls === 'string') {
       div.className = cls;
     } else if (cls?.cls) {
@@ -54,7 +54,7 @@ if (typeof HTMLElement !== 'undefined' && !('createSpan' in HTMLElement.prototyp
       createSpan: (opts?: { text?: string; cls?: string }) => HTMLSpanElement;
     }
   ).createSpan = function (opts?: { text?: string; cls?: string }): HTMLSpanElement {
-    const span = document.createElement('span');
+    const span = activeDocument.createSpan();
     if (opts?.text) span.textContent = opts.text;
     if (opts?.cls) span.className = opts.cls;
     this.appendChild(span);
@@ -111,3 +111,61 @@ if (typeof globalThis !== 'undefined') {
   }
 }
 /* eslint-enable obsidianmd/prefer-active-doc */
+
+// Polyfill Obsidian's DOM helper methods on Document.
+// Obsidian adds createEl/createDiv/createSpan to both HTMLElement and Document.
+// jsdom's Document does not extend HTMLElement, so the HTMLElement.prototype
+// polyfills above don't cover activeDocument.createDiv() etc.
+type ObsidianCreateElOpts = { text?: string; cls?: string; attr?: Record<string, string> };
+if (typeof Document !== 'undefined') {
+  if (!('createEl' in Document.prototype)) {
+    (
+      Document.prototype as Document & {
+        createEl: <K extends keyof HTMLElementTagNameMap>(
+          tag: K,
+          opts?: ObsidianCreateElOpts,
+        ) => HTMLElementTagNameMap[K];
+      }
+    ).createEl = function <K extends keyof HTMLElementTagNameMap>(
+      tag: K,
+      opts?: ObsidianCreateElOpts,
+    ): HTMLElementTagNameMap[K] {
+      const el = activeDocument.createEl(tag);
+      if (opts?.text) el.textContent = opts.text;
+      if (opts?.cls) el.className = opts.cls;
+      if (opts?.attr) {
+        for (const [k, v] of Object.entries(opts.attr)) {
+          el.setAttribute(k, v);
+        }
+      }
+      return el;
+    };
+  }
+  if (!('createDiv' in Document.prototype)) {
+    (
+      Document.prototype as Document & {
+        createDiv: (opts?: string | { cls?: string }) => HTMLDivElement;
+      }
+    ).createDiv = function (opts?: string | { cls?: string }): HTMLDivElement {
+      const div = activeDocument.createDiv();
+      if (typeof opts === 'string') {
+        div.className = opts;
+      } else if (opts?.cls) {
+        div.className = opts.cls;
+      }
+      return div;
+    };
+  }
+  if (!('createSpan' in Document.prototype)) {
+    (
+      Document.prototype as Document & {
+        createSpan: (opts?: { text?: string; cls?: string }) => HTMLSpanElement;
+      }
+    ).createSpan = function (opts?: { text?: string; cls?: string }): HTMLSpanElement {
+      const span = activeDocument.createSpan();
+      if (opts?.text) span.textContent = opts.text;
+      if (opts?.cls) span.className = opts.cls;
+      return span;
+    };
+  }
+}
