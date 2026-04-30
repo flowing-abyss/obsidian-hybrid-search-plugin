@@ -563,6 +563,9 @@ describe('SearchModal — default behavior (S-102)', () => {
 
   it('renderSuggestion hides score when in recent mode', async () => {
     mockGetLastOpenFiles.mockReturnValue(['notes/a.md']);
+    mockGetAbstractFileByPath.mockReturnValue(
+      Object.assign(new TFile(), { path: 'notes/a.md', extension: 'md' }),
+    );
     const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
     const el = activeDocument.createDiv();
