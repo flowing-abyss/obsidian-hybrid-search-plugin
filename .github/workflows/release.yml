@@ -28,15 +28,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > release-notes.md <<'EOF'
-            ## What's new
-
-            - Added an optional local graph panel next to the search preview.
-            - The graph shows incoming and outgoing note links from Obsidian's metadata cache.
-            - Graph nodes support Supercharged Links styling and icons.
-            - Use `Mod+G` (`Cmd+G` on macOS, `Ctrl+G` on Windows/Linux) to toggle the graph panel.
-            - Expand individual graph nodes to follow outgoing links without leaving the search modal.
-          EOF
           gh release create "$GITHUB_REF_NAME" main.js styles.css manifest.json \
             --title "$GITHUB_REF_NAME" \
-            --notes-file release-notes.md
+            --generate-notes
