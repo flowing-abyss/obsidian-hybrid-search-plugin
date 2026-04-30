@@ -107,10 +107,26 @@ export class GraphPanel {
     });
     this.applySuperchargedFallback(link, node.path);
 
+    // Hover: highlight this node and all its direct neighbours
+    item.addEventListener('mouseenter', () => this.highlightNeighborhood(node.path));
+    item.addEventListener('mouseleave', () => this.clearHighlight());
+
+    // Active (center) note has no expand button — it is the reference point
+    if (isSource) return;
+
     const expanded = this.expandedPaths.has(node.path);
+    // ↑ for source/backlink nodes (shown above), ↓ for outgoing nodes (shown below)
+    let expandIcon: string;
+    if (expanded) {
+      expandIcon = '-';
+    } else if (node.depth < 0) {
+      expandIcon = '↑';
+    } else {
+      expandIcon = '↓';
+    }
     const expandBtn = item.createEl('button', {
       cls: 'ohs-graph-expand-btn',
-      text: expanded ? '-' : '+',
+      text: expandIcon,
       attr: {
         'aria-label': expanded ? `Collapse ${node.title}` : `Expand ${node.title}`,
         'data-path': node.path,
@@ -121,6 +137,42 @@ export class GraphPanel {
       evt.stopPropagation();
       this.toggleNodeExpansion(node.path);
     });
+  }
+
+  private highlightNeighborhood(path: string): void {
+    const connected = new Set<string>([path]);
+    for (const edge of this.graphData?.edges ?? []) {
+      if (edge.source === path) connected.add(edge.target);
+      if (edge.target === path) connected.add(edge.source);
+    }
+
+    for (const nodeEl of this.layersEl.querySelectorAll<HTMLElement>('.ohs-graph-node')) {
+      const nodePath = nodeEl.getAttribute('data-path');
+      if (nodePath && connected.has(nodePath)) {
+        nodeEl.classList.add('ohs-graph-node-highlighted');
+      } else {
+        nodeEl.classList.add('ohs-graph-node-dimmed');
+      }
+    }
+
+    for (const lineEl of this.svgEl.querySelectorAll<SVGLineElement>('.ohs-graph-edge')) {
+      const src = lineEl.getAttribute('data-source');
+      const tgt = lineEl.getAttribute('data-target');
+      if (src === path || tgt === path) {
+        lineEl.classList.add('ohs-graph-edge-highlighted');
+      } else {
+        lineEl.classList.add('ohs-graph-edge-dimmed');
+      }
+    }
+  }
+
+  private clearHighlight(): void {
+    for (const nodeEl of this.layersEl.querySelectorAll<HTMLElement>('.ohs-graph-node')) {
+      nodeEl.classList.remove('ohs-graph-node-highlighted', 'ohs-graph-node-dimmed');
+    }
+    for (const lineEl of this.svgEl.querySelectorAll<SVGLineElement>('.ohs-graph-edge')) {
+      lineEl.classList.remove('ohs-graph-edge-highlighted', 'ohs-graph-edge-dimmed');
+    }
   }
 
   private applySuperchargedFallback(link: HTMLElement, path: string): void {
@@ -159,8 +211,17 @@ export class GraphPanel {
       const base = nodes.get(path);
       if (!base) continue;
 
-      for (const target of Object.keys(this.app.metadataCache.resolvedLinks[path] ?? {})) {
-        this.addExpandedEdge(graphData, nodes, edges, path, target, base.depth + 1);
+      if (base.depth < 0) {
+        // Backlink node (↑): expand upward — find notes that link TO this note
+        for (const [source, targets] of Object.entries(this.app.metadataCache.resolvedLinks)) {
+          if (!(path in targets)) continue;
+          this.addExpandedEdge(graphData, nodes, edges, source, path, base.depth - 1);
+        }
+      } else {
+        // Outgoing node (↓): expand downward — find notes this note links to
+        for (const target of Object.keys(this.app.metadataCache.resolvedLinks[path] ?? {})) {
+          this.addExpandedEdge(graphData, nodes, edges, path, target, base.depth + 1);
+        }
       }
     }
   }
@@ -228,6 +289,8 @@ export class GraphPanel {
       line.setAttribute('x2', String(targetRect.left + targetRect.width / 2 - svgRect.left));
       line.setAttribute('y2', String(targetRect.top + targetRect.height / 2 - svgRect.top));
       line.setAttribute('class', 'ohs-graph-edge');
+      line.setAttribute('data-source', edge.source);
+      line.setAttribute('data-target', edge.target);
       this.svgEl.appendChild(line);
     }
   }

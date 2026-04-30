@@ -241,8 +241,9 @@ li.hybrid-search-semantic-match {
 }
 
 .ohs-graph-edge {
-  stroke: var(--background-modifier-border);
-  stroke-width: 1.5;
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  opacity: 0.2;
 }
 
 .ohs-graph-layers {
@@ -251,7 +252,6 @@ li.hybrid-search-semantic-match {
   align-items: center;
   gap: 20px;
   position: relative;
-  z-index: 1;
 }
 
 .ohs-graph-layer {
@@ -288,7 +288,8 @@ li.hybrid-search-semantic-match {
   min-width: 0;
 }
 
-.ohs-graph-node-item .ohs-graph-node {
+/* Only flatten the right radius for nodes that have an expand button */
+.ohs-graph-node-item .ohs-graph-node:not(.ohs-graph-source) {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
@@ -372,4 +373,25 @@ li.hybrid-search-semantic-match {
 .ohs-graph-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Hover neighbourhood highlight */
+.ohs-graph-node.ohs-graph-node-highlighted {
+  border-color: var(--interactive-accent) !important;
+  background: var(--background-modifier-hover) !important;
+  opacity: 1;
+}
+
+.ohs-graph-node.ohs-graph-node-dimmed {
+  opacity: 0.25;
+}
+
+.ohs-graph-edge.ohs-graph-edge-highlighted {
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+
+.ohs-graph-edge.ohs-graph-edge-dimmed {
+  opacity: 0.06;
 }
