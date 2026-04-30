@@ -6,6 +6,8 @@ The plugin is a thin UI layer that communicates with the [obsidian-hybrid-search
 
 > **Desktop only.**
 
+![screenshot](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/screenshot.png)
+
 ## Requirements
 
 Install the CLI globally via npm:
