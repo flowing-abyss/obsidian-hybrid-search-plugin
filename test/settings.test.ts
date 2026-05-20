@@ -16,6 +16,9 @@ const mockPlugin = {
 describe('DEFAULT_SETTINGS', () => {
   it('has expected defaults', () => {
     expect(DEFAULT_SETTINGS.binaryPath).toBe('');
+    expect(DEFAULT_SETTINGS.transport).toBe('stdio');
+    expect(DEFAULT_SETTINGS.httpHost).toBe('127.0.0.1');
+    expect(DEFAULT_SETTINGS.httpPort).toBe(3939);
     expect(DEFAULT_SETTINGS.defaultMode).toBe('hybrid');
     expect(DEFAULT_SETTINGS.showMeta).toBe(false);
   });
@@ -81,6 +84,47 @@ describe('HybridSearchSettingTab', () => {
     expect(names).toContain('Show path and tags');
   });
 
+  it('renders STDIO connection settings by default', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
+    mockPlugin.settings = { ...DEFAULT_SETTINGS };
+    tab.display();
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
+      (el) => el.textContent,
+    );
+    expect(names).toContain('Connection mode');
+    expect(names).toContain('Binary path');
+    expect(names).not.toContain('HTTP host');
+    expect(names).not.toContain('HTTP port');
+  });
+
+  it('renders HTTP host and port settings in HTTP mode', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
+    mockPlugin.settings = { ...DEFAULT_SETTINGS, transport: 'http' };
+    tab.display();
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
+      (el) => el.textContent,
+    );
+    expect(names).toContain('Connection mode');
+    expect(names).not.toContain('Binary path');
+    expect(names).toContain('HTTP host');
+    expect(names).toContain('HTTP port');
+  });
+
+  it('renders HTTP startup hint in HTTP mode', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
+    mockPlugin.settings = { ...DEFAULT_SETTINGS, transport: 'http' };
+    tab.display();
+    expect(tab.containerEl.textContent).toContain(
+      'OBSIDIAN_VAULT_PATH="/path/to/your/vault" obsidian-hybrid-search serve',
+    );
+  });
+
   it('binaryPath onChange updates settings and saves', async () => {
     const { App } = await import('obsidian');
     const app = new App();
@@ -94,13 +138,32 @@ describe('HybridSearchSettingTab', () => {
     expect(plugin.saveSettings).toHaveBeenCalled();
   });
 
+  it('connection mode onChange updates settings, saves, and restarts client', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS },
+      restartClient: vi.fn().mockResolvedValue(undefined),
+    };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const transportSetting = Setting.instances.find((s) => s.getName() === 'Connection mode');
+    expect(transportSetting).toBeDefined();
+    transportSetting!.dropdownComponents[0]!.triggerChange('http');
+    await Promise.resolve();
+    expect(plugin.settings.transport).toBe('http');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.restartClient).toHaveBeenCalled();
+  });
+
   it('defaultMode onChange updates settings', async () => {
     const { App } = await import('obsidian');
     const app = new App();
     const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS } };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const modeSetting = Setting.instances.find((s) => s.dropdownComponents.length > 0);
+    const modeSetting = Setting.instances.find((s) => s.getName() === 'Default mode');
     expect(modeSetting).toBeDefined();
     modeSetting!.dropdownComponents[0]!.triggerChange('semantic');
     expect(plugin.settings.defaultMode).toBe('semantic');

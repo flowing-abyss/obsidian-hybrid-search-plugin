@@ -1,6 +1,8 @@
 import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
+import type { RequestUrlParam } from 'obsidian';
+import { requestUrl } from 'obsidian';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -34,6 +36,9 @@ interface SearchOptions {
   scope?: string | string[];
   frontmatter?: string | string[];
   anchors?: boolean;
+  rerank?: boolean;
+  depth?: number;
+  direction?: 'outgoing' | 'backlinks' | 'both';
 }
 
 interface StdioResponse {
@@ -41,6 +46,21 @@ interface StdioResponse {
   id?: string;
   results?: SearchResult[];
   error?: string;
+}
+
+interface McpResponse {
+  id?: number;
+  result?: {
+    content?: Array<{ type?: string; text?: string }>;
+  };
+  error?: { message?: string };
+}
+
+interface HttpResponse {
+  status: number;
+  headers: Record<string, string>;
+  text: string;
+  json?: unknown;
 }
 
 /** Extra directories added to PATH on spawn so the binary is found regardless
@@ -296,4 +316,155 @@ export class SearchClient {
     }
     this.pending.clear();
   }
+}
+
+export class HttpSearchClient {
+  private readonly url: string;
+  private readonly healthUrl: string;
+  private sessionId: string | null = null;
+  private counter = 0;
+  private readyPromise: Promise<void> | null = null;
+
+  constructor(
+    private readonly host: string,
+    private readonly port: number,
+  ) {
+    this.url = `http://${host}:${port}/mcp`;
+    this.healthUrl = `http://${host}:${port}/health`;
+  }
+
+  async waitReady(timeoutMs = 30_000): Promise<void> {
+    if (this.sessionId) return;
+    this.readyPromise ??= this.initialize(timeoutMs);
+    await this.readyPromise;
+  }
+
+  async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
+    await this.waitReady();
+    const response = await this.postMcp({
+      jsonrpc: '2.0',
+      id: ++this.counter,
+      method: 'tools/call',
+      params: {
+        name: 'search',
+        arguments: this.buildSearchArguments(query, options),
+      },
+    });
+    if (response.error) return [];
+    const text = response.result?.content?.find((part) => part.type === 'text')?.text;
+    if (!text) return [];
+
+    try {
+      const body = JSON.parse(text) as { results?: SearchResult[] };
+      return body.results ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  dispose(): void {
+    this.sessionId = null;
+    this.readyPromise = null;
+  }
+
+  private async initialize(timeoutMs: number): Promise<void> {
+    const health = await requestWithTimeout({ url: this.healthUrl }, timeoutMs);
+    if (health.status < 200 || health.status >= 300) {
+      throw new Error(`HTTP MCP server is not healthy: ${health.status}`);
+    }
+    const healthBody =
+      health.json !== undefined
+        ? (health.json as { ok?: unknown })
+        : (JSON.parse(health.text) as { ok?: unknown });
+    if (healthBody.ok !== true) {
+      throw new Error('HTTP MCP server health check failed');
+    }
+
+    await this.postMcp(
+      {
+        jsonrpc: '2.0',
+        id: ++this.counter,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'obsidian-hybrid-search-plugin', version: '1.0.0' },
+        },
+      },
+      timeoutMs,
+    );
+  }
+
+  private async postMcp(body: unknown, timeoutMs = 30_000): Promise<McpResponse> {
+    const headers: Record<string, string> = {
+      accept: 'application/json, text/event-stream',
+      'content-type': 'application/json',
+    };
+    if (this.sessionId) headers['mcp-session-id'] = this.sessionId;
+
+    const res = await requestWithTimeout(
+      {
+        url: this.url,
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      },
+      timeoutMs,
+    );
+    const sessionId = getHeader(res.headers, 'mcp-session-id');
+    if (sessionId) this.sessionId = sessionId;
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`HTTP MCP request failed: ${res.status} ${res.text}`);
+    }
+    return parseMcpResponse(res.text);
+  }
+
+  private buildSearchArguments(query: string, options: SearchOptions): Record<string, unknown> {
+    return {
+      query,
+      ...(options.mode !== undefined && { mode: options.mode }),
+      ...(options.related !== undefined && { related: options.related }),
+      ...(options.notePath !== undefined && { path: options.notePath }),
+      ...(options.limit !== undefined && { limit: options.limit }),
+      ...(options.threshold !== undefined && { threshold: options.threshold }),
+      ...(options.snippetLength !== undefined && { snippet_length: options.snippetLength }),
+      ...(options.tag !== undefined && { tag: options.tag }),
+      ...(options.scope !== undefined && { scope: options.scope }),
+      ...(options.frontmatter !== undefined && { frontmatter: options.frontmatter }),
+      ...(options.anchors !== undefined && { anchors: options.anchors }),
+      ...(options.rerank !== undefined && { rerank: options.rerank }),
+      ...(options.depth !== undefined && { depth: options.depth }),
+      ...(options.direction !== undefined && { direction: options.direction }),
+    };
+  }
+}
+
+function requestWithTimeout(request: RequestUrlParam, timeoutMs: number): Promise<HttpResponse> {
+  return new Promise((resolve, reject) => {
+    // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+    const timer = setTimeout(() => reject(new Error('HTTP MCP request timed out')), timeoutMs);
+    void requestUrl({ ...request, throw: false })
+      .then((response) => resolve(response as HttpResponse))
+      .catch(reject)
+      .finally(() => {
+        // eslint-disable-next-line obsidianmd/prefer-active-window-timers
+        clearTimeout(timer);
+      });
+  });
+}
+
+function getHeader(headers: Record<string, string>, name: string): string | undefined {
+  const lowerName = name.toLowerCase();
+  return Object.entries(headers).find(([key]) => key.toLowerCase() === lowerName)?.[1];
+}
+
+function parseMcpResponse(text: string): McpResponse {
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{')) return JSON.parse(trimmed) as McpResponse;
+  const data = trimmed
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trim())
+    .join('\n');
+  return JSON.parse(data) as McpResponse;
 }

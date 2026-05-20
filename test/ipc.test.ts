@@ -23,7 +23,9 @@ vi.mock('child_process', () => ({
 }));
 
 import { spawn } from 'child_process';
-import { SearchClient } from '../src/ipc';
+import type { RequestUrlParam } from 'obsidian';
+import { requestUrl } from 'obsidian';
+import { HttpSearchClient, SearchClient } from '../src/ipc';
 
 function emitLine(line: string) {
   mockStdout.emit('data', Buffer.from(line + '\n', 'utf8'));
@@ -150,5 +152,111 @@ describe('SearchClient', () => {
 
   it('proc error event does not throw (graceful — surfaces via waitReady timeout)', () => {
     expect(() => mockProc.emit('error', new Error('ENOENT'))).not.toThrow();
+  });
+});
+
+describe('HttpSearchClient', () => {
+  const requestUrlMock = vi.mocked(requestUrl);
+
+  afterEach(() => {
+    requestUrlMock.mockReset();
+  });
+
+  it('checks health and initializes an MCP session', async () => {
+    requestUrlMock
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: {},
+        text: JSON.stringify({ ok: true }),
+        json: { ok: true },
+      } as never)
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { 'mcp-session-id': 'session-1' },
+        text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }),
+      } as never);
+
+    const client = new HttpSearchClient('127.0.0.1', 3939);
+
+    await expect(client.waitReady()).resolves.toBeUndefined();
+    expect(requestUrlMock).toHaveBeenNthCalledWith(1, {
+      url: 'http://127.0.0.1:3939/health',
+      throw: false,
+    });
+    expect(requestUrlMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        url: 'http://127.0.0.1:3939/mcp',
+        method: 'POST',
+        headers: expect.objectContaining({
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+        }),
+      }),
+    );
+  });
+
+  it('calls MCP search tool and maps plugin option names', async () => {
+    requestUrlMock
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: {},
+        text: JSON.stringify({ ok: true }),
+        json: { ok: true },
+      } as never)
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { 'mcp-session-id': 'session-1' },
+        text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }),
+      } as never)
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: {},
+        text: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  results: [{ path: 'a.md', title: 'A', score: 0.9, tags: [], aliases: [] }],
+                }),
+              },
+            ],
+          },
+        }),
+      } as never);
+    const client = new HttpSearchClient('127.0.0.1', 3939);
+
+    const results = await client.search('zettelkasten', {
+      mode: 'hybrid',
+      limit: 5,
+      snippetLength: 400,
+      notePath: 'source.md',
+      anchors: true,
+    });
+
+    expect(results).toHaveLength(1);
+    const callRequest = requestUrlMock.mock.calls[2]?.[0] as RequestUrlParam;
+    const callBody = JSON.parse(callRequest.body as string) as {
+      method: string;
+      params: { name: string; arguments: Record<string, unknown> };
+    };
+    expect(callBody.method).toBe('tools/call');
+    expect(callBody.params.name).toBe('search');
+    expect(callBody.params.arguments).toMatchObject({
+      query: 'zettelkasten',
+      mode: 'hybrid',
+      limit: 5,
+      snippet_length: 400,
+      path: 'source.md',
+      anchors: true,
+    });
+    expect(requestUrlMock.mock.calls[2]?.[0]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'mcp-session-id': 'session-1' }),
+      }),
+    );
   });
 });

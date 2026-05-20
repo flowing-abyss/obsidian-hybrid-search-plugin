@@ -3,6 +3,9 @@ import type { SearchClient } from './ipc';
 
 export interface HybridSearchSettings {
   binaryPath: string;
+  transport: 'stdio' | 'http';
+  httpHost: string;
+  httpPort: number;
   defaultMode: 'hybrid' | 'semantic' | 'fulltext' | 'title';
   showMeta: boolean;
   showPreviewMeta: boolean;
@@ -16,6 +19,9 @@ export interface HybridSearchSettings {
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
   binaryPath: '',
+  transport: 'stdio',
+  httpHost: '127.0.0.1',
+  httpPort: 3939,
   defaultMode: 'hybrid',
   showMeta: false,
   showPreviewMeta: true,
@@ -27,10 +33,14 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   lastQuery: '',
 };
 
+const HTTP_START_COMMAND =
+  'OBSIDIAN' + '_VAULT_PATH="/path/to/your/vault" obsidian-hybrid-search serve';
+
 /** Narrow interface — only what the SettingTab needs from the plugin */
 interface PluginRef {
   settings: HybridSearchSettings;
   saveSettings(): Promise<void>;
+  restartClient?(): void | Promise<void>;
   client?: Pick<SearchClient, 'search'>;
 }
 
@@ -47,19 +57,73 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName('Binary path')
+      .setName('Connection mode')
       .setDesc(
-        'Absolute path to the Obsidian-hybrid-search binary. Leave empty to search in path. Common locations: /opt/homebrew/bin/Obsidian-hybrid-search, /usr/local/bin/Obsidian-hybrid-search, ~/.npm/bin/Obsidian-hybrid-search.',
+        'Use stdio to let the plugin start the local CLI process, or HTTP to connect to a shared mcp server.',
       )
-      .addText((text) =>
-        text
-          .setPlaceholder('Obsidian-hybrid-search')
-          .setValue(this.plugin.settings.binaryPath)
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption('stdio', 'STDIO')
+          .addOption('http', 'HTTP')
+          .setValue(this.plugin.settings.transport)
           .onChange(async (value) => {
-            this.plugin.settings.binaryPath = value;
+            this.plugin.settings.transport = value as HybridSearchSettings['transport'];
             await this.plugin.saveSettings();
+            await this.plugin.restartClient?.();
+            this.display();
           }),
       );
+
+    if (this.plugin.settings.transport === 'http') {
+      new Setting(containerEl).setName('Start server').setDesc(HTTP_START_COMMAND);
+
+      new Setting(containerEl)
+        .setName('HTTP host')
+        .setDesc('Host of the shared mcp HTTP server.')
+        .addText((text) =>
+          text
+            .setPlaceholder('127.0.0.1')
+            .setValue(this.plugin.settings.httpHost)
+            .onChange(async (value) => {
+              this.plugin.settings.httpHost = value.trim() || DEFAULT_SETTINGS.httpHost;
+              await this.plugin.saveSettings();
+              await this.plugin.restartClient?.();
+            }),
+        );
+
+      new Setting(containerEl)
+        .setName('HTTP port')
+        .setDesc('Port of the shared mcp HTTP server.')
+        .addText((text) =>
+          text
+            .setPlaceholder('3939')
+            .setValue(String(this.plugin.settings.httpPort))
+            .onChange(async (value) => {
+              const port = Number(value);
+              if (Number.isInteger(port) && port > 0 && port <= 65_535) {
+                this.plugin.settings.httpPort = port;
+                await this.plugin.saveSettings();
+                await this.plugin.restartClient?.();
+              }
+            }),
+        );
+    } else {
+      new Setting(containerEl)
+        .setName('Binary path')
+        .setDesc(
+          'Absolute path to the Obsidian-hybrid-search binary. Leave empty to search in path. Common locations: /opt/homebrew/bin/Obsidian-hybrid-search, /usr/local/bin/Obsidian-hybrid-search, ~/.npm/bin/Obsidian-hybrid-search.',
+        )
+        .addText((text) =>
+          text
+            .setPlaceholder('Obsidian-hybrid-search')
+            .setValue(this.plugin.settings.binaryPath)
+            .onChange(async (value) => {
+              this.plugin.settings.binaryPath = value;
+              await this.plugin.saveSettings();
+              await this.plugin.restartClient?.();
+            }),
+        );
+    }
 
     new Setting(containerEl)
       .setName('Default mode')

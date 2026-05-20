@@ -1,16 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/ipc', () => {
-  const instance = {
+  const stdioInstance = {
+    waitReady: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+    search: vi.fn().mockResolvedValue([]),
+  };
+  const httpInstance = {
     waitReady: vi.fn().mockResolvedValue(undefined),
     dispose: vi.fn(),
     search: vi.fn().mockResolvedValue([]),
   };
   function MockSearchClient() {
-    return instance;
+    return stdioInstance;
+  }
+  function MockHttpSearchClient() {
+    return httpInstance;
   }
   return {
     SearchClient: vi.fn(MockSearchClient),
+    HttpSearchClient: vi.fn(MockHttpSearchClient),
   };
 });
 
@@ -58,6 +67,20 @@ describe('HybridSearchPlugin', () => {
     expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault');
   });
 
+  it('initialises HttpSearchClient when HTTP transport is selected', async () => {
+    const { HttpSearchClient, SearchClient } = await import('../src/ipc');
+    plugin.loadData = vi.fn().mockResolvedValue({
+      transport: 'http',
+      httpHost: '127.0.0.1',
+      httpPort: 3939,
+    });
+
+    await plugin.onload();
+
+    expect(SearchClient).not.toHaveBeenCalled();
+    expect(HttpSearchClient).toHaveBeenCalledWith('127.0.0.1', 3939);
+  });
+
   it('registers five commands', async () => {
     await plugin.onload();
     // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -92,7 +115,7 @@ describe('HybridSearchPlugin', () => {
     await plugin.onload();
     expect(plugin.client).toBeDefined();
     plugin.onunload();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(plugin.client!.dispose).toHaveBeenCalled();
   });
 

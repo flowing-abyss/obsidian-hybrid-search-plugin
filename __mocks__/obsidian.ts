@@ -194,6 +194,7 @@ export class Setting {
     Setting.instances.length = 0;
   }
   private nameEl: HTMLElement;
+  private descEl: HTMLElement;
   textComponents: TextComponent[] = [];
   toggleComponents: ToggleComponent[] = [];
   dropdownComponents: DropdownComponent[] = [];
@@ -207,6 +208,10 @@ export class Setting {
     nameEl.className = 'setting-item-name';
     item.appendChild(nameEl);
     this.nameEl = nameEl;
+    const descEl = activeDocument.createDiv();
+    descEl.className = 'setting-item-description';
+    item.appendChild(descEl);
+    this.descEl = descEl;
   }
   setName(name: string): this {
     this.nameEl.textContent = name;
@@ -215,7 +220,8 @@ export class Setting {
   getName(): string {
     return this.nameEl.textContent ?? '';
   }
-  setDesc(_desc: string): this {
+  setDesc(desc: string): this {
+    this.descEl.textContent = desc;
     return this;
   }
   addText(cb: (text: TextComponent) => void): this {
@@ -270,6 +276,8 @@ export class MarkdownRenderChild {
 export const MarkdownRenderer = {
   render: vi.fn().mockResolvedValue(undefined),
 };
+
+export const requestUrl = vi.fn();
 
 // Passthrough debounce — returns a plain function that calls cb immediately.
 // resetTimer param is accepted and ignored.

@@ -1,5 +1,5 @@
 import { Notice, Plugin } from 'obsidian';
-import { SearchClient } from './ipc';
+import { HttpSearchClient, SearchClient } from './ipc';
 import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab } from './settings';
 import { SearchModal } from './ui/SearchModal';
@@ -8,19 +8,12 @@ type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
 export default class HybridSearchPlugin extends Plugin {
   settings!: HybridSearchSettings;
-  client?: SearchClient;
+  client?: SearchClient | HttpSearchClient;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    const bin = this.settings.binaryPath || 'obsidian-hybrid-search';
-    const vault = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.() ?? '';
-    this.client = new SearchClient(bin, vault);
-
-    this.client.waitReady(30_000).catch((err: unknown) => {
-      const detail = err instanceof Error ? err.message : String(err);
-      new Notice(`Hybrid search: server did not start.\n\n${detail}`, 0);
-    });
+    this.restartClient();
 
     const openSearchModal = (forcedMode?: SearchMode) => {
       if (!this.client) {
@@ -88,6 +81,22 @@ export default class HybridSearchPlugin extends Plugin {
 
   onunload(): void {
     this.client?.dispose();
+  }
+
+  restartClient(): void {
+    this.client?.dispose();
+    this.client =
+      this.settings.transport === 'http'
+        ? new HttpSearchClient(this.settings.httpHost, this.settings.httpPort)
+        : new SearchClient(
+            this.settings.binaryPath || 'obsidian-hybrid-search',
+            (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.() ?? '',
+          );
+
+    this.client.waitReady(30_000).catch((err: unknown) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      new Notice(`Hybrid search: server did not start.\n\n${detail}`, 0);
+    });
   }
 
   async loadSettings(): Promise<void> {
