@@ -63,6 +63,57 @@ interface HttpResponse {
   json?: unknown;
 }
 
+interface HttpEndpointConfig {
+  host: string;
+  port: number;
+}
+
+interface HttpEndpointStatus {
+  host: string;
+  port: number;
+  label: string;
+}
+
+export type HttpSearchClientStatusEvent =
+  | {
+      type: 'fallback-activated';
+      from: HttpEndpointStatus;
+      to: HttpEndpointStatus;
+      reason: string;
+    }
+  | {
+      type: 'primary-restored';
+      from: HttpEndpointStatus;
+      to: HttpEndpointStatus;
+    }
+  | {
+      type: 'fallback-failed';
+      from: HttpEndpointStatus;
+      to: HttpEndpointStatus;
+      reason: string;
+    };
+
+interface HttpSearchClientOptions {
+  fallback?: HttpEndpointConfig;
+  onStatusChange?: (event: HttpSearchClientStatusEvent) => void;
+}
+
+interface HttpEndpointState extends HttpEndpointConfig {
+  url: string;
+  healthUrl: string;
+  sessionId: string | null;
+  readyPromise: Promise<void> | null;
+  reconnectFailures: number;
+  nextReconnectAt: number;
+  sessionGeneration: number;
+  cooldownRecordedForSessionGeneration: number | null;
+}
+
+const HTTP_RECONNECT_DELAYS_MS = [2_000, 5_000, 10_000, 30_000] as const;
+const PRIMARY_FAILOVER_TIMEOUT_MS = 2_000;
+const PRIMARY_RETRY_WHILE_ON_FALLBACK_MS = 60_000;
+const FALLBACK_FAILED_STATUS_THROTTLE_MS = 60_000;
+
 /** Extra directories added to PATH on spawn so the binary is found regardless
  *  of how Obsidian was launched (autostart, .desktop file, etc.).
  *  On macOS these paths are already present when launched from Terminal;
@@ -319,37 +370,162 @@ export class SearchClient {
 }
 
 export class HttpSearchClient {
-  private readonly url: string;
-  private readonly healthUrl: string;
-  private sessionId: string | null = null;
   private counter = 0;
-  private readyPromise: Promise<void> | null = null;
+  private readonly primary: HttpEndpointState;
+  private readonly fallback: HttpEndpointState | null;
+  private onStatusChange: ((event: HttpSearchClientStatusEvent) => void) | undefined;
+  private active: HttpEndpointState;
+  private nextPrimaryProbeAt = 0;
+  private fallbackFailedStatusActive = false;
+  private lastFallbackFailedStatusAt = 0;
+  private disposed = false;
 
-  constructor(
-    private readonly host: string,
-    private readonly port: number,
-  ) {
-    this.url = `http://${host}:${port}/mcp`;
-    this.healthUrl = `http://${host}:${port}/health`;
+  constructor(host: string, port: number, options: HttpSearchClientOptions = {}) {
+    this.primary = createHttpEndpointState(host, port);
+    this.fallback = options.fallback
+      ? createHttpEndpointState(options.fallback.host, options.fallback.port)
+      : null;
+    this.onStatusChange = options.onStatusChange;
+    this.active = this.primary;
   }
 
   async waitReady(timeoutMs = 30_000): Promise<void> {
-    if (this.sessionId) return;
-    this.readyPromise ??= this.initialize(timeoutMs);
-    await this.readyPromise;
+    await this.maybeRestorePrimary();
+    try {
+      await this.waitReadyForEndpoint(this.active, this.timeoutForEndpoint(this.active, timeoutMs));
+      this.markEndpointHealthy(this.active);
+    } catch (err) {
+      const fallback = this.getFailoverEndpoint(this.active, err);
+      if (fallback) {
+        try {
+          await this.waitReadyForEndpoint(fallback, timeoutMs);
+          this.markEndpointHealthy(fallback);
+          this.nextPrimaryProbeAt = Date.now() + PRIMARY_RETRY_WHILE_ON_FALLBACK_MS;
+          this.activateEndpoint(fallback, err);
+        } catch (fallbackErr) {
+          this.emitFallbackFailed(fallback, fallbackErr);
+          this.restorePrimaryAfterFailedFailover();
+          throw fallbackErr;
+        }
+        return;
+      }
+      throw err;
+    }
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
-    await this.waitReady();
-    const response = await this.postMcp({
-      jsonrpc: '2.0',
-      id: ++this.counter,
-      method: 'tools/call',
-      params: {
-        name: 'search',
-        arguments: this.buildSearchArguments(query, options),
-      },
-    });
+    await this.maybeRestorePrimary();
+    const attemptedEndpoint = this.active;
+    try {
+      const results = await this.searchEndpoint(attemptedEndpoint, query, options);
+      this.markEndpointHealthy(attemptedEndpoint);
+      return results;
+    } catch (err) {
+      const fallback = this.getFailoverEndpoint(attemptedEndpoint, err);
+      if (fallback) {
+        try {
+          const results = await this.searchEndpoint(fallback, query, options);
+          this.markEndpointHealthy(fallback);
+          this.nextPrimaryProbeAt = Date.now() + PRIMARY_RETRY_WHILE_ON_FALLBACK_MS;
+          this.activateEndpoint(fallback, err);
+          return results;
+        } catch (fallbackErr) {
+          this.emitFallbackFailed(fallback, fallbackErr);
+          this.restorePrimaryAfterFailedFailover();
+          throw fallbackErr;
+        }
+      }
+      throw err;
+    }
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.onStatusChange = undefined;
+    this.resetHttpSession(this.primary);
+    if (this.fallback) this.resetHttpSession(this.fallback);
+  }
+
+  private async maybeRestorePrimary(): Promise<void> {
+    if (this.active === this.primary || !this.fallback) return;
+    if (Date.now() < this.nextPrimaryProbeAt) return;
+
+    try {
+      await this.waitReadyForEndpoint(this.primary, this.timeoutForEndpoint(this.primary));
+      this.activateEndpoint(this.primary);
+    } catch {
+      this.nextPrimaryProbeAt = Date.now() + PRIMARY_RETRY_WHILE_ON_FALLBACK_MS;
+    }
+  }
+
+  private restorePrimaryAfterFailedFailover(): void {
+    this.active = this.primary;
+    this.nextPrimaryProbeAt = 0;
+    this.primary.reconnectFailures = 0;
+    this.primary.nextReconnectAt = 0;
+  }
+
+  private async waitReadyForEndpoint(
+    endpoint: HttpEndpointState,
+    timeoutMs = 30_000,
+  ): Promise<void> {
+    if (endpoint.sessionId) return;
+    const now = Date.now();
+    if (!endpoint.readyPromise && now < endpoint.nextReconnectAt) {
+      const waitMs = Math.ceil(endpoint.nextReconnectAt - now);
+      throw new Error(`HTTP MCP reconnect cooling down for ${waitMs}ms`);
+    }
+
+    const readyPromise = (endpoint.readyPromise ??= this.initialize(endpoint, timeoutMs));
+    try {
+      await readyPromise;
+      endpoint.reconnectFailures = 0;
+      endpoint.nextReconnectAt = 0;
+    } catch (err) {
+      if (endpoint.readyPromise === readyPromise) {
+        endpoint.readyPromise = null;
+        this.recordReconnectFailure(endpoint);
+      }
+      throw err;
+    }
+  }
+
+  private async searchEndpoint(
+    endpoint: HttpEndpointState,
+    query: string,
+    options: SearchOptions = {},
+  ): Promise<SearchResult[]> {
+    const timeoutMs = this.timeoutForEndpoint(endpoint);
+    try {
+      return await this.searchOnce(endpoint, query, options, timeoutMs);
+    } catch (err) {
+      if (
+        isLikelyStaleMcpSessionError(err) &&
+        err instanceof McpSearchRequestError &&
+        err.requestSessionGeneration === endpoint.sessionGeneration
+      ) {
+        this.resetHttpSession(endpoint, { invalidateGeneration: true });
+        return this.searchOnce(endpoint, query, options, timeoutMs);
+      }
+      throw err;
+    }
+  }
+
+  private async searchOnce(
+    endpoint: HttpEndpointState,
+    query: string,
+    options: SearchOptions = {},
+    timeoutMs = 30_000,
+  ): Promise<SearchResult[]> {
+    await this.waitReadyForEndpoint(endpoint, timeoutMs);
+    const requestSessionGeneration = endpoint.sessionGeneration;
+    const response = await this.postSearchMcpRequest(
+      endpoint,
+      query,
+      options,
+      requestSessionGeneration,
+      timeoutMs,
+    );
     if (response.error) return [];
     const text = response.result?.content?.find((part) => part.type === 'text')?.text;
     if (!text) return [];
@@ -362,25 +538,90 @@ export class HttpSearchClient {
     }
   }
 
-  dispose(): void {
-    this.sessionId = null;
-    this.readyPromise = null;
+  private async postSearchMcpRequest(
+    endpoint: HttpEndpointState,
+    query: string,
+    options: SearchOptions,
+    requestSessionGeneration: number,
+    timeoutMs: number,
+  ): Promise<McpResponse> {
+    try {
+      return await this.postMcp(
+        endpoint,
+        {
+          jsonrpc: '2.0',
+          id: ++this.counter,
+          method: 'tools/call',
+          params: {
+            name: 'search',
+            arguments: this.buildSearchArguments(query, options),
+          },
+        },
+        timeoutMs,
+      );
+    } catch (err) {
+      if (this.fallback && isLikelyUnavailableMcpServerError(err)) {
+        this.recordSessionUnavailable(endpoint, requestSessionGeneration);
+      }
+      throw new McpSearchRequestError(err, requestSessionGeneration);
+    }
   }
 
-  private async initialize(timeoutMs: number): Promise<void> {
-    const health = await requestWithTimeout({ url: this.healthUrl }, timeoutMs);
+  private resetHttpSession(
+    endpoint: HttpEndpointState,
+    {
+      recordFailure = false,
+      invalidateGeneration = false,
+    }: {
+      recordFailure?: boolean;
+      invalidateGeneration?: boolean;
+    } = {},
+  ): void {
+    endpoint.sessionId = null;
+    endpoint.readyPromise = null;
+    if (invalidateGeneration) {
+      endpoint.sessionGeneration++;
+      endpoint.cooldownRecordedForSessionGeneration = null;
+    }
+    if (recordFailure) this.recordReconnectFailure(endpoint);
+  }
+
+  private recordSessionUnavailable(endpoint: HttpEndpointState, sessionGeneration: number): void {
+    if (endpoint.sessionGeneration !== sessionGeneration) return;
+    if (endpoint.cooldownRecordedForSessionGeneration === sessionGeneration) return;
+
+    endpoint.sessionId = null;
+    endpoint.readyPromise = null;
+    endpoint.cooldownRecordedForSessionGeneration = sessionGeneration;
+    this.recordReconnectFailure(endpoint);
+  }
+
+  private async initialize(endpoint: HttpEndpointState, timeoutMs: number): Promise<void> {
+    const health = await requestWithTimeout({ url: endpoint.healthUrl }, timeoutMs);
     if (health.status < 200 || health.status >= 300) {
       throw new Error(`HTTP MCP server is not healthy: ${health.status}`);
     }
-    const healthBody =
-      health.json !== undefined
-        ? (health.json as { ok?: unknown })
-        : (JSON.parse(health.text) as { ok?: unknown });
+    let healthBody: { ok?: unknown };
+    try {
+      const parsedHealthBody =
+        health.json !== undefined ? health.json : (JSON.parse(health.text) as unknown);
+      if (
+        typeof parsedHealthBody !== 'object' ||
+        parsedHealthBody === null ||
+        Array.isArray(parsedHealthBody)
+      ) {
+        throw new Error('Invalid health body');
+      }
+      healthBody = parsedHealthBody;
+    } catch {
+      throw new Error('HTTP MCP server health check failed');
+    }
     if (healthBody.ok !== true) {
       throw new Error('HTTP MCP server health check failed');
     }
 
     await this.postMcp(
+      endpoint,
       {
         jsonrpc: '2.0',
         id: ++this.counter,
@@ -392,31 +633,50 @@ export class HttpSearchClient {
         },
       },
       timeoutMs,
+      { rejectJsonRpcError: true },
     );
   }
 
-  private async postMcp(body: unknown, timeoutMs = 30_000): Promise<McpResponse> {
+  private recordReconnectFailure(endpoint: HttpEndpointState): void {
+    const delayIndex = Math.min(endpoint.reconnectFailures, HTTP_RECONNECT_DELAYS_MS.length - 1);
+    endpoint.nextReconnectAt = Date.now() + HTTP_RECONNECT_DELAYS_MS[delayIndex]!;
+    endpoint.reconnectFailures++;
+  }
+
+  private async postMcp(
+    endpoint: HttpEndpointState,
+    body: unknown,
+    timeoutMs = 30_000,
+    options: { rejectJsonRpcError?: boolean } = {},
+  ): Promise<McpResponse> {
     const headers: Record<string, string> = {
       accept: 'application/json, text/event-stream',
       'content-type': 'application/json',
     };
-    if (this.sessionId) headers['mcp-session-id'] = this.sessionId;
+    if (endpoint.sessionId) headers['mcp-session-id'] = endpoint.sessionId;
 
     const res = await requestWithTimeout(
       {
-        url: this.url,
+        url: endpoint.url,
         method: 'POST',
         headers,
         body: JSON.stringify(body),
       },
       timeoutMs,
     );
-    const sessionId = getHeader(res.headers, 'mcp-session-id');
-    if (sessionId) this.sessionId = sessionId;
     if (res.status < 200 || res.status >= 300) {
       throw new Error(`HTTP MCP request failed: ${res.status} ${res.text}`);
     }
-    return parseMcpResponse(res.text);
+    const parsed = parseMcpResponse(res.text);
+    if (options.rejectJsonRpcError && parsed.error) {
+      throw new Error(`HTTP MCP JSON-RPC error: ${parsed.error.message ?? 'Unknown error'}`);
+    }
+    const sessionId = getHeader(res.headers, 'mcp-session-id');
+    if (sessionId && sessionId !== endpoint.sessionId) {
+      endpoint.sessionId = sessionId;
+      endpoint.sessionGeneration++;
+    }
+    return parsed;
   }
 
   private buildSearchArguments(query: string, options: SearchOptions): Record<string, unknown> {
@@ -437,6 +697,111 @@ export class HttpSearchClient {
       ...(options.direction !== undefined && { direction: options.direction }),
     };
   }
+
+  private getFailoverEndpoint(endpoint: HttpEndpointState, err: unknown): HttpEndpointState | null {
+    if (endpoint !== this.primary || !this.fallback) return null;
+    if (err instanceof McpSearchRequestError) {
+      if (err.requestSessionGeneration !== endpoint.sessionGeneration) return null;
+      return isLikelyUnavailableMcpServerError(err) || isLikelyStaleMcpSessionError(err)
+        ? this.fallback
+        : null;
+    }
+    return isLikelyUnavailableMcpServerError(err) ||
+      isLikelyUnhealthyMcpServerError(err) ||
+      isLikelyStaleMcpSessionError(err) ||
+      isReconnectCoolingDownError(err)
+      ? this.fallback
+      : null;
+  }
+
+  private timeoutForEndpoint(endpoint: HttpEndpointState, timeoutMs = 30_000): number {
+    return endpoint === this.primary && this.fallback
+      ? Math.min(timeoutMs, PRIMARY_FAILOVER_TIMEOUT_MS)
+      : timeoutMs;
+  }
+
+  private activateEndpoint(endpoint: HttpEndpointState, reason?: unknown): void {
+    if (this.active === endpoint) return;
+
+    const previous = this.active;
+    this.active = endpoint;
+
+    if (previous === this.primary && endpoint === this.fallback) {
+      this.emitStatusChange({
+        type: 'fallback-activated',
+        from: endpointStatus(previous),
+        to: endpointStatus(endpoint),
+        reason: errorMessage(reason),
+      });
+      return;
+    }
+
+    if (previous === this.fallback && endpoint === this.primary) {
+      this.emitStatusChange({
+        type: 'primary-restored',
+        from: endpointStatus(previous),
+        to: endpointStatus(endpoint),
+      });
+    }
+  }
+
+  private emitFallbackFailed(fallback: HttpEndpointState, err: unknown): void {
+    const now = Date.now();
+    if (
+      this.fallbackFailedStatusActive &&
+      now - this.lastFallbackFailedStatusAt < FALLBACK_FAILED_STATUS_THROTTLE_MS
+    ) {
+      return;
+    }
+    this.fallbackFailedStatusActive = true;
+    this.lastFallbackFailedStatusAt = now;
+    this.emitStatusChange({
+      type: 'fallback-failed',
+      from: endpointStatus(this.primary),
+      to: endpointStatus(fallback),
+      reason: errorMessage(err),
+    });
+  }
+
+  private emitStatusChange(event: HttpSearchClientStatusEvent): void {
+    if (this.disposed) return;
+    this.onStatusChange?.(event);
+  }
+
+  private markEndpointHealthy(_endpoint: HttpEndpointState): void {
+    this.fallbackFailedStatusActive = false;
+  }
+}
+
+function createHttpEndpointState(host: string, port: number): HttpEndpointState {
+  return {
+    host,
+    port,
+    url: `http://${host}:${port}/mcp`,
+    healthUrl: `http://${host}:${port}/health`,
+    sessionId: null,
+    readyPromise: null,
+    reconnectFailures: 0,
+    nextReconnectAt: 0,
+    sessionGeneration: 0,
+    cooldownRecordedForSessionGeneration: null,
+  };
+}
+
+function endpointLabel(endpoint: HttpEndpointConfig): string {
+  return `${endpoint.host}:${endpoint.port}`;
+}
+
+function endpointStatus(endpoint: HttpEndpointConfig): HttpEndpointStatus {
+  return {
+    host: endpoint.host,
+    port: endpoint.port,
+    label: endpointLabel(endpoint),
+  };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function requestWithTimeout(request: RequestUrlParam, timeoutMs: number): Promise<HttpResponse> {
@@ -451,6 +816,46 @@ function requestWithTimeout(request: RequestUrlParam, timeoutMs: number): Promis
         clearTimeout(timer);
       });
   });
+}
+
+function isLikelyStaleMcpSessionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /HTTP MCP request failed: (400|401|403|404|409)\b/.test(err.message);
+}
+
+class McpSearchRequestError extends Error {
+  constructor(
+    err: unknown,
+    readonly requestSessionGeneration: number,
+  ) {
+    super(err instanceof Error ? err.message : String(err));
+    this.name = err instanceof Error ? err.name : 'McpSearchRequestError';
+    if (err instanceof Error) this.stack = err.stack;
+  }
+}
+
+function isLikelyUnavailableMcpServerError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    /HTTP MCP request failed: (429|500|502|503|504)\b/.test(err.message) ||
+    /HTTP MCP request timed out/.test(err.message) ||
+    /(?:ECONNREFUSED|ECONNRESET|ENOTFOUND|ETIMEDOUT|Failed to fetch|NetworkError|Load failed|fetch failed)/i.test(
+      err.message,
+    )
+  );
+}
+
+function isLikelyUnhealthyMcpServerError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    /HTTP MCP server is not healthy: (429|500|502|503|504)\b/.test(err.message) ||
+    /HTTP MCP server health check failed/.test(err.message)
+  );
+}
+
+function isReconnectCoolingDownError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /HTTP MCP reconnect cooling down/.test(err.message);
 }
 
 function getHeader(headers: Record<string, string>, name: string): string | undefined {

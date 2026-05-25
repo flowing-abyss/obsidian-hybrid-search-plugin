@@ -1,4 +1,5 @@
 import { Notice, Plugin } from 'obsidian';
+import type { HttpSearchClientStatusEvent } from './ipc';
 import { HttpSearchClient, SearchClient } from './ipc';
 import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab } from './settings';
@@ -85,18 +86,47 @@ export default class HybridSearchPlugin extends Plugin {
 
   restartClient(): void {
     this.client?.dispose();
+    let startupFailureCoveredByStatus = false;
     this.client =
       this.settings.transport === 'http'
-        ? new HttpSearchClient(this.settings.httpHost, this.settings.httpPort)
+        ? new HttpSearchClient(this.settings.httpHost, this.settings.httpPort, {
+            fallback: this.settings.httpFallbackEnabled
+              ? {
+                  host: this.settings.httpFallbackHost,
+                  port: this.settings.httpFallbackPort,
+                }
+              : undefined,
+            onStatusChange: (event) => {
+              if (event.type === 'fallback-failed') startupFailureCoveredByStatus = true;
+              this.handleHttpStatusChange(event);
+            },
+          })
         : new SearchClient(
             this.settings.binaryPath || 'obsidian-hybrid-search',
             (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.() ?? '',
           );
 
     this.client.waitReady(30_000).catch((err: unknown) => {
+      if (startupFailureCoveredByStatus) return;
       const detail = err instanceof Error ? err.message : String(err);
       new Notice(`Hybrid search: server did not start.\n\n${detail}`, 0);
     });
+  }
+
+  private handleHttpStatusChange(event: HttpSearchClientStatusEvent): void {
+    if (event.type === 'fallback-activated') {
+      new Notice(`Hybrid search: primary server unavailable; using fallback ${event.to.label}.`);
+      return;
+    }
+
+    if (event.type === 'primary-restored') {
+      new Notice(`Hybrid search: reconnected to primary server ${event.to.label}.`);
+      return;
+    }
+
+    new Notice(
+      `Hybrid search: primary server unavailable and fallback ${event.to.label} failed.\n\n${event.reason}`,
+    );
   }
 
   async loadSettings(): Promise<void> {

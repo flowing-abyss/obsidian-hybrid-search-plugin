@@ -35,6 +35,12 @@ describe('DEFAULT_SETTINGS', () => {
   it('showGraphPanel defaults to false', () => {
     expect(DEFAULT_SETTINGS.showGraphPanel).toBe(false);
   });
+
+  it('has fallback HTTP defaults', () => {
+    expect(DEFAULT_SETTINGS.httpFallbackEnabled).toBe(false);
+    expect(DEFAULT_SETTINGS.httpFallbackHost).toBe('127.0.0.1');
+    expect(DEFAULT_SETTINGS.httpFallbackPort).toBe(3939);
+  });
 });
 
 describe('HybridSearchSettingTab', () => {
@@ -123,6 +129,60 @@ describe('HybridSearchSettingTab', () => {
     expect(tab.containerEl.textContent).toContain(
       'OBSIDIAN_VAULT_PATH="/path/to/your/vault" obsidian-hybrid-search serve',
     );
+  });
+
+  it('renders fallback HTTP settings in HTTP mode', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
+    mockPlugin.settings = { ...DEFAULT_SETTINGS, transport: 'http' };
+    tab.display();
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
+      (el) => el.textContent,
+    );
+    expect(names).toContain('Enable fallback server');
+    expect(names).not.toContain('Fallback HTTP host');
+    expect(names).not.toContain('Fallback HTTP port');
+  });
+
+  it('renders fallback host and port when fallback is enabled', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
+    mockPlugin.settings = {
+      ...DEFAULT_SETTINGS,
+      transport: 'http',
+      httpFallbackEnabled: true,
+    };
+    tab.display();
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
+      (el) => el.textContent,
+    );
+    expect(names).toContain('Fallback HTTP host');
+    expect(names).toContain('Fallback HTTP port');
+  });
+
+  it('fallback toggle saves, restarts client, and refreshes settings UI', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = {
+      ...mockPlugin,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        transport: 'http',
+        httpFallbackEnabled: false,
+      } as HybridSearchSettings,
+      restartClient: vi.fn().mockResolvedValue(undefined),
+    };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const fallbackSetting = Setting.instances.find((s) => s.getName() === 'Enable fallback server');
+    expect(fallbackSetting).toBeDefined();
+    fallbackSetting!.toggleComponents[0]!.triggerChange(true);
+    await Promise.resolve();
+    expect(plugin.settings.httpFallbackEnabled).toBe(true);
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.restartClient).toHaveBeenCalled();
   });
 
   it('binaryPath onChange updates settings and saves', async () => {

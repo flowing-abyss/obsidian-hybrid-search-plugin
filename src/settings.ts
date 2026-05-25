@@ -6,6 +6,9 @@ export interface HybridSearchSettings {
   transport: 'stdio' | 'http';
   httpHost: string;
   httpPort: number;
+  httpFallbackEnabled: boolean;
+  httpFallbackHost: string;
+  httpFallbackPort: number;
   defaultMode: 'hybrid' | 'semantic' | 'fulltext' | 'title';
   showMeta: boolean;
   showPreviewMeta: boolean;
@@ -22,6 +25,9 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   transport: 'stdio',
   httpHost: '127.0.0.1',
   httpPort: 3939,
+  httpFallbackEnabled: false,
+  httpFallbackHost: '127.0.0.1',
+  httpFallbackPort: 3939,
   defaultMode: 'hybrid',
   showMeta: false,
   showPreviewMeta: true,
@@ -107,6 +113,54 @@ export class HybridSearchSettingTab extends PluginSettingTab {
               }
             }),
         );
+
+      new Setting(containerEl)
+        .setName('Enable fallback server')
+        .setDesc(
+          'Use a secondary mcp HTTP server when the primary server is unavailable. The fallback should serve the same vault/index.',
+        )
+        .addToggle((toggle) =>
+          toggle.setValue(this.plugin.settings.httpFallbackEnabled).onChange(async (value) => {
+            this.plugin.settings.httpFallbackEnabled = value;
+            await this.plugin.saveSettings();
+            await this.plugin.restartClient?.();
+            this.display();
+          }),
+        );
+
+      if (this.plugin.settings.httpFallbackEnabled) {
+        new Setting(containerEl)
+          .setName('Fallback HTTP host')
+          .setDesc('Host of the fallback mcp HTTP server.')
+          .addText((text) =>
+            text
+              .setPlaceholder('127.0.0.1')
+              .setValue(this.plugin.settings.httpFallbackHost)
+              .onChange(async (value) => {
+                this.plugin.settings.httpFallbackHost =
+                  value.trim() || DEFAULT_SETTINGS.httpFallbackHost;
+                await this.plugin.saveSettings();
+                await this.plugin.restartClient?.();
+              }),
+          );
+
+        new Setting(containerEl)
+          .setName('Fallback HTTP port')
+          .setDesc('Port of the fallback mcp HTTP server.')
+          .addText((text) =>
+            text
+              .setPlaceholder('3939')
+              .setValue(String(this.plugin.settings.httpFallbackPort))
+              .onChange(async (value) => {
+                const port = Number(value);
+                if (Number.isInteger(port) && port > 0 && port <= 65_535) {
+                  this.plugin.settings.httpFallbackPort = port;
+                  await this.plugin.saveSettings();
+                  await this.plugin.restartClient?.();
+                }
+              }),
+          );
+      }
     } else {
       new Setting(containerEl)
         .setName('Binary path')

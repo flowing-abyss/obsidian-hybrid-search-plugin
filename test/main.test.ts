@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('obsidian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('obsidian')>();
+  return {
+    ...actual,
+    Notice: vi.fn(),
+  };
+});
+
 vi.mock('../src/ipc', () => {
   const stdioInstance = {
     waitReady: vi.fn().mockResolvedValue(undefined),
@@ -23,7 +31,7 @@ vi.mock('../src/ipc', () => {
   };
 });
 
-import { App } from 'obsidian';
+import { App, Notice } from 'obsidian';
 import HybridSearchPlugin from '../src/main';
 
 const mockGetBasePath = vi.fn().mockReturnValue('/vault');
@@ -40,11 +48,17 @@ const mockApp = {
 
 const mockManifest = { id: 'hybrid-search', name: 'Hybrid Search', version: '0.1.0' };
 
+async function flushPromises() {
+  await Promise.resolve();
+}
+
 describe('HybridSearchPlugin', () => {
   let plugin: HybridSearchPlugin;
+  const NoticeMock = Notice as unknown as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    NoticeMock.mockClear();
     plugin = new HybridSearchPlugin(mockApp as unknown as App, mockManifest as never);
     plugin.loadData = vi.fn().mockResolvedValue({});
     plugin.saveData = vi.fn().mockResolvedValue(undefined);
@@ -71,14 +85,100 @@ describe('HybridSearchPlugin', () => {
     const { HttpSearchClient, SearchClient } = await import('../src/ipc');
     plugin.loadData = vi.fn().mockResolvedValue({
       transport: 'http',
-      httpHost: '127.0.0.1',
+      httpHost: 'remote.example.com',
       httpPort: 3939,
+      httpFallbackEnabled: true,
+      httpFallbackHost: '127.0.0.1',
+      httpFallbackPort: 4949,
     });
 
     await plugin.onload();
 
     expect(SearchClient).not.toHaveBeenCalled();
-    expect(HttpSearchClient).toHaveBeenCalledWith('127.0.0.1', 3939);
+    expect(HttpSearchClient).toHaveBeenCalledWith(
+      'remote.example.com',
+      3939,
+      expect.objectContaining({
+        fallback: {
+          host: '127.0.0.1',
+          port: 4949,
+        },
+        onStatusChange: expect.any(Function),
+      }),
+    );
+  });
+
+  it('shows notices for meaningful HTTP endpoint status changes', async () => {
+    const { HttpSearchClient } = await import('../src/ipc');
+    plugin.loadData = vi.fn().mockResolvedValue({
+      transport: 'http',
+      httpHost: 'remote.example.com',
+      httpPort: 3939,
+      httpFallbackEnabled: true,
+      httpFallbackHost: '127.0.0.1',
+      httpFallbackPort: 4949,
+    });
+
+    await plugin.onload();
+
+    const options = vi.mocked(HttpSearchClient).mock.calls[0]?.[2] as
+      | { onStatusChange?: (event: unknown) => void }
+      | undefined;
+    expect(options?.onStatusChange).toEqual(expect.any(Function));
+
+    options!.onStatusChange!({
+      type: 'fallback-activated',
+      from: { host: 'remote.example.com', port: 3939, label: 'remote.example.com:3939' },
+      to: { host: '127.0.0.1', port: 4949, label: '127.0.0.1:4949' },
+      reason: 'HTTP MCP request timed out',
+    });
+    options!.onStatusChange!({
+      type: 'primary-restored',
+      from: { host: '127.0.0.1', port: 4949, label: '127.0.0.1:4949' },
+      to: { host: 'remote.example.com', port: 3939, label: 'remote.example.com:3939' },
+    });
+
+    expect(NoticeMock).toHaveBeenCalledWith(
+      'Hybrid search: primary server unavailable; using fallback 127.0.0.1:4949.',
+    );
+    expect(NoticeMock).toHaveBeenCalledWith(
+      'Hybrid search: reconnected to primary server remote.example.com:3939.',
+    );
+  });
+
+  it('shows fallback failure reason without duplicate generic startup notice', async () => {
+    const { HttpSearchClient } = await import('../src/ipc');
+    plugin.loadData = vi.fn().mockResolvedValue({
+      transport: 'http',
+      httpHost: 'remote.example.com',
+      httpPort: 3939,
+      httpFallbackEnabled: true,
+      httpFallbackHost: '127.0.0.1',
+      httpFallbackPort: 4949,
+    });
+    vi.mocked(HttpSearchClient).mockImplementationOnce(function (_host, _port, options) {
+      return {
+        waitReady: vi.fn().mockImplementation(() => {
+          options?.onStatusChange?.({
+            type: 'fallback-failed',
+            from: { host: 'remote.example.com', port: 3939, label: 'remote.example.com:3939' },
+            to: { host: '127.0.0.1', port: 4949, label: '127.0.0.1:4949' },
+            reason: 'HTTP MCP server is not healthy: 503',
+          });
+          return Promise.reject(new Error('HTTP MCP server is not healthy: 503'));
+        }),
+        dispose: vi.fn(),
+        search: vi.fn().mockResolvedValue([]),
+      };
+    });
+
+    await plugin.onload();
+    await flushPromises();
+
+    expect(NoticeMock).toHaveBeenCalledTimes(1);
+    expect(NoticeMock).toHaveBeenCalledWith(
+      'Hybrid search: primary server unavailable and fallback 127.0.0.1:4949 failed.\n\nHTTP MCP server is not healthy: 503',
+    );
   });
 
   it('registers five commands', async () => {
