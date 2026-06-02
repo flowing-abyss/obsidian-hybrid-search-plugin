@@ -8,6 +8,14 @@ import { vi } from 'vitest';
 export class Workspace {
   trigger = vi.fn();
   getLeaf = vi.fn().mockReturnValue({ openFile: vi.fn().mockResolvedValue(undefined) });
+  getRightLeaf = vi.fn().mockReturnValue({
+    view: {},
+    setViewState: vi.fn().mockResolvedValue(undefined),
+  });
+  getLeavesOfType = vi.fn().mockReturnValue([]);
+  revealLeaf = vi.fn();
+  on = vi.fn().mockReturnValue({});
+  offref = vi.fn();
   activeEditor?: {
     editor: { replaceRange: ReturnType<typeof vi.fn>; getCursor: ReturnType<typeof vi.fn> };
   };
@@ -36,7 +44,16 @@ export class App {
     adapter: {
       getBasePath: () => '/test-vault',
     },
+    getAbstractFileByPath: (path: string) => new TFile(path),
   };
+}
+
+export class Component {
+  load(): void {}
+  unload(): void {}
+  registerDomEvent(el: EventTarget, type: string, listener: EventListenerOrEventListenerObject) {
+    el.addEventListener(type, listener);
+  }
 }
 
 export class Plugin {
@@ -58,11 +75,11 @@ export class Plugin {
     return Promise.resolve();
   }
   addSettingTab(_tab: PluginSettingTab) {}
-  registerDomEvent(
-    _el: EventTarget,
-    _type: string,
-    _listener: EventListenerOrEventListenerObject,
-  ) {}
+  registerView(_type: string, _viewCreator: (leaf: WorkspaceLeaf) => unknown) {}
+  registerEvent(_eventRef: unknown) {}
+  registerDomEvent(el: EventTarget, type: string, listener: EventListenerOrEventListenerObject) {
+    el.addEventListener(type, listener);
+  }
 }
 
 export class PluginSettingTab {
@@ -88,6 +105,51 @@ export class Modal {
   close() {}
   onOpen() {}
   onClose() {}
+}
+
+export class ItemView {
+  app: App;
+  containerEl: HTMLElement = activeDocument.createDiv();
+  leaf: WorkspaceLeaf;
+  constructor(leaf: WorkspaceLeaf) {
+    this.leaf = leaf;
+    this.app = leaf.app ?? new App();
+    this.containerEl.appendChild(activeDocument.createDiv());
+    this.containerEl.appendChild(activeDocument.createDiv());
+  }
+  getViewType(): string {
+    return '';
+  }
+  getDisplayText(): string {
+    return '';
+  }
+  getIcon(): string {
+    return '';
+  }
+  onOpen(): Promise<void> {
+    return Promise.resolve();
+  }
+  onClose(): Promise<void> {
+    return Promise.resolve();
+  }
+  registerDomEvent(el: EventTarget, type: string, listener: EventListenerOrEventListenerObject) {
+    el.addEventListener(type, listener);
+  }
+}
+
+export class MarkdownView {
+  file: TFile | null = null;
+  containerEl: HTMLElement = activeDocument.createDiv();
+  leaf: WorkspaceLeaf;
+  constructor(leaf?: WorkspaceLeaf) {
+    this.leaf = leaf ?? new WorkspaceLeaf();
+  }
+}
+
+export class WorkspaceLeaf {
+  app?: App;
+  view: unknown = {};
+  setViewState = vi.fn().mockResolvedValue(undefined);
 }
 
 export class SuggestModal<T> extends Modal {
@@ -259,8 +321,10 @@ export class Notice {
 
 export class TFile {
   path: string;
-  constructor(path: string) {
+  extension: string;
+  constructor(path = '') {
     this.path = path;
+    this.extension = path.includes('.') ? path.replace(/^.*\./, '') : '';
   }
 }
 
@@ -274,10 +338,18 @@ export class MarkdownRenderChild {
 }
 
 export const MarkdownRenderer = {
-  render: vi.fn().mockResolvedValue(undefined),
+  render: vi.fn((_app, source: string, el: HTMLElement) => {
+    el.textContent = source;
+    return Promise.resolve();
+  }),
 };
 
 export const requestUrl = vi.fn();
+
+export const setIcon = vi.fn((parent: HTMLElement, iconId: string) => {
+  parent.dataset.icon = iconId;
+  parent.textContent = iconId;
+});
 
 // Passthrough debounce — returns a plain function that calls cb immediately.
 // resetTimer param is accepted and ignored.

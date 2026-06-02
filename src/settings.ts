@@ -18,6 +18,9 @@ export interface HybridSearchSettings {
   scrollToSnippet: boolean;
   rememberLastQuery: boolean;
   lastQuery: string;
+  showSimilarNotesAtBottom: boolean;
+  similarNotesBottomLimit: number;
+  similarNotesThreshold: number;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
@@ -37,6 +40,9 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   scrollToSnippet: false,
   rememberLastQuery: true,
   lastQuery: '',
+  showSimilarNotesAtBottom: false,
+  similarNotesBottomLimit: 5,
+  similarNotesThreshold: 0,
 };
 
 const HTTP_START_COMMAND =
@@ -47,6 +53,7 @@ interface PluginRef {
   settings: HybridSearchSettings;
   saveSettings(): Promise<void>;
   restartClient?(): void | Promise<void>;
+  onSimilarNotesSettingsChanged?(): void;
   client?: Pick<SearchClient, 'search'>;
 }
 
@@ -273,6 +280,54 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }),
       );
+
+    new Setting(containerEl)
+      .setName('Show similar notes at bottom')
+      .setDesc('Display similar notes above embedded backlinks in rendered notes.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showSimilarNotesAtBottom).onChange(async (value) => {
+          this.plugin.settings.showSimilarNotesAtBottom = value;
+          await this.plugin.saveSettings();
+          this.plugin.onSimilarNotesSettingsChanged?.();
+          this.display();
+        }),
+      );
+
+    if (this.plugin.settings.showSimilarNotesAtBottom) {
+      new Setting(containerEl)
+        .setName('Similar notes limit')
+        .setDesc('Maximum number of similar notes shown at the bottom of a note.')
+        .addText((text) =>
+          text
+            .setPlaceholder('5')
+            .setValue(String(this.plugin.settings.similarNotesBottomLimit))
+            .onChange(async (value) => {
+              const limit = Number(value);
+              if (Number.isInteger(limit) && limit >= 1 && limit <= 20) {
+                this.plugin.settings.similarNotesBottomLimit = limit;
+                await this.plugin.saveSettings();
+                this.plugin.onSimilarNotesSettingsChanged?.();
+              }
+            }),
+        );
+
+      new Setting(containerEl)
+        .setName('Minimum similarity')
+        .setDesc('Hide semantic results below this score. Use 0 to keep every result.')
+        .addText((text) =>
+          text
+            .setPlaceholder('0')
+            .setValue(String(this.plugin.settings.similarNotesThreshold))
+            .onChange(async (value) => {
+              const threshold = Number(value);
+              if (Number.isFinite(threshold) && threshold >= 0 && threshold <= 1) {
+                this.plugin.settings.similarNotesThreshold = threshold;
+                await this.plugin.saveSettings();
+                this.plugin.onSimilarNotesSettingsChanged?.();
+              }
+            }),
+        );
+    }
 
     new Setting(containerEl)
       .setName('Test connection')

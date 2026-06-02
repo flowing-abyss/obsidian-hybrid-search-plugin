@@ -58,6 +58,38 @@ describe('hookInternalLinks', () => {
     expect(callbacks.onOpenFile).toHaveBeenCalledWith(expect.any(TFile), true, false);
   });
 
+  it('opens Mod-clicks in background instead of triggering hover preview', () => {
+    const { link, callbacks } = setup();
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0, metaKey: true }));
+    expect(callbacks.onHoverPreview).not.toHaveBeenCalled();
+    expect(callbacks.onOpenFile).toHaveBeenCalledWith(expect.any(TFile), true, false);
+  });
+
+  it('passes the clicked link to dynamic source path resolvers', () => {
+    const app = new App();
+    const getFirstLinkpathDest = vi
+      .fn()
+      .mockReturnValue(
+        Object.assign(new TFile(), { path: 'Nested/Target.md' }),
+      ) as unknown as typeof app.metadataCache.getFirstLinkpathDest;
+    app.metadataCache.getFirstLinkpathDest = getFirstLinkpathDest;
+    const el = activeDocument.createDiv();
+    const wrapper = el.createDiv();
+    wrapper.setAttribute('data-source-path', 'Nested/Source.md');
+    const link = wrapper.createDiv();
+    link.setAttribute('data-href', 'Target');
+    hookInternalLinks(
+      el,
+      app,
+      (targetEl) => targetEl?.closest<HTMLElement>('[data-source-path]')?.dataset.sourcePath ?? '',
+      { onHoverPreview: vi.fn(), onOpenFile: vi.fn() },
+    );
+
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+    expect(getFirstLinkpathDest).toHaveBeenCalledWith('Target', 'Nested/Source.md');
+  });
+
   it('ignores external links', () => {
     const { link, callbacks } = setup();
     link.setAttribute('data-href', 'https://example.com');

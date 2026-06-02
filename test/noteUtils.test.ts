@@ -1,0 +1,153 @@
+import { TFile } from 'obsidian';
+import { describe, expect, it, vi } from 'vitest';
+import type { SearchResult } from '../src/ipc';
+import {
+  applySuperchargedLinkAttributes,
+  createInternalLink,
+  fetchSimilarNotesDetailed,
+  fileToDragWikiLink,
+  getResultTitle,
+} from '../src/ui/noteUtils';
+
+const related: SearchResult = {
+  path: 'related.md',
+  title: 'Related',
+  score: 0.84,
+  tags: [],
+  aliases: [],
+};
+
+describe('noteUtils', () => {
+  it('fetchSimilarNotesDetailed returns semantic results without source note', async () => {
+    const search = vi.fn().mockResolvedValue([{ ...related, path: 'source.md' }, related]);
+
+    const result = await fetchSimilarNotesDetailed({ search }, 'source.md', {
+      limit: 5,
+      threshold: 0,
+    });
+
+    expect(search).toHaveBeenCalledWith('', { notePath: 'source.md', limit: 6 });
+    expect(result.scoreMode).toBe('similarity');
+    expect(result.results).toEqual([related]);
+  });
+
+  it('fetchSimilarNotesDetailed falls back to structural related search', async () => {
+    const search = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([related]);
+
+    const result = await fetchSimilarNotesDetailed({ search }, 'source.md', {
+      limit: 3,
+      threshold: 0,
+    });
+
+    expect(search).toHaveBeenNthCalledWith(1, '', {
+      notePath: 'source.md',
+      limit: 4,
+    });
+    expect(search).toHaveBeenNthCalledWith(2, 'source.md', { related: true, limit: 4 });
+    expect(result.scoreMode).toBe('structural');
+    expect(result.results).toEqual([related]);
+  });
+
+  it('fetchSimilarNotesDetailed passes threshold to semantic search and does not fall back to structural notes', async () => {
+    const search = vi.fn().mockResolvedValueOnce([]);
+
+    const result = await fetchSimilarNotesDetailed({ search }, 'source.md', {
+      limit: 3,
+      threshold: 0.7,
+    });
+
+    expect(search).toHaveBeenCalledWith('', {
+      notePath: 'source.md',
+      limit: 4,
+      threshold: 0.7,
+    });
+    expect(result.scoreMode).toBe('similarity');
+    expect(result.results).toEqual([]);
+  });
+
+  it('fileToDragWikiLink uses Obsidian fileToLinktext when available', () => {
+    const file = Object.assign(new TFile(), { path: 'folder/target.md' });
+    const app = {
+      vault: { getAbstractFileByPath: () => file },
+      metadataCache: {
+        fileToLinktext: vi.fn().mockReturnValue('target'),
+      },
+    };
+
+    expect(fileToDragWikiLink(app as never, 'folder/target.md', 'source.md')).toBe('[[target]]');
+    expect(app.metadataCache.fileToLinktext).toHaveBeenCalledWith(file, 'source.md', true);
+  });
+
+  it('applySuperchargedLinkAttributes copies scalar frontmatter values', () => {
+    const app = {
+      metadataCache: {
+        getCache: () => ({
+          frontmatter: {
+            type: 'book',
+            rating: 5,
+            archived: false,
+            tags: ['skip'],
+            position: 'skip',
+          },
+        }),
+      },
+    };
+    const link = activeDocument.createEl('a');
+
+    applySuperchargedLinkAttributes(app as never, link, 'note.md');
+
+    expect(link.getAttribute('data-link-type')).toBe('book');
+    expect(link.getAttribute('data-link-rating')).toBe('5');
+    expect(link.getAttribute('data-link-archived')).toBe('false');
+    expect(link.hasAttribute('data-link-tags')).toBe(false);
+    expect(link.hasAttribute('data-link-position')).toBe(false);
+  });
+
+  it('getResultTitle falls back from empty title to filename', () => {
+    const app = { metadataCache: { getCache: () => null } };
+    expect(getResultTitle(app as never, { path: 'folder/Fallback.md', title: '' })).toBe(
+      'Fallback',
+    );
+  });
+
+  it('createInternalLink drag payload omits unescaped html', () => {
+    const app = {
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const parent = activeDocument.createDiv();
+    const link = createInternalLink(app as never, parent, 'weird "note".md', 'Weird', 'test-link');
+    const payloads = new Map<string, string>();
+    const event = new Event('dragstart') as DragEvent;
+    Object.defineProperty(event, 'dataTransfer', {
+      value: {
+        effectAllowed: '',
+        setData: (type: string, value: string) => payloads.set(type, value),
+      },
+    });
+
+    link.dispatchEvent(event);
+
+    expect(payloads.get('text/plain')).toBe('[[weird "note"]]');
+    expect(payloads.get('text/markdown')).toBe('[[weird "note"]]');
+    expect(payloads.has('text/html')).toBe(false);
+  });
+
+  it('createInternalLink uses Obsidian-style link href without md extension', () => {
+    const app = {
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const parent = activeDocument.createDiv();
+    const link = createInternalLink(
+      app as never,
+      parent,
+      'folder/target.md',
+      'Target',
+      'test-link',
+    );
+
+    expect(link.getAttribute('href')).toBe('folder/target');
+    expect(link.getAttribute('data-href')).toBe('folder/target');
+  });
+});

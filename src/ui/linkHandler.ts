@@ -5,15 +5,17 @@ interface LinkHandlerCallbacks {
   onOpenFile: (file: TFile, background: boolean, closeModal: boolean) => void;
 }
 
+type SourcePathResolver = string | ((link?: HTMLElement) => string);
+
 export function hookInternalLinks(
   el: HTMLElement,
   app: App,
-  sourcePath: string | (() => string),
+  sourcePath: SourcePathResolver,
   callbacks: LinkHandlerCallbacks,
 ): void {
   el.addEventListener('mouseover', (evt: MouseEvent) => {
     if (!evt.ctrlKey && !evt.metaKey) return;
-    const link = (evt.target as HTMLElement).closest('a');
+    const link = (evt.target as HTMLElement).closest<HTMLElement>('a, [data-href]');
     if (!link) return;
     const href = link.getAttribute('data-href') ?? link.getAttribute('href') ?? '';
     if (!href || /^https?:\/\//.test(href)) return;
@@ -21,28 +23,24 @@ export function hookInternalLinks(
   });
 
   const handler = (evt: MouseEvent) => {
-    const link = (evt.target as HTMLElement).closest('a');
+    const link = (evt.target as HTMLElement).closest<HTMLElement>('a, [data-href]');
     if (!link) return;
     const href = link.getAttribute('data-href') ?? link.getAttribute('href') ?? '';
     if (!href || /^https?:\/\//.test(href)) return;
     evt.preventDefault();
     evt.stopPropagation();
 
-    if (evt.ctrlKey || evt.metaKey) {
-      callbacks.onHoverPreview(evt, link, href);
-      return;
-    }
-
-    const currentSourcePath = typeof sourcePath === 'function' ? sourcePath() : sourcePath;
+    const currentSourcePath = resolveSourcePath(sourcePath, link);
     const file = app.metadataCache.getFirstLinkpathDest(href, currentSourcePath);
     if (!(file instanceof TFile)) return;
-    if (evt.button === 1) {
-      callbacks.onOpenFile(file, true, false);
-    } else {
-      callbacks.onOpenFile(file, false, true);
-    }
+    const background = evt.button === 1 || evt.ctrlKey || evt.metaKey;
+    callbacks.onOpenFile(file, background, !background);
   };
 
   el.addEventListener('click', handler);
   el.addEventListener('auxclick', handler);
+}
+
+function resolveSourcePath(sourcePath: SourcePathResolver, link: HTMLElement): string {
+  return typeof sourcePath === 'function' ? sourcePath(link) : sourcePath;
 }

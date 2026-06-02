@@ -11,6 +11,14 @@ import type { HybridSearchSettings } from '../settings';
 import { GraphPanel } from './GraphPanel';
 import { hookInternalLinks } from './linkHandler';
 import { registerModalKeymap } from './modalKeymap';
+import {
+  applySuperchargedLinkAttributes,
+  createInternalLink,
+  fetchSimilarNotesDetailed,
+  getResultTitle,
+  modeLabel,
+  scoreColor,
+} from './noteUtils';
 import { parseQuery } from './queryParser';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
@@ -84,17 +92,6 @@ export class SearchModal extends SuggestModal<SearchResult> {
       cls: 'hybrid-search-mode-badge',
       text: initialLabel,
     });
-  }
-
-  private modeLabel(mode: string, rerank: boolean): string {
-    const letters: Record<string, string> = {
-      hybrid: 'H',
-      semantic: 'S',
-      fulltext: 'F',
-      title: 'T',
-    };
-    const letter = letters[mode] ?? mode[0]?.toUpperCase() ?? '?';
-    return rerank && mode === 'hybrid' ? `${letter}*` : letter;
   }
 
   private updateModeBadge(label: string): void {
@@ -257,7 +254,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
       .map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
       .filter((w) => w.length >= 2);
     this.updateModeBadge(
-      this.modeLabel(
+      modeLabel(
         overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
         overrides.rerank ?? false,
       ),
@@ -294,18 +291,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   private async doFetchSimilar(): Promise<SearchResult[]> {
     const path = this.activePath!;
-    // Try semantic similarity (requires embedding; API key or local model)
-    const semantic = await this.client.search('', { notePath: path });
-    const filtered = semantic.filter((r) => r.path !== path);
-    if (filtered.length > 0) {
-      this.isRecentMode = false; // semantic scores are meaningful
-      return filtered;
-    }
-    // Fallback: BFS graph traversal (works without embeddings)
-    // BFS scores (0.5 for depth=1) are structural, not semantic — hide them
-    this.isRecentMode = true;
-    const bfs = await this.client.search(path, { related: true });
-    return bfs.filter((r) => r.path !== path);
+    const result = await fetchSimilarNotesDetailed(this.client, path, {
+      limit: this.settings.similarNotesBottomLimit,
+      threshold: this.settings.similarNotesThreshold,
+    });
+    this.isRecentMode = result.scoreMode === 'structural';
+    return result.results;
   }
 
   private buildRecentResults(): SearchResult[] {
@@ -316,9 +307,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
       if (!(file instanceof TFile) || file.extension !== 'md') continue;
       const cache = this.app.metadataCache.getCache(p);
       const fm = cache?.frontmatter;
-      const title =
-        (typeof fm?.title === 'string' ? fm.title : undefined) ??
-        p.replace(/^.*\//, '').replace(/\.md$/, '');
+      const title = getResultTitle(this.app, { path: p, title: '' });
       const tags = Array.isArray(fm?.tags) ? (fm.tags as string[]) : [];
       const aliases = Array.isArray(fm?.aliases) ? (fm.aliases as string[]) : [];
       results.push({ path: p, title, score: 0, tags, aliases });
@@ -336,29 +325,13 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const container = el.createDiv({ cls: 'hybrid-search-result' });
 
     const titleRow = container.createDiv({ cls: 'hybrid-search-title' });
-    const link = titleRow.createEl('a', {
-      text: result.title || result.path,
-      cls: 'internal-link hybrid-search-name',
-      attr: { 'data-href': nfcPath.replace(/\.md$/, '') },
-    });
-    // Fallback styling when Supercharged Links is not installed:
-    // mirror what SL's updateDivExtraAttributes produces so user CSS works.
-    link.classList.add('data-link-icon', 'data-link-icon-after', 'data-link-text');
-    const fm = this.app.metadataCache.getCache(nfcPath)?.frontmatter;
-    if (fm) {
-      for (const [key, val] of Object.entries(fm)) {
-        if (key === 'position') continue;
-        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
-          const strVal = String(val);
-          try {
-            link.setAttribute(`data-link-${key}`, strVal);
-            link.style.setProperty(`--data-link-${key}`, strVal);
-          } catch {
-            // skip frontmatter keys that produce invalid attribute names
-          }
-        }
-      }
-    }
+    createInternalLink(
+      this.app,
+      titleRow,
+      nfcPath,
+      result.title || result.path,
+      'hybrid-search-name',
+    );
 
     if (!this.isRecentMode) {
       titleRow.createSpan({
@@ -792,22 +765,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
       cls: 'internal-link hybrid-search-preview-meta-link',
       attr: { 'data-href': nfcPath.replace(/\.md$/, '') },
     });
-    // SuperchargedLinks compatibility: apply frontmatter data-link-* attributes
     a.classList.add('data-link-icon', 'data-link-icon-after', 'data-link-text');
-    if (fm) {
-      for (const [key, val] of Object.entries(fm)) {
-        if (key === 'position') continue;
-        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
-          const strVal = String(val);
-          try {
-            a.setAttribute(`data-link-${key}`, strVal);
-            a.style.setProperty(`--data-link-${key}`, strVal);
-          } catch {
-            // skip frontmatter keys that produce invalid attribute names
-          }
-        }
-      }
-    }
+    applySuperchargedLinkAttributes(this.app, a, nfcPath);
   }
 
   private positionPreview(): void {
@@ -887,7 +846,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
       onOpenFile: (file, background, closeModal) => {
         if (background) {
           // @ts-ignore - 'tab' is a valid PaneType in modern Obsidian.
-          void this.app.workspace.getLeaf('tab').openFile(file);
+          void this.app.workspace.getLeaf('tab').openFile(file, { active: false });
         } else {
           void this.app.workspace.getLeaf(false).openFile(file);
           if (closeModal) this.close();
@@ -1066,10 +1025,4 @@ function snippetScrollCandidates(snippet: string): string[] {
 
 function byScoreDesc(a: SearchResult, b: SearchResult): number {
   return b.score - a.score;
-}
-
-function scoreColor(score: number): string {
-  if (score >= 0.8) return '#4caf50';
-  if (score >= 0.5) return '#ff9800';
-  return '#9e9e9e';
 }

@@ -4,17 +4,24 @@ import { HttpSearchClient, SearchClient } from './ipc';
 import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab } from './settings';
 import { SearchModal } from './ui/SearchModal';
+import { revealSearchPanel, SEARCH_PANEL_VIEW_TYPE, SearchPanelView } from './ui/SearchPanelView';
+import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
 export default class HybridSearchPlugin extends Plugin {
   settings!: HybridSearchSettings;
   client?: SearchClient | HttpSearchClient;
+  private similarNotesBottom?: SimilarNotesBottomManager;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
     this.restartClient();
+    this.registerView(SEARCH_PANEL_VIEW_TYPE, (leaf) => new SearchPanelView(leaf, this));
+
+    this.similarNotesBottom = new SimilarNotesBottomManager(this.app, this);
+    this.similarNotesBottom.load();
 
     const openSearchModal = (forcedMode?: SearchMode) => {
       if (!this.client) {
@@ -62,6 +69,46 @@ export default class HybridSearchPlugin extends Plugin {
       callback: () => openSearchModal('title'),
     });
 
+    this.addCommand({
+      id: 'open-search-panel',
+      name: 'Open search panel',
+      callback: () => {
+        void revealSearchPanel(this);
+      },
+    });
+
+    this.addCommand({
+      id: 'search-panel-hybrid',
+      name: 'Search panel: Hybrid mode',
+      callback: () => {
+        void revealSearchPanel(this, 'hybrid');
+      },
+    });
+
+    this.addCommand({
+      id: 'search-panel-fulltext',
+      name: 'Search panel: Fulltext mode',
+      callback: () => {
+        void revealSearchPanel(this, 'fulltext');
+      },
+    });
+
+    this.addCommand({
+      id: 'search-panel-semantic',
+      name: 'Search panel: Semantic mode',
+      callback: () => {
+        void revealSearchPanel(this, 'semantic');
+      },
+    });
+
+    this.addCommand({
+      id: 'search-panel-title',
+      name: 'Search panel: Title mode',
+      callback: () => {
+        void revealSearchPanel(this, 'title');
+      },
+    });
+
     this.addRibbonIcon('search', 'Hybrid search', () => {
       if (!this.client) {
         new Notice('Hybrid search: client not ready.');
@@ -81,6 +128,7 @@ export default class HybridSearchPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.similarNotesBottom?.unload();
     this.client?.dispose();
   }
 
@@ -139,5 +187,9 @@ export default class HybridSearchPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+  }
+
+  onSimilarNotesSettingsChanged(): void {
+    this.similarNotesBottom?.settingsChanged();
   }
 }

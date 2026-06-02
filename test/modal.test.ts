@@ -481,6 +481,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     vi.runAllTimers();
     await promise;
     expect(mockSearch).toHaveBeenCalledWith('', {
+      limit: DEFAULT_SETTINGS.similarNotesBottomLimit + 1,
       notePath: activeFilePath,
     });
     vi.useRealTimers();

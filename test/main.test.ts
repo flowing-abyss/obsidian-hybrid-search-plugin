@@ -65,6 +65,7 @@ describe('HybridSearchPlugin', () => {
     plugin.addCommand = vi.fn();
     plugin.addRibbonIcon = vi.fn();
     plugin.addSettingTab = vi.fn();
+    plugin.registerView = vi.fn();
   });
 
   it('loads settings on onload', async () => {
@@ -181,10 +182,10 @@ describe('HybridSearchPlugin', () => {
     );
   });
 
-  it('registers five commands', async () => {
+  it('registers search modal and search panel commands', async () => {
     await plugin.onload();
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(plugin.addCommand).toHaveBeenCalledTimes(5);
+    expect(plugin.addCommand).toHaveBeenCalledTimes(10);
     const ids = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls.map(
       (c: unknown[]) => (c[0] as { id: string }).id,
     );
@@ -193,6 +194,11 @@ describe('HybridSearchPlugin', () => {
     expect(ids).toContain('search-fulltext');
     expect(ids).toContain('search-semantic');
     expect(ids).toContain('search-title');
+    expect(ids).toContain('open-search-panel');
+    expect(ids).toContain('search-panel-hybrid');
+    expect(ids).toContain('search-panel-fulltext');
+    expect(ids).toContain('search-panel-semantic');
+    expect(ids).toContain('search-panel-title');
   });
 
   it('registers ribbon icon', async () => {
@@ -209,6 +215,12 @@ describe('HybridSearchPlugin', () => {
     await plugin.onload();
     // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(plugin.addSettingTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers docked search panel view', async () => {
+    await plugin.onload();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(plugin.registerView).toHaveBeenCalledWith('hybrid-search-panel', expect.any(Function));
   });
 
   it('onunload disposes client', async () => {

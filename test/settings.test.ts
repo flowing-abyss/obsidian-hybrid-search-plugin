@@ -41,6 +41,12 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.httpFallbackHost).toBe('127.0.0.1');
     expect(DEFAULT_SETTINGS.httpFallbackPort).toBe(3939);
   });
+
+  it('has similar notes and search panel defaults', () => {
+    expect(DEFAULT_SETTINGS.showSimilarNotesAtBottom).toBe(false);
+    expect(DEFAULT_SETTINGS.similarNotesBottomLimit).toBe(5);
+    expect(DEFAULT_SETTINGS.similarNotesThreshold).toBe(0);
+  });
 });
 
 describe('HybridSearchSettingTab', () => {
@@ -88,6 +94,34 @@ describe('HybridSearchSettingTab', () => {
       (el) => el.textContent,
     );
     expect(names).toContain('Show path and tags');
+  });
+
+  it('display() hides similar note limit until enabled', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
+    mockPlugin.settings = { ...DEFAULT_SETTINGS };
+    tab.display();
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
+      (el) => el.textContent,
+    );
+    expect(names).toContain('Show similar notes at bottom');
+    expect(names).not.toContain('Similar notes limit');
+    expect(names).not.toContain('Minimum similarity');
+    expect(names).not.toContain('Search panel limit');
+  });
+
+  it('display() renders similar note limit when similar notes are enabled', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
+    mockPlugin.settings = { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true };
+    tab.display();
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
+      (el) => el.textContent,
+    );
+    expect(names).toContain('Similar notes limit');
+    expect(names).toContain('Minimum similarity');
   });
 
   it('renders STDIO connection settings by default', async () => {
@@ -241,6 +275,25 @@ describe('HybridSearchSettingTab', () => {
     previewToggle!.toggleComponents[0]!.triggerChange(true);
     expect(plugin.settings.showPreview).toBe(true);
     expect(plugin.saveSettings).toHaveBeenCalled();
+  });
+
+  it('similar notes toggle updates settings and refreshes bottom views', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS },
+      onSimilarNotesSettingsChanged: vi.fn(),
+    };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const setting = Setting.instances.find((s) => s.getName() === 'Show similar notes at bottom');
+    expect(setting).toBeDefined();
+    setting!.toggleComponents[0]!.triggerChange(true);
+    await Promise.resolve();
+    expect(plugin.settings.showSimilarNotesAtBottom).toBe(true);
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.onSimilarNotesSettingsChanged).toHaveBeenCalled();
   });
 
   it('showGraphPanel toggle updates settings', async () => {

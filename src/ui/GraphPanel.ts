@@ -343,7 +343,7 @@ export class GraphPanel {
       onOpenFile: (file, background) => {
         if (background) {
           // @ts-ignore - 'tab' is a valid PaneType in modern Obsidian.
-          void this.app.workspace.getLeaf('tab').openFile(file);
+          void this.app.workspace.getLeaf('tab').openFile(file, { active: false });
         } else {
           void this.app.workspace.getLeaf(false).openFile(file);
           this.onCloseModal();
