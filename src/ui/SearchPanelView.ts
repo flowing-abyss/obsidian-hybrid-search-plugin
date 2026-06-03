@@ -1,5 +1,5 @@
-import { ItemView, Notice, TFile, type WorkspaceLeaf } from 'obsidian';
-import type { SearchResult } from '../ipc';
+import { ItemView, Notice, setIcon, TFile, type WorkspaceLeaf } from 'obsidian';
+import type { MatchAnchor, SearchResult } from '../ipc';
 import type HybridSearchPlugin from '../main';
 import {
   createInternalLink,
@@ -15,7 +15,7 @@ import {
 import { parseQuery } from './queryParser';
 
 export const SEARCH_PANEL_VIEW_TYPE = 'hybrid-search-panel';
-const DEFAULT_SEARCH_PANEL_LIMIT = 20;
+const SEARCH_PANEL_SNIPPET_LENGTH = 400;
 
 export class SearchPanelView extends ItemView {
   private inputEl!: HTMLInputElement;
@@ -24,9 +24,17 @@ export class SearchPanelView extends ItemView {
   private requestId = 0;
   private selectedIndex = -1;
   private results: SearchResult[] = [];
+  private expandedPaths = new Set<string>();
+  private allExpanded = false;
   private closed = true;
   private panelMode: SearchMode;
   private modeEl?: HTMLSpanElement;
+  private optionsEl?: HTMLElement;
+  private limitInputEl?: HTMLInputElement;
+  private thresholdInputEl?: HTMLInputElement;
+  private expandAllButtonEl?: HTMLButtonElement;
+  private panelLimit: number;
+  private panelThreshold: number;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -34,6 +42,8 @@ export class SearchPanelView extends ItemView {
   ) {
     super(leaf);
     this.panelMode = plugin.settings.defaultMode;
+    this.panelLimit = plugin.settings.searchPanelLimit;
+    this.panelThreshold = plugin.settings.searchPanelThreshold;
   }
 
   getViewType(): string {
@@ -66,11 +76,52 @@ export class SearchPanelView extends ItemView {
     });
     this.modeEl.setAttribute('aria-label', 'Search mode');
     this.modeEl.setAttribute('title', 'Search mode. Select to cycle modes.');
+    this.createToolbarButton(inputWrap, 'settings', 'Search options', () => this.toggleOptions());
+    this.optionsEl = container.createDiv({ cls: 'hybrid-search-panel-options is-hidden' });
+    this.optionsEl.hide();
+    this.expandAllButtonEl = this.createToolbarButton(
+      this.optionsEl,
+      'list',
+      'Expand all results',
+      () => this.toggleAllResults(),
+    );
+    this.createToolbarButton(
+      this.optionsEl,
+      'copy',
+      'Copy result links',
+      () => void this.copyResults(),
+    );
+    this.optionsEl.createSpan({ cls: 'hybrid-search-panel-option-label', text: 'Limit' });
+    this.limitInputEl = this.optionsEl.createEl('input', {
+      cls: 'hybrid-search-panel-option-input',
+      attr: {
+        type: 'number',
+        min: '1',
+        max: '200',
+        step: '1',
+        value: String(this.panelLimit),
+        'aria-label': 'Search result limit',
+      },
+    });
+    this.optionsEl.createSpan({ cls: 'hybrid-search-panel-option-label', text: '>=' });
+    this.thresholdInputEl = this.optionsEl.createEl('input', {
+      cls: 'hybrid-search-panel-option-input',
+      attr: {
+        type: 'number',
+        min: '0',
+        max: '1',
+        step: '0.05',
+        value: String(this.panelThreshold),
+        'aria-label': 'Minimum relevance threshold',
+      },
+    });
     this.resultsEl = container.createDiv({ cls: 'hybrid-search-panel-results' });
 
     this.registerDomEvent(this.inputEl, 'input', () => this.scheduleSearch());
     this.registerDomEvent(container, 'keydown', (evt) => this.handleKeydown(evt));
     this.registerDomEvent(this.modeEl, 'click', () => this.cycleMode());
+    this.registerDomEvent(this.limitInputEl, 'change', () => this.updateSearchOptions());
+    this.registerDomEvent(this.thresholdInputEl, 'change', () => this.updateSearchOptions());
     this.registerDomEvent(this.resultsEl, 'mouseover', (evt) => this.handleHoverPreview(evt));
     this.registerDomEvent(this.resultsEl, 'click', (evt) => this.handleClick(evt));
     hookSuperchargedLinks(
@@ -103,6 +154,8 @@ export class SearchPanelView extends ItemView {
     const query = rawQuery.trim();
     const requestId = ++this.requestId;
     this.selectedIndex = -1;
+    this.expandedPaths.clear();
+    this.allExpanded = false;
     if (!query) {
       this.results = [];
       this.renderEmpty('Type to search.');
@@ -118,15 +171,19 @@ export class SearchPanelView extends ItemView {
     const { query: parsedQuery, overrides } = parseQuery(query);
     const mode = overrides.mode ?? this.panelMode;
     this.updateModeBadge(mode, overrides.rerank ?? false);
+    const limit = overrides.limit ?? this.panelLimit;
+    const threshold = overrides.threshold ?? this.panelThreshold;
     try {
       const results = await this.plugin.client.search(parsedQuery, {
         mode,
-        limit: overrides.limit ?? DEFAULT_SEARCH_PANEL_LIMIT,
+        limit,
+        anchors: true,
+        snippetLength: SEARCH_PANEL_SNIPPET_LENGTH,
         ...(overrides.tag !== undefined && { tag: overrides.tag }),
         ...(overrides.scope !== undefined && { scope: overrides.scope }),
         ...(overrides.frontmatter !== undefined && { frontmatter: overrides.frontmatter }),
         ...(overrides.rerank !== undefined && { rerank: overrides.rerank }),
-        ...(overrides.threshold !== undefined && { threshold: overrides.threshold }),
+        ...(threshold > 0 && { threshold }),
       });
       if (this.closed || requestId !== this.requestId) return;
       this.results = [...results].sort((a, b) => b.score - a.score);
@@ -151,12 +208,24 @@ export class SearchPanelView extends ItemView {
       this.renderEmpty('No results.');
       return;
     }
+    this.updateExpandButton();
     for (let index = 0; index < this.results.length; index++) {
       const result = this.results[index]!;
-      const row = this.resultsEl.createDiv({
-        cls: `hybrid-search-panel-row${index === this.selectedIndex ? ' is-selected' : ''}`,
-        attr: { 'data-index': String(index) },
+      const nfcPath = result.path.normalize('NFC');
+      const isExpanded = this.expandedPaths.has(nfcPath);
+      const item = this.resultsEl.createDiv({
+        cls: `tree-item hybrid-search-panel-result${isExpanded ? '' : ' is-collapsed'}`,
       });
+      const row = item.createDiv({
+        cls: `tree-item-self hybrid-search-panel-row is-clickable${index === this.selectedIndex ? ' is-selected' : ''}`,
+        attr: { 'data-index': String(index), 'data-path': nfcPath },
+      });
+      const collapseIcon = row.createDiv({
+        cls: `tree-item-icon collapse-icon${isExpanded ? '' : ' is-collapsed'}`,
+      });
+      collapseIcon.dataset.index = String(index);
+      collapseIcon.setAttribute('aria-label', isExpanded ? 'Collapse result' : 'Expand result');
+      setIcon(collapseIcon, 'right-triangle');
       const title = getResultTitle(this.app, result);
       const link = createInternalLink(
         this.app,
@@ -165,28 +234,60 @@ export class SearchPanelView extends ItemView {
         title,
         'hybrid-search-panel-link',
       );
+      link.classList.add('tree-item-inner');
       link.addEventListener('mouseover', (evt) => this.handleHoverPreview(evt));
-      const scoreEl = row.createSpan({
-        cls: 'hybrid-search-panel-score',
+      const flairOuter = row.createDiv({ cls: 'tree-item-flair-outer' });
+      const scoreEl = flairOuter.createSpan({
+        cls: 'tree-item-flair hybrid-search-panel-score',
         text: result.score.toFixed(2),
       });
       scoreEl.style.color = scoreColor(result.score);
       if (this.plugin.settings.showMeta) {
         const folder = result.path.includes('/') ? result.path.replace(/\/[^/]+$/, '') : '';
-        if (folder) row.createDiv({ cls: 'hybrid-search-panel-meta', text: folder });
+        if (folder) item.createDiv({ cls: 'hybrid-search-panel-meta', text: folder });
+      }
+      if (isExpanded && result.snippet) {
+        const matches = item.createDiv({ cls: 'search-result-file-matches' });
+        const match = matches.createDiv({
+          cls: 'search-result-file-match tappable hybrid-search-panel-snippet',
+        });
+        match.dataset.index = String(index);
+        match.setAttribute('role', 'button');
+        match.setAttribute('tabindex', '0');
+        match.setAttribute('aria-label', `Open ${title} at matching snippet`);
+        match.textContent = result.snippet;
       }
     }
   }
 
   private handleClick(evt: Event): void {
     const mouseEvt = evt as MouseEvent;
+    const snippet = (mouseEvt.target as HTMLElement).closest<HTMLElement>(
+      '.hybrid-search-panel-snippet',
+    );
+    if (snippet?.dataset.index !== undefined) {
+      mouseEvt.preventDefault();
+      mouseEvt.stopPropagation();
+      const result = this.results[Number(snippet.dataset.index)];
+      if (result) {
+        void this.openResultFromPanel(result.path, mouseEvt.ctrlKey || mouseEvt.metaKey, result);
+      }
+      return;
+    }
+    const collapseIcon = (mouseEvt.target as HTMLElement).closest<HTMLElement>('.collapse-icon');
+    if (collapseIcon?.dataset.index !== undefined) {
+      mouseEvt.preventDefault();
+      mouseEvt.stopPropagation();
+      this.toggleResult(Number(collapseIcon.dataset.index));
+      return;
+    }
     const row = (mouseEvt.target as HTMLElement).closest<HTMLElement>('.hybrid-search-panel-row');
     if (!row) return;
     const index = Number(row.dataset.index);
     const result = this.results[index];
     if (!result) return;
     mouseEvt.preventDefault();
-    this.openResultFromPanel(result.path, mouseEvt.ctrlKey || mouseEvt.metaKey);
+    void this.openResultFromPanel(result.path, mouseEvt.ctrlKey || mouseEvt.metaKey);
   }
 
   private handleHoverPreview(evt: Event): void {
@@ -210,6 +311,16 @@ export class SearchPanelView extends ItemView {
   }
 
   private handleKeydown(evt: KeyboardEvent): void {
+    const snippet = (evt.target as HTMLElement).closest<HTMLElement>(
+      '.hybrid-search-panel-snippet',
+    );
+    if (snippet?.dataset.index !== undefined && (evt.key === 'Enter' || evt.key === ' ')) {
+      const result = this.results[Number(snippet.dataset.index)];
+      if (!result) return;
+      evt.preventDefault();
+      void this.openResultFromPanel(result.path, evt.ctrlKey || evt.metaKey, result);
+      return;
+    }
     if ((evt.ctrlKey || evt.metaKey) && !evt.altKey && !evt.shiftKey && evt.key === 'j') {
       evt.preventDefault();
       this.moveSelection(1);
@@ -249,13 +360,14 @@ export class SearchPanelView extends ItemView {
       const result = this.results[this.selectedIndex];
       if (!result) return;
       evt.preventDefault();
-      this.openResultFromPanel(result.path, evt.ctrlKey || evt.metaKey);
+      void this.openResultFromPanel(result.path, evt.ctrlKey || evt.metaKey);
       return;
     }
     if (evt.key === 'Escape') {
       evt.preventDefault();
       this.inputEl.value = '';
       this.results = [];
+      this.expandedPaths.clear();
       this.renderEmpty('Type to search.');
     }
   }
@@ -298,6 +410,108 @@ export class SearchPanelView extends ItemView {
     editor.replaceRange(text, editor.getCursor());
   }
 
+  private createToolbarButton(
+    parent: HTMLElement,
+    icon: string,
+    label: string,
+    onClick: (evt: MouseEvent) => void,
+  ): HTMLButtonElement {
+    const button = parent.createEl('button', {
+      cls: 'clickable-icon hybrid-search-panel-toolbar-btn',
+      attr: { 'aria-label': label, title: label, type: 'button' },
+    });
+    setIcon(button, icon);
+    button.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      onClick(evt);
+    });
+    return button;
+  }
+
+  private toggleOptions(): void {
+    if (!this.optionsEl) return;
+    if (this.optionsEl.classList.contains('is-hidden')) {
+      this.optionsEl.removeClass('is-hidden');
+      this.optionsEl.show();
+      this.limitInputEl?.focus();
+    } else {
+      this.optionsEl.addClass('is-hidden');
+      this.optionsEl.hide();
+      this.inputEl.focus();
+    }
+  }
+
+  private updateSearchOptions(): void {
+    let changed = false;
+    const limit = Number(this.limitInputEl?.value ?? this.panelLimit);
+    if (Number.isInteger(limit) && limit > 0 && limit <= 200) {
+      changed = changed || this.panelLimit !== limit;
+      this.panelLimit = limit;
+    } else if (this.limitInputEl) {
+      this.limitInputEl.value = String(this.panelLimit);
+    }
+
+    const threshold = Number(this.thresholdInputEl?.value ?? this.panelThreshold);
+    if (Number.isFinite(threshold) && threshold >= 0 && threshold <= 1) {
+      changed = changed || this.panelThreshold !== threshold;
+      this.panelThreshold = threshold;
+    } else if (this.thresholdInputEl) {
+      this.thresholdInputEl.value = String(this.panelThreshold);
+    }
+
+    if (changed) {
+      this.plugin.settings.searchPanelLimit = this.panelLimit;
+      this.plugin.settings.searchPanelThreshold = this.panelThreshold;
+      void this.plugin.saveSettings();
+    }
+    if (this.inputEl.value.trim()) void this.search(this.inputEl.value);
+  }
+
+  private toggleResult(index: number): void {
+    const result = this.results[index];
+    if (!result) return;
+    const path = result.path.normalize('NFC');
+    if (this.expandedPaths.has(path)) this.expandedPaths.delete(path);
+    else this.expandedPaths.add(path);
+    this.allExpanded =
+      this.results.length > 0 &&
+      this.results.every((item) => this.expandedPaths.has(item.path.normalize('NFC')));
+    this.selectedIndex = index;
+    this.renderResults();
+  }
+
+  private toggleAllResults(): void {
+    if (this.results.length === 0) return;
+    this.allExpanded = !this.allExpanded;
+    this.expandedPaths = this.allExpanded
+      ? new Set(this.results.map((result) => result.path.normalize('NFC')))
+      : new Set();
+    this.renderResults();
+  }
+
+  private updateExpandButton(): void {
+    if (!this.expandAllButtonEl) return;
+    const label = this.allExpanded ? 'Collapse all results' : 'Expand all results';
+    this.expandAllButtonEl.setAttribute('aria-label', label);
+    this.expandAllButtonEl.setAttribute('title', label);
+    this.expandAllButtonEl.toggleClass('is-active', this.allExpanded);
+  }
+
+  private async copyResults(): Promise<void> {
+    if (this.results.length === 0) return;
+    const sourcePath = this.app.workspace.getActiveFile()?.path ?? '';
+    const text = this.results
+      .map((result) => fileToDragWikiLink(this.app, result.path, sourcePath))
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      new Notice('Search results copied.');
+    } catch {
+      new Notice('Failed to copy search results.');
+    }
+  }
+
   focusSearch(): void {
     this.inputEl?.focus();
   }
@@ -323,17 +537,48 @@ export class SearchPanelView extends ItemView {
     this.modeEl.setAttribute('title', `Search mode: ${mode}`);
   }
 
-  private openResultFromPanel(path: string, newLeaf: boolean): void {
-    if (newLeaf) {
-      openResult(this.app, path, true);
-      return;
-    }
+  private async openResultFromPanel(
+    path: string,
+    newLeaf: boolean,
+    result?: SearchResult,
+  ): Promise<void> {
     const nfcPath = path.normalize('NFC');
     const abstract = this.app.vault.getAbstractFileByPath(nfcPath);
     if (!(abstract instanceof TFile)) return;
-    const leaves = this.app.workspace.getLeavesOfType('markdown');
-    const target = leaves.find((leaf) => leaf !== this.leaf) ?? this.app.workspace.getLeaf('tab');
-    void target.openFile(abstract);
+    const target = newLeaf
+      ? this.app.workspace.getLeaf('tab')
+      : (this.app.workspace.getLeavesOfType('markdown').find((leaf) => leaf !== this.leaf) ??
+        this.app.workspace.getLeaf('tab'));
+    const openState = result ? await this.getSnippetOpenState(abstract, result) : undefined;
+    void target.openFile(abstract, openState);
+  }
+
+  private async getSnippetOpenState(
+    file: TFile,
+    result: SearchResult,
+  ): Promise<Parameters<WorkspaceLeaf['openFile']>[1] | undefined> {
+    const anchor = getPrimaryAnchor(result);
+    if (!anchor) return undefined;
+    try {
+      const content = await this.app.vault.cachedRead(file);
+      const startOffset = getAnchorOffset(content, anchor);
+      if (startOffset < 0) return undefined;
+      const endOffset =
+        typeof anchor.charEnd === 'number' && anchor.charEnd >= startOffset
+          ? anchor.charEnd
+          : startOffset;
+      const from = offsetToEditorPosition(content, startOffset);
+      const to = offsetToEditorPosition(content, endOffset);
+      return {
+        active: true,
+        eState: {
+          line: from.line,
+          cursor: { from, to },
+        },
+      };
+    } catch {
+      return undefined;
+    }
   }
 }
 
@@ -367,4 +612,41 @@ function modeForShortcut(key: string): SearchMode | undefined {
   if (key === '3') return 'fulltext';
   if (key === '4') return 'title';
   return undefined;
+}
+
+function getPrimaryAnchor(result: SearchResult): MatchAnchor | undefined {
+  const anchors = result.previewAnchors;
+  if (!anchors || anchors.length === 0) return undefined;
+  const index =
+    typeof result.primaryAnchorIndex === 'number' && result.primaryAnchorIndex >= 0
+      ? result.primaryAnchorIndex
+      : 0;
+  return anchors[index] ?? anchors[0];
+}
+
+function getAnchorOffset(content: string, anchor: MatchAnchor): number {
+  if (
+    typeof anchor.charStart === 'number' &&
+    anchor.charStart >= 0 &&
+    anchor.charStart <= content.length
+  ) {
+    if (!anchor.matchText || content.startsWith(anchor.matchText, anchor.charStart)) {
+      return anchor.charStart;
+    }
+  }
+  if (!anchor.matchText) return -1;
+  return content.indexOf(anchor.matchText);
+}
+
+function offsetToEditorPosition(content: string, offset: number): { line: number; ch: number } {
+  let line = 0;
+  let lineStart = 0;
+  const boundedOffset = Math.max(0, Math.min(offset, content.length));
+  for (let i = 0; i < boundedOffset; i++) {
+    if (content.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, ch: boundedOffset - lineStart };
 }

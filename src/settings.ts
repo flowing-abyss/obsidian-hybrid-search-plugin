@@ -21,6 +21,8 @@ export interface HybridSearchSettings {
   showSimilarNotesAtBottom: boolean;
   similarNotesBottomLimit: number;
   similarNotesThreshold: number;
+  searchPanelLimit: number;
+  searchPanelThreshold: number;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
@@ -43,6 +45,8 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   showSimilarNotesAtBottom: false,
   similarNotesBottomLimit: 5,
   similarNotesThreshold: 0,
+  searchPanelLimit: 20,
+  searchPanelThreshold: 0,
 };
 
 const HTTP_START_COMMAND =

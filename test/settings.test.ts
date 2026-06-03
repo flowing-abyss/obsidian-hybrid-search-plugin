@@ -46,6 +46,8 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.showSimilarNotesAtBottom).toBe(false);
     expect(DEFAULT_SETTINGS.similarNotesBottomLimit).toBe(5);
     expect(DEFAULT_SETTINGS.similarNotesThreshold).toBe(0);
+    expect(DEFAULT_SETTINGS.searchPanelLimit).toBe(20);
+    expect(DEFAULT_SETTINGS.searchPanelThreshold).toBe(0);
   });
 });
 
