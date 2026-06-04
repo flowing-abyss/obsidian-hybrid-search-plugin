@@ -332,6 +332,79 @@ describe('HttpSearchClient', () => {
     }
   });
 
+  it('fails over Similar Notes path lookup search to fallback HTTP server', async () => {
+    vi.useFakeTimers();
+
+    const primaryHealth = deferred<RequestUrlResponse>();
+    const primaryInit = deferred<RequestUrlResponse>();
+    const primarySearch = deferred<RequestUrlResponse>();
+    const fallbackHealth = deferred<RequestUrlResponse>();
+    const fallbackInit = deferred<RequestUrlResponse>();
+    const fallbackSearch = deferred<RequestUrlResponse>();
+    const responses = [
+      primaryHealth,
+      primaryInit,
+      primarySearch,
+      fallbackHealth,
+      fallbackInit,
+      fallbackSearch,
+    ];
+    primaryHealth.resolve(healthOkResponse());
+    primaryInit.resolve(initializeOkResponse('primary-session'));
+    requestUrlMock.mockImplementation(() => responses.shift()!.promise as never);
+
+    try {
+      const client = new HttpSearchClient('remote.example.com', 3939, {
+        fallback: { host: '127.0.0.1', port: 4949 },
+      });
+
+      const resultsPromise = client.search('', {
+        notePath: 'source.md',
+        limit: 6,
+        threshold: 0.2,
+      });
+      void resultsPromise.catch(() => undefined);
+
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(2_000);
+      await flushPromises();
+
+      fallbackHealth.resolve(healthOkResponse());
+      await flushPromises();
+      fallbackInit.resolve(initializeOkResponse('fallback-session', 3));
+      await flushPromises();
+      fallbackSearch.resolve(
+        searchOkResponse([
+          { path: 'fallback.md', title: 'Fallback', score: 1, tags: [], aliases: [] },
+        ]),
+      );
+
+      await expect(resultsPromise).resolves.toEqual([
+        { path: 'fallback.md', title: 'Fallback', score: 1, tags: [], aliases: [] },
+      ]);
+
+      const fallbackRequest = requestUrlMock.mock.calls[5]?.[0] as RequestUrlParam;
+      const fallbackBody = JSON.parse(fallbackRequest.body as string) as {
+        method: string;
+        params: { name: string; arguments: Record<string, unknown> };
+      };
+      expect(fallbackRequest.url).toBe('http://127.0.0.1:4949/mcp');
+      expect(fallbackRequest.headers).toEqual(
+        expect.objectContaining({ 'mcp-session-id': 'fallback-session' }),
+      );
+      expect(fallbackBody.method).toBe('tools/call');
+      expect(fallbackBody.params.name).toBe('search');
+      expect(fallbackBody.params.arguments).toMatchObject({
+        query: '',
+        path: 'source.md',
+        limit: 6,
+        threshold: 0.2,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('emits a status event when fallback becomes active', async () => {
     const onStatusChange = vi.fn();
     requestUrlMock
