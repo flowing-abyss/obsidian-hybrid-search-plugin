@@ -7,6 +7,7 @@ export type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 export interface SimilarNotesOptions {
   limit: number;
   threshold: number;
+  anchors?: boolean;
 }
 
 export interface SimilarNotesFetchResult {
@@ -23,6 +24,7 @@ export async function fetchSimilarNotesDetailed(
   const semantic = await client.search('', {
     notePath: path,
     limit: options.limit + 1,
+    ...(options.anchors && { anchors: true }),
     ...(options.threshold > 0 && { threshold: options.threshold }),
   });
   const filteredSemantic = semantic.filter((result) => result.path.normalize('NFC') !== nfcPath);
@@ -89,10 +91,11 @@ export function createInternalLink(
   path: string,
   text: string,
   className: string,
+  sourcePath = '',
+  textClassName = '',
 ): HTMLAnchorElement {
   const nfcPath = path.normalize('NFC');
   const link = parent.createEl('a', {
-    text,
     cls: `internal-link ${className}`,
     attr: {
       href: nfcPath.replace(/\.md$/, ''),
@@ -100,10 +103,15 @@ export function createInternalLink(
       draggable: 'true',
     },
   });
+  if (textClassName) {
+    link.createSpan({ cls: textClassName, text });
+  } else {
+    link.textContent = text;
+  }
   link.classList.add('data-link-icon', 'data-link-icon-after', 'data-link-text');
   applySuperchargedLinkAttributes(app, link, nfcPath);
   link.addEventListener('dragstart', (evt) => {
-    const wikiLink = fileToDragWikiLink(app, nfcPath);
+    const wikiLink = fileToDragWikiLink(app, nfcPath, sourcePath);
     evt.dataTransfer?.setData('text/plain', wikiLink);
     evt.dataTransfer?.setData('text/markdown', wikiLink);
     if (evt.dataTransfer) evt.dataTransfer.effectAllowed = 'all';
@@ -117,6 +125,7 @@ export function createTreeItemLink(
   path: string,
   text: string,
   className: string,
+  sourcePath = '',
 ): HTMLElement {
   const nfcPath = path.normalize('NFC');
   const link = parent.createDiv({ cls: `tree-item-inner ${className}` });
@@ -126,7 +135,7 @@ export function createTreeItemLink(
   link.classList.add('data-link-icon', 'data-link-icon-after', 'data-link-text');
   applySuperchargedLinkAttributes(app, link, nfcPath);
   link.addEventListener('dragstart', (evt) => {
-    const wikiLink = fileToDragWikiLink(app, nfcPath);
+    const wikiLink = fileToDragWikiLink(app, nfcPath, sourcePath);
     evt.dataTransfer?.setData('text/plain', wikiLink);
     evt.dataTransfer?.setData('text/markdown', wikiLink);
     if (evt.dataTransfer) evt.dataTransfer.effectAllowed = 'all';

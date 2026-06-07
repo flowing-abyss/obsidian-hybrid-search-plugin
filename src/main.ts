@@ -1,8 +1,13 @@
-import { Notice, Plugin } from 'obsidian';
+import { Notice, Plugin, type EventRef } from 'obsidian';
 import type { HttpSearchClientStatusEvent } from './ipc';
 import { HttpSearchClient, SearchClient } from './ipc';
 import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab } from './settings';
+import {
+  GRAPH_WORKBENCH_VIEW_TYPE,
+  GraphWorkbenchView,
+  revealGraphWorkbench,
+} from './ui/GraphWorkbenchView';
 import { SearchModal } from './ui/SearchModal';
 import { revealSearchPanel, SEARCH_PANEL_VIEW_TYPE, SearchPanelView } from './ui/SearchPanelView';
 import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
@@ -13,12 +18,46 @@ export default class HybridSearchPlugin extends Plugin {
   settings!: HybridSearchSettings;
   client?: SearchClient | HttpSearchClient;
   private similarNotesBottom?: SimilarNotesBottomManager;
+  private graphWorkbenchRefreshTimer?: number;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
     this.restartClient();
     this.registerView(SEARCH_PANEL_VIEW_TYPE, (leaf) => new SearchPanelView(leaf, this));
+    this.registerView(GRAPH_WORKBENCH_VIEW_TYPE, (leaf) => new GraphWorkbenchView(leaf, this));
+    if (typeof this.app.workspace.on === 'function') {
+      this.registerEvent(
+        this.app.workspace.on('active-leaf-change', () => {
+          void this.refreshGraphWorkbenchViews();
+        }),
+      );
+      this.registerEvent(
+        this.app.workspace.on('file-open', () => {
+          void this.refreshGraphWorkbenchViews();
+        }),
+      );
+    }
+    if (typeof this.app.vault.on === 'function') {
+      const onVaultEvent = this.app.vault.on.bind(this.app.vault) as (
+        name: string,
+        callback: () => void,
+      ) => EventRef;
+      for (const eventName of ['create', 'delete', 'rename', 'modify'] as const) {
+        this.registerEvent(
+          onVaultEvent(eventName, () => {
+            this.queueGraphWorkbenchRefresh();
+          }),
+        );
+      }
+    }
+    if (typeof this.app.metadataCache?.on === 'function') {
+      this.registerEvent(
+        this.app.metadataCache.on('resolved', () => {
+          this.queueGraphWorkbenchRefresh();
+        }),
+      );
+    }
 
     this.similarNotesBottom = new SimilarNotesBottomManager(this.app, this);
     this.similarNotesBottom.load();
@@ -78,6 +117,14 @@ export default class HybridSearchPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'open-graph-workbench',
+      name: 'Open graph workbench',
+      callback: () => {
+        void revealGraphWorkbench(this);
+      },
+    });
+
+    this.addCommand({
       id: 'search-panel-hybrid',
       name: 'Search panel: Hybrid mode',
       callback: () => {
@@ -128,6 +175,10 @@ export default class HybridSearchPlugin extends Plugin {
   }
 
   onunload(): void {
+    if (this.graphWorkbenchRefreshTimer !== undefined) {
+      activeWindow.clearTimeout(this.graphWorkbenchRefreshTimer);
+      this.graphWorkbenchRefreshTimer = undefined;
+    }
     this.similarNotesBottom?.unload();
     this.client?.dispose();
   }
@@ -191,5 +242,24 @@ export default class HybridSearchPlugin extends Plugin {
 
   onSimilarNotesSettingsChanged(): void {
     this.similarNotesBottom?.settingsChanged();
+  }
+
+  private async refreshGraphWorkbenchViews(force = false): Promise<void> {
+    if (typeof this.app.workspace.getLeavesOfType !== 'function') return;
+    for (const leaf of this.app.workspace.getLeavesOfType(GRAPH_WORKBENCH_VIEW_TYPE)) {
+      if (leaf.view instanceof GraphWorkbenchView) {
+        await leaf.view.refreshFromActiveFile(force);
+      }
+    }
+  }
+
+  private queueGraphWorkbenchRefresh(): void {
+    if (this.graphWorkbenchRefreshTimer !== undefined) {
+      activeWindow.clearTimeout(this.graphWorkbenchRefreshTimer);
+    }
+    this.graphWorkbenchRefreshTimer = activeWindow.setTimeout(() => {
+      this.graphWorkbenchRefreshTimer = undefined;
+      void this.refreshGraphWorkbenchViews(true);
+    }, 350);
   }
 }

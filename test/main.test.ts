@@ -182,10 +182,10 @@ describe('HybridSearchPlugin', () => {
     );
   });
 
-  it('registers search modal and search panel commands', async () => {
+  it('registers search modal, search panel, and graph workbench commands', async () => {
     await plugin.onload();
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(plugin.addCommand).toHaveBeenCalledTimes(10);
+    expect(plugin.addCommand).toHaveBeenCalledTimes(11);
     const ids = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls.map(
       (c: unknown[]) => (c[0] as { id: string }).id,
     );
@@ -195,6 +195,7 @@ describe('HybridSearchPlugin', () => {
     expect(ids).toContain('search-semantic');
     expect(ids).toContain('search-title');
     expect(ids).toContain('open-search-panel');
+    expect(ids).toContain('open-graph-workbench');
     expect(ids).toContain('search-panel-hybrid');
     expect(ids).toContain('search-panel-fulltext');
     expect(ids).toContain('search-panel-semantic');
@@ -221,6 +222,15 @@ describe('HybridSearchPlugin', () => {
     await plugin.onload();
     // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(plugin.registerView).toHaveBeenCalledWith('hybrid-search-panel', expect.any(Function));
+  });
+
+  it('registers docked graph workbench view', async () => {
+    await plugin.onload();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(plugin.registerView).toHaveBeenCalledWith(
+      'hybrid-search-graph-workbench',
+      expect.any(Function),
+    );
   });
 
   it('onunload disposes client', async () => {

@@ -96,4 +96,24 @@ describe('hookInternalLinks', () => {
     link.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(callbacks.onOpenFile).not.toHaveBeenCalled();
   });
+
+  it('returns a cleanup function for registered listeners', () => {
+    const app = new App();
+    const el = activeDocument.createDiv();
+    const link = activeDocument.createEl('a');
+    link.setAttribute('data-href', 'Target');
+    el.appendChild(link);
+    const callbacks = {
+      onHoverPreview: vi.fn(),
+      onOpenFile: vi.fn(),
+    };
+    const cleanup = hookInternalLinks(el, app, 'Source.md', callbacks);
+
+    cleanup();
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+    link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, metaKey: true }));
+
+    expect(callbacks.onOpenFile).not.toHaveBeenCalled();
+    expect(callbacks.onHoverPreview).not.toHaveBeenCalled();
+  });
 });

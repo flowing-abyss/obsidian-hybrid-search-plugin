@@ -12,15 +12,16 @@ export function hookInternalLinks(
   app: App,
   sourcePath: SourcePathResolver,
   callbacks: LinkHandlerCallbacks,
-): void {
-  el.addEventListener('mouseover', (evt: MouseEvent) => {
+): () => void {
+  const mouseoverHandler = (evt: MouseEvent) => {
     if (!evt.ctrlKey && !evt.metaKey) return;
     const link = (evt.target as HTMLElement).closest<HTMLElement>('a, [data-href]');
     if (!link) return;
     const href = link.getAttribute('data-href') ?? link.getAttribute('href') ?? '';
     if (!href || /^https?:\/\//.test(href)) return;
     callbacks.onHoverPreview(evt, link, href);
-  });
+  };
+  el.addEventListener('mouseover', mouseoverHandler);
 
   const handler = (evt: MouseEvent) => {
     const link = (evt.target as HTMLElement).closest<HTMLElement>('a, [data-href]');
@@ -39,6 +40,11 @@ export function hookInternalLinks(
 
   el.addEventListener('click', handler);
   el.addEventListener('auxclick', handler);
+  return () => {
+    el.removeEventListener('mouseover', mouseoverHandler);
+    el.removeEventListener('click', handler);
+    el.removeEventListener('auxclick', handler);
+  };
 }
 
 function resolveSourcePath(sourcePath: SourcePathResolver, link: HTMLElement): string {

@@ -21,6 +21,13 @@ export interface SearchResult {
   snippet?: string;
   tags: string[];
   aliases: string[];
+  matchedBy?: string[];
+  scores?: {
+    semantic?: number | null;
+    bm25?: number | null;
+    fuzzy_title?: number | null;
+    hybrid?: number | null;
+  };
   previewAnchors?: MatchAnchor[];
   primaryAnchorIndex?: number;
 }

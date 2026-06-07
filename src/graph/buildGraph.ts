@@ -1,4 +1,10 @@
 import type { App } from 'obsidian';
+import {
+  buildGraphIndex,
+  getBacklinksFromIndex,
+  getOutgoingFromIndex,
+  type GraphIndex,
+} from './analysis';
 
 export interface GraphNode {
   path: string;
@@ -25,7 +31,12 @@ function getTitle(app: App, path: string): string {
   );
 }
 
-export function buildGraph(app: App, centerPath: string, maxDepth: number): GraphData {
+export function buildGraph(
+  app: App,
+  centerPath: string,
+  maxDepth: number,
+  index: GraphIndex = buildGraphIndex(app),
+): GraphData {
   const normalizedCenter = centerPath.normalize('NFC');
   const depthLimit = Math.max(0, Math.floor(maxDepth));
   const nodes = new Map<string, GraphNode>();
@@ -41,8 +52,7 @@ export function buildGraph(app: App, centerPath: string, maxDepth: number): Grap
   for (let depth = 1; depth <= depthLimit; depth++) {
     const next: string[] = [];
     for (const path of frontier) {
-      const targets = app.metadataCache.resolvedLinks[path] ?? {};
-      for (const target of Object.keys(targets)) {
+      for (const target of getOutgoingFromIndex(index, path)) {
         edges.push({ source: path, target });
         if (!nodes.has(target)) {
           nodes.set(target, { path: target, depth, title: getTitle(app, target) });
@@ -58,8 +68,7 @@ export function buildGraph(app: App, centerPath: string, maxDepth: number): Grap
   for (let depth = 1; depth <= depthLimit; depth++) {
     const next: string[] = [];
     for (const path of frontier) {
-      for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
-        if (!(path in targets)) continue;
+      for (const source of getBacklinksFromIndex(index, path)) {
         edges.push({ source, target: path });
         if (!nodes.has(source)) {
           nodes.set(source, { path: source, depth: -depth, title: getTitle(app, source) });

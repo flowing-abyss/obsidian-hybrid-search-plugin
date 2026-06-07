@@ -110,6 +110,18 @@ if (typeof HTMLElement !== 'undefined' && !('toggleClass' in HTMLElement.prototy
   };
 }
 
+if (typeof HTMLElement !== 'undefined' && !('setCssProps' in HTMLElement.prototype)) {
+  (
+    HTMLElement.prototype as HTMLElement & {
+      setCssProps: (props: Record<string, string>) => void;
+    }
+  ).setCssProps = function (props: Record<string, string>): void {
+    for (const [key, value] of Object.entries(props)) {
+      this.style.setProperty(key, value);
+    }
+  };
+}
+
 if (typeof HTMLElement !== 'undefined' && !('show' in HTMLElement.prototype)) {
   (HTMLElement.prototype as HTMLElement & { show: () => void }).show = function (): void {
     // eslint-disable-next-line obsidianmd/no-static-styles-assignment
