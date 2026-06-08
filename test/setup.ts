@@ -151,6 +151,9 @@ if (typeof globalThis !== 'undefined') {
       return 0;
     };
   }
+  if (!('window' in globalThis)) {
+    (globalThis as Record<string, unknown>).window = globalThis;
+  }
   if (!('activeWindow' in globalThis)) {
     const win =
       typeof window !== 'undefined'

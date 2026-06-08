@@ -35,14 +35,14 @@ export class GraphPanel {
     const nfcPath = notePath.normalize('NFC');
     if (nfcPath === this.centerPath) {
       this.el.show();
-      requestAnimationFrame(() => this.renderEdges());
+      window.requestAnimationFrame(() => this.renderEdges());
       return;
     }
     if (nfcPath !== this.centerPath) this.expandedPaths.clear();
     this.centerPath = nfcPath;
     this.render();
     this.el.show();
-    requestAnimationFrame(() => this.renderEdges());
+    window.requestAnimationFrame(() => this.renderEdges());
   }
 
   hide(): void {
@@ -201,7 +201,7 @@ export class GraphPanel {
       this.expandedPaths.add(path);
     }
     this.render();
-    requestAnimationFrame(() => this.renderEdges());
+    window.requestAnimationFrame(() => this.renderEdges());
   }
 
   private applyExpandedNodes(graphData: GraphData): void {
@@ -319,12 +319,12 @@ export class GraphPanel {
       if (this.depth <= 1) return;
       this.depth--;
       this.render();
-      requestAnimationFrame(() => this.renderEdges());
+      window.requestAnimationFrame(() => this.renderEdges());
     });
     btnPlus.addEventListener('click', () => {
       this.depth++;
       this.render();
-      requestAnimationFrame(() => this.renderEdges());
+      window.requestAnimationFrame(() => this.renderEdges());
     });
   }
 

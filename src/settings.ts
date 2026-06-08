@@ -87,108 +87,118 @@ export class HybridSearchSettingTab extends PluginSettingTab {
             this.plugin.settings.transport = value as HybridSearchSettings['transport'];
             await this.plugin.saveSettings();
             await this.plugin.restartClient?.();
-            this.display();
+            httpSettingsEl.hidden = value !== 'http';
+            stdioSettingsEl.hidden = value !== 'stdio';
+            fallbackSettingsEl.hidden = !(
+              value === 'http' && this.plugin.settings.httpFallbackEnabled
+            );
           }),
       );
 
-    if (this.plugin.settings.transport === 'http') {
-      new Setting(containerEl).setName('Start server').setDesc(HTTP_START_COMMAND);
+    const httpSettingsEl = containerEl.createDiv();
+    const fallbackSettingsEl = containerEl.createDiv();
+    const stdioSettingsEl = containerEl.createDiv();
 
-      new Setting(containerEl)
-        .setName('HTTP host')
-        .setDesc('Host of the shared mcp HTTP server.')
-        .addText((text) =>
-          text
-            .setPlaceholder('127.0.0.1')
-            .setValue(this.plugin.settings.httpHost)
-            .onChange(async (value) => {
-              this.plugin.settings.httpHost = value.trim() || DEFAULT_SETTINGS.httpHost;
-              await this.plugin.saveSettings();
-              await this.plugin.restartClient?.();
-            }),
-        );
+    new Setting(httpSettingsEl).setName('Start server').setDesc(HTTP_START_COMMAND);
 
-      new Setting(containerEl)
-        .setName('HTTP port')
-        .setDesc('Port of the shared mcp HTTP server.')
-        .addText((text) =>
-          text
-            .setPlaceholder('3939')
-            .setValue(String(this.plugin.settings.httpPort))
-            .onChange(async (value) => {
-              const port = Number(value);
-              if (Number.isInteger(port) && port > 0 && port <= 65_535) {
-                this.plugin.settings.httpPort = port;
-                await this.plugin.saveSettings();
-                await this.plugin.restartClient?.();
-              }
-            }),
-        );
-
-      new Setting(containerEl)
-        .setName('Enable fallback server')
-        .setDesc(
-          'Use a secondary mcp HTTP server when the primary server is unavailable. The fallback should serve the same vault/index.',
-        )
-        .addToggle((toggle) =>
-          toggle.setValue(this.plugin.settings.httpFallbackEnabled).onChange(async (value) => {
-            this.plugin.settings.httpFallbackEnabled = value;
+    new Setting(httpSettingsEl)
+      .setName('HTTP host')
+      .setDesc('Host of the shared mcp HTTP server.')
+      .addText((text) =>
+        text
+          .setPlaceholder('127.0.0.1')
+          .setValue(this.plugin.settings.httpHost)
+          .onChange(async (value) => {
+            this.plugin.settings.httpHost = value.trim() || DEFAULT_SETTINGS.httpHost;
             await this.plugin.saveSettings();
             await this.plugin.restartClient?.();
-            this.display();
           }),
-        );
+      );
 
-      if (this.plugin.settings.httpFallbackEnabled) {
-        new Setting(containerEl)
-          .setName('Fallback HTTP host')
-          .setDesc('Host of the fallback mcp HTTP server.')
-          .addText((text) =>
-            text
-              .setPlaceholder('127.0.0.1')
-              .setValue(this.plugin.settings.httpFallbackHost)
-              .onChange(async (value) => {
-                this.plugin.settings.httpFallbackHost =
-                  value.trim() || DEFAULT_SETTINGS.httpFallbackHost;
-                await this.plugin.saveSettings();
-                await this.plugin.restartClient?.();
-              }),
-          );
-
-        new Setting(containerEl)
-          .setName('Fallback HTTP port')
-          .setDesc('Port of the fallback mcp HTTP server.')
-          .addText((text) =>
-            text
-              .setPlaceholder('3939')
-              .setValue(String(this.plugin.settings.httpFallbackPort))
-              .onChange(async (value) => {
-                const port = Number(value);
-                if (Number.isInteger(port) && port > 0 && port <= 65_535) {
-                  this.plugin.settings.httpFallbackPort = port;
-                  await this.plugin.saveSettings();
-                  await this.plugin.restartClient?.();
-                }
-              }),
-          );
-      }
-    } else {
-      new Setting(containerEl)
-        .setName('Binary path')
-        .setDesc(
-          'Absolute path to the Obsidian-hybrid-search binary. Leave empty to search in path. Common locations: /opt/homebrew/bin/Obsidian-hybrid-search, /usr/local/bin/Obsidian-hybrid-search, ~/.npm/bin/Obsidian-hybrid-search.',
-        )
-        .addText((text) =>
-          text
-            .setPlaceholder('Obsidian-hybrid-search')
-            .setValue(this.plugin.settings.binaryPath)
-            .onChange(async (value) => {
-              this.plugin.settings.binaryPath = value;
+    new Setting(httpSettingsEl)
+      .setName('HTTP port')
+      .setDesc('Port of the shared mcp HTTP server.')
+      .addText((text) =>
+        text
+          .setPlaceholder('3939')
+          .setValue(String(this.plugin.settings.httpPort))
+          .onChange(async (value) => {
+            const port = Number(value);
+            if (Number.isInteger(port) && port > 0 && port <= 65_535) {
+              this.plugin.settings.httpPort = port;
               await this.plugin.saveSettings();
               await this.plugin.restartClient?.();
-            }),
-        );
-    }
+            }
+          }),
+      );
+
+    new Setting(httpSettingsEl)
+      .setName('Enable fallback server')
+      .setDesc(
+        'Use a secondary mcp HTTP server when the primary server is unavailable. The fallback should serve the same vault/index.',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.httpFallbackEnabled).onChange(async (value) => {
+          this.plugin.settings.httpFallbackEnabled = value;
+          await this.plugin.saveSettings();
+          await this.plugin.restartClient?.();
+          fallbackSettingsEl.hidden = !value;
+        }),
+      );
+
+    new Setting(fallbackSettingsEl)
+      .setName('Fallback HTTP host')
+      .setDesc('Host of the fallback mcp HTTP server.')
+      .addText((text) =>
+        text
+          .setPlaceholder('127.0.0.1')
+          .setValue(this.plugin.settings.httpFallbackHost)
+          .onChange(async (value) => {
+            this.plugin.settings.httpFallbackHost =
+              value.trim() || DEFAULT_SETTINGS.httpFallbackHost;
+            await this.plugin.saveSettings();
+            await this.plugin.restartClient?.();
+          }),
+      );
+
+    new Setting(fallbackSettingsEl)
+      .setName('Fallback HTTP port')
+      .setDesc('Port of the fallback mcp HTTP server.')
+      .addText((text) =>
+        text
+          .setPlaceholder('3939')
+          .setValue(String(this.plugin.settings.httpFallbackPort))
+          .onChange(async (value) => {
+            const port = Number(value);
+            if (Number.isInteger(port) && port > 0 && port <= 65_535) {
+              this.plugin.settings.httpFallbackPort = port;
+              await this.plugin.saveSettings();
+              await this.plugin.restartClient?.();
+            }
+          }),
+      );
+
+    new Setting(stdioSettingsEl)
+      .setName('Binary path')
+      .setDesc(
+        'Absolute path to the Obsidian-hybrid-search binary. Leave empty to search in path. Common locations: /opt/homebrew/bin/Obsidian-hybrid-search, /usr/local/bin/Obsidian-hybrid-search, ~/.npm/bin/Obsidian-hybrid-search.',
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder('Obsidian-hybrid-search')
+          .setValue(this.plugin.settings.binaryPath)
+          .onChange(async (value) => {
+            this.plugin.settings.binaryPath = value;
+            await this.plugin.saveSettings();
+            await this.plugin.restartClient?.();
+          }),
+      );
+
+    httpSettingsEl.hidden = this.plugin.settings.transport !== 'http';
+    stdioSettingsEl.hidden = this.plugin.settings.transport !== 'stdio';
+    fallbackSettingsEl.hidden = !(
+      this.plugin.settings.transport === 'http' && this.plugin.settings.httpFallbackEnabled
+    );
 
     new Setting(containerEl)
       .setName('Default mode')
@@ -223,9 +233,11 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.showPreview).onChange(async (value) => {
           this.plugin.settings.showPreview = value;
           await this.plugin.saveSettings();
-          this.display();
+          previewSettingsEl.hidden = !value;
         }),
       );
+
+    const previewSettingsEl = containerEl.createDiv();
 
     new Setting(containerEl)
       .setName('Show graph panel')
@@ -239,41 +251,41 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         }),
       );
 
-    if (this.plugin.settings.showPreview) {
-      new Setting(containerEl)
-        .setName('Show note metadata in preview')
-        .setDesc('Display folder, aliases, tags, links, and backlinks below the preview panel.')
-        .addToggle((toggle) =>
-          toggle.setValue(this.plugin.settings.showPreviewMeta).onChange(async (value) => {
-            this.plugin.settings.showPreviewMeta = value;
-            await this.plugin.saveSettings();
-          }),
-        );
+    new Setting(previewSettingsEl)
+      .setName('Show note metadata in preview')
+      .setDesc('Display folder, aliases, tags, links, and backlinks below the preview panel.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showPreviewMeta).onChange(async (value) => {
+          this.plugin.settings.showPreviewMeta = value;
+          await this.plugin.saveSettings();
+        }),
+      );
 
-      new Setting(containerEl)
-        .setName('Center search and preview')
-        .setDesc(
-          'Shift the search panel so that the search list and preview panel together appear centered on screen. Disable if your theme positions the modal itself (e.g., left-aligned).',
-        )
-        .addToggle((toggle) =>
-          toggle.setValue(this.plugin.settings.centerPanels).onChange(async (value) => {
-            this.plugin.settings.centerPanels = value;
-            await this.plugin.saveSettings();
-          }),
-        );
+    new Setting(previewSettingsEl)
+      .setName('Center search and preview')
+      .setDesc(
+        'Shift the search panel so that the search list and preview panel together appear centered on screen. Disable if your theme positions the modal itself (e.g., left-aligned).',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.centerPanels).onChange(async (value) => {
+          this.plugin.settings.centerPanels = value;
+          await this.plugin.saveSettings();
+        }),
+      );
 
-      new Setting(containerEl)
-        .setName('Scroll preview to relevant snippet')
-        .setDesc(
-          'Automatically scroll the preview panel to the matching passage when navigating search results.',
-        )
-        .addToggle((toggle) =>
-          toggle.setValue(this.plugin.settings.scrollToSnippet).onChange(async (value) => {
-            this.plugin.settings.scrollToSnippet = value;
-            await this.plugin.saveSettings();
-          }),
-        );
-    }
+    new Setting(previewSettingsEl)
+      .setName('Scroll preview to relevant snippet')
+      .setDesc(
+        'Automatically scroll the preview panel to the matching passage when navigating search results.',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.scrollToSnippet).onChange(async (value) => {
+          this.plugin.settings.scrollToSnippet = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    previewSettingsEl.hidden = !this.plugin.settings.showPreview;
 
     new Setting(containerEl)
       .setName('Remember last search query')
@@ -293,45 +305,47 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           this.plugin.settings.showSimilarNotesAtBottom = value;
           await this.plugin.saveSettings();
           this.plugin.onSimilarNotesSettingsChanged?.();
-          this.display();
+          similarNotesSettingsEl.hidden = !value;
         }),
       );
 
-    if (this.plugin.settings.showSimilarNotesAtBottom) {
-      new Setting(containerEl)
-        .setName('Similar notes limit')
-        .setDesc('Maximum number of similar notes shown at the bottom of a note.')
-        .addText((text) =>
-          text
-            .setPlaceholder('5')
-            .setValue(String(this.plugin.settings.similarNotesBottomLimit))
-            .onChange(async (value) => {
-              const limit = Number(value);
-              if (Number.isInteger(limit) && limit >= 1 && limit <= 20) {
-                this.plugin.settings.similarNotesBottomLimit = limit;
-                await this.plugin.saveSettings();
-                this.plugin.onSimilarNotesSettingsChanged?.();
-              }
-            }),
-        );
+    const similarNotesSettingsEl = containerEl.createDiv();
 
-      new Setting(containerEl)
-        .setName('Minimum similarity')
-        .setDesc('Hide semantic results below this score. Use 0 to keep every result.')
-        .addText((text) =>
-          text
-            .setPlaceholder('0')
-            .setValue(String(this.plugin.settings.similarNotesThreshold))
-            .onChange(async (value) => {
-              const threshold = Number(value);
-              if (Number.isFinite(threshold) && threshold >= 0 && threshold <= 1) {
-                this.plugin.settings.similarNotesThreshold = threshold;
-                await this.plugin.saveSettings();
-                this.plugin.onSimilarNotesSettingsChanged?.();
-              }
-            }),
-        );
-    }
+    new Setting(similarNotesSettingsEl)
+      .setName('Similar notes limit')
+      .setDesc('Maximum number of similar notes shown at the bottom of a note.')
+      .addText((text) =>
+        text
+          .setPlaceholder('5')
+          .setValue(String(this.plugin.settings.similarNotesBottomLimit))
+          .onChange(async (value) => {
+            const limit = Number(value);
+            if (Number.isInteger(limit) && limit >= 1 && limit <= 20) {
+              this.plugin.settings.similarNotesBottomLimit = limit;
+              await this.plugin.saveSettings();
+              this.plugin.onSimilarNotesSettingsChanged?.();
+            }
+          }),
+      );
+
+    new Setting(similarNotesSettingsEl)
+      .setName('Minimum similarity')
+      .setDesc('Hide semantic results below this score. Use 0 to keep every result.')
+      .addText((text) =>
+        text
+          .setPlaceholder('0')
+          .setValue(String(this.plugin.settings.similarNotesThreshold))
+          .onChange(async (value) => {
+            const threshold = Number(value);
+            if (Number.isFinite(threshold) && threshold >= 0 && threshold <= 1) {
+              this.plugin.settings.similarNotesThreshold = threshold;
+              await this.plugin.saveSettings();
+              this.plugin.onSimilarNotesSettingsChanged?.();
+            }
+          }),
+      );
+
+    similarNotesSettingsEl.hidden = !this.plugin.settings.showSimilarNotesAtBottom;
 
     new Setting(containerEl)
       .setName('Test connection')

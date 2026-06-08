@@ -708,7 +708,9 @@ export class GraphWorkbenchView extends ItemView {
       'a.ohs-graph-node-link',
       'ohs-graph-node-item',
     );
-    requestAnimationFrame(() => this.renderExpandableLinkEdges(svgEl, layersEl, graphData.edges));
+    window.requestAnimationFrame(() =>
+      this.renderExpandableLinkEdges(svgEl, layersEl, graphData.edges),
+    );
   }
 
   private renderExpandableLinkLayers(

@@ -348,7 +348,6 @@ export const requestUrl = vi.fn();
 
 export const setIcon = vi.fn((parent: HTMLElement, iconId: string) => {
   parent.dataset.icon = iconId;
-  parent.textContent = iconId;
 });
 
 // Passthrough debounce — returns a plain function that calls cb immediately.

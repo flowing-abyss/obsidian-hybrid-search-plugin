@@ -3,6 +3,7 @@ import {
   debounce,
   MarkdownRenderChild,
   MarkdownRenderer,
+  setIcon,
   SuggestModal,
   TFile,
 } from 'obsidian';
@@ -232,8 +233,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
         this.isRecentMode = false;
         this.updateModeBadge('~');
         return new Promise((resolve) => {
-          activeWindow.clearTimeout(this.debounce);
-          this.debounce = activeWindow.setTimeout(() => {
+          window.clearTimeout(this.debounce);
+          this.debounce = window.setTimeout(() => {
             this.fetchSimilar(resolve);
           }, 150);
         });
@@ -259,8 +260,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     );
 
     return new Promise((resolve) => {
-      activeWindow.clearTimeout(this.debounce);
-      this.debounce = activeWindow.setTimeout(() => {
+      window.clearTimeout(this.debounce);
+      this.debounce = window.setTimeout(() => {
         this.client
           .search(parsedQuery, {
             mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
@@ -341,7 +342,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
       const folder = result.path.includes('/') ? result.path.replace(/\/[^/]+$/, '') : '';
       const metaRow = container.createDiv({ cls: 'hybrid-search-meta' });
       if (folder) {
-        metaRow.createSpan({ text: folder, cls: 'hybrid-search-meta-path' });
+        const pathSpan = metaRow.createSpan({ cls: 'hybrid-search-meta-path' });
+        setIcon(pathSpan, 'folder');
+        pathSpan.createSpan({ text: folder });
       }
       result.tags
         .slice(0, 5)
@@ -528,8 +531,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
       const target = Math.max(0, absolutePos - 16);
       if (Math.abs(this.previewEl.scrollTop - target) > 8) this.previewEl.scrollTop = target;
     };
-    activeWindow.setTimeout(doScroll, 150);
-    activeWindow.setTimeout(doScroll, 400);
+    window.setTimeout(doScroll, 150);
+    window.setTimeout(doScroll, 400);
   }
 
   private highlightQueryWords(): void {
@@ -664,17 +667,15 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     if (folder) {
       const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
-      row.createSpan({
-        cls: 'hybrid-search-preview-meta-icon hybrid-search-preview-meta-icon-folder',
-      });
+      const iconSpan = row.createSpan({ cls: 'hybrid-search-preview-meta-icon' });
+      setIcon(iconSpan, 'folder');
       row.createSpan({ text: folder, cls: 'hybrid-search-preview-meta-folder' });
     }
 
     if (aliases.length > 0) {
       const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
-      row.createSpan({
-        cls: 'hybrid-search-preview-meta-icon hybrid-search-preview-meta-icon-alias',
-      });
+      const iconSpan = row.createSpan({ cls: 'hybrid-search-preview-meta-icon' });
+      setIcon(iconSpan, 'at-sign');
       for (const alias of aliases) {
         row.createSpan({ text: alias, cls: 'hybrid-search-preview-meta-alias' });
       }
@@ -682,9 +683,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     if (tags.length > 0) {
       const row = this.previewMetaEl.createDiv({ cls: 'hybrid-search-preview-meta-row' });
-      row.createSpan({
-        cls: 'hybrid-search-preview-meta-icon hybrid-search-preview-meta-icon-tag',
-      });
+      const iconSpan = row.createSpan({ cls: 'hybrid-search-preview-meta-icon' });
+      setIcon(iconSpan, 'tag');
       for (const tag of tags) {
         row.createSpan({ text: `#${tag}`, cls: 'hybrid-search-tag' });
       }

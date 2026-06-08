@@ -176,7 +176,7 @@ export default class HybridSearchPlugin extends Plugin {
 
   onunload(): void {
     if (this.graphWorkbenchRefreshTimer !== undefined) {
-      activeWindow.clearTimeout(this.graphWorkbenchRefreshTimer);
+      window.clearTimeout(this.graphWorkbenchRefreshTimer);
       this.graphWorkbenchRefreshTimer = undefined;
     }
     this.similarNotesBottom?.unload();
@@ -255,9 +255,9 @@ export default class HybridSearchPlugin extends Plugin {
 
   private queueGraphWorkbenchRefresh(): void {
     if (this.graphWorkbenchRefreshTimer !== undefined) {
-      activeWindow.clearTimeout(this.graphWorkbenchRefreshTimer);
+      window.clearTimeout(this.graphWorkbenchRefreshTimer);
     }
-    this.graphWorkbenchRefreshTimer = activeWindow.setTimeout(() => {
+    this.graphWorkbenchRefreshTimer = window.setTimeout(() => {
       this.graphWorkbenchRefreshTimer = undefined;
       void this.refreshGraphWorkbenchViews(true);
     }, 350);

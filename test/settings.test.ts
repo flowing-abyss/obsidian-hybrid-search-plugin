@@ -78,9 +78,9 @@ describe('HybridSearchSettingTab', () => {
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
     const { containerEl } = tab;
-    const names = Array.from(containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
     expect(names).not.toContain('Result limit');
     expect(names).not.toContain('Snippet length');
   });
@@ -92,9 +92,9 @@ describe('HybridSearchSettingTab', () => {
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
     const { containerEl } = tab;
-    const names = Array.from(containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
     expect(names).toContain('Show path and tags');
   });
 
@@ -104,9 +104,9 @@ describe('HybridSearchSettingTab', () => {
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
-    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
     expect(names).toContain('Show similar notes at bottom');
     expect(names).not.toContain('Similar notes limit');
     expect(names).not.toContain('Minimum similarity');
@@ -119,9 +119,9 @@ describe('HybridSearchSettingTab', () => {
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true };
     tab.display();
-    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
     expect(names).toContain('Similar notes limit');
     expect(names).toContain('Minimum similarity');
   });
@@ -132,9 +132,9 @@ describe('HybridSearchSettingTab', () => {
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
-    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
     expect(names).toContain('Connection mode');
     expect(names).toContain('Binary path');
     expect(names).not.toContain('HTTP host');
@@ -147,9 +147,9 @@ describe('HybridSearchSettingTab', () => {
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS, transport: 'http' };
     tab.display();
-    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
     expect(names).toContain('Connection mode');
     expect(names).not.toContain('Binary path');
     expect(names).toContain('HTTP host');
@@ -173,9 +173,9 @@ describe('HybridSearchSettingTab', () => {
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS, transport: 'http' };
     tab.display();
-    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
     expect(names).toContain('Enable fallback server');
     expect(names).not.toContain('Fallback HTTP host');
     expect(names).not.toContain('Fallback HTTP port');
@@ -191,9 +191,9 @@ describe('HybridSearchSettingTab', () => {
       httpFallbackEnabled: true,
     };
     tab.display();
-    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
     expect(names).toContain('Fallback HTTP host');
     expect(names).toContain('Fallback HTTP port');
   });
@@ -227,7 +227,7 @@ describe('HybridSearchSettingTab', () => {
     const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS } };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const binarySetting = Setting.instances.find((s) => s.textComponents.length > 0);
+    const binarySetting = Setting.instances.find((s) => s.getName() === 'Binary path');
     expect(binarySetting).toBeDefined();
     binarySetting!.textComponents[0]!.triggerChange('/usr/local/bin/ohs');
     expect(plugin.settings.binaryPath).toBe('/usr/local/bin/ohs');
@@ -323,9 +323,9 @@ describe('HybridSearchSettingTab — showPreview conditional UI', () => {
   }
 
   function settingNames(tab: HybridSearchSettingTab): string[] {
-    return Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).map(
-      (el) => el.textContent ?? '',
-    );
+    return Array.from(tab.containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent ?? '');
   }
 
   it('renders Show preview toggle', async () => {

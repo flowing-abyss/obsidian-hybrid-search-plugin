@@ -11,6 +11,8 @@ jobs:
 
     permissions:
       contents: write
+      attestations: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +25,13 @@ jobs:
       - run: npm ci
 
       - run: npm run build
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            main.js
+            styles.css
 
       - name: Create GitHub Release
         env:

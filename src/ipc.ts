@@ -336,16 +336,16 @@ export class SearchClient {
     if (this.ready) return Promise.resolve();
     if (this.spawnError) return Promise.reject(this.spawnError);
     return new Promise((resolve, reject) => {
-      const t = activeWindow.setTimeout(() => {
+      const t = window.setTimeout(() => {
         const diag = this.diagnostics();
         reject(new Error(`Search server timed out.\n${diag}`));
       }, timeoutMs);
       this.readyCallbacks.push(() => {
-        activeWindow.clearTimeout(t);
+        window.clearTimeout(t);
         resolve();
       });
       this.rejectCallbacks.push((err) => {
-        activeWindow.clearTimeout(t);
+        window.clearTimeout(t);
         const diag = this.diagnostics();
         reject(new Error(`${err.message}\n${diag}`));
       });
@@ -810,7 +810,7 @@ function errorMessage(err: unknown): string {
 
 function requestWithTimeout(request: RequestUrlParam, timeoutMs: number): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
-    const timer = activeWindow.setTimeout(
+    const timer = window.setTimeout(
       () => reject(new Error('HTTP MCP request timed out')),
       timeoutMs,
     );
@@ -818,7 +818,7 @@ function requestWithTimeout(request: RequestUrlParam, timeoutMs: number): Promis
       .then((response) => resolve(response as HttpResponse))
       .catch(reject)
       .finally(() => {
-        activeWindow.clearTimeout(timer);
+        window.clearTimeout(timer);
       });
   });
 }
