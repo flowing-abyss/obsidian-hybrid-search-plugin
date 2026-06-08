@@ -15,6 +15,23 @@ export interface SimilarNotesFetchResult {
   scoreMode: 'similarity' | 'structural';
 }
 
+export interface SuperchargedLinksPlugin {
+  _watchContainerDynamic: (
+    watchId: string,
+    container: HTMLElement,
+    plugin: unknown,
+    linkSelector: string,
+    rowClass: string,
+  ) => void;
+  observers?: Array<[MutationObserver, string, string]>;
+}
+
+export interface AppWithSuperchargedLinks {
+  plugins?: {
+    plugins?: Record<string, SuperchargedLinksPlugin | undefined>;
+  };
+}
+
 export async function fetchSimilarNotesDetailed(
   client: Pick<SearchClient, 'search'>,
   path: string,
@@ -167,25 +184,24 @@ export function hookSuperchargedLinks(
   linkSelector: string,
   rowClass: string,
 ): void {
-  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-  const sl = (app as any).plugins?.plugins?.['supercharged-links-obsidian'];
+  const sl = (app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
+    'supercharged-links-obsidian'
+  ];
   if (!sl || typeof sl._watchContainerDynamic !== 'function') return;
   unhookSuperchargedLinks(app, watchId);
   sl._watchContainerDynamic(watchId, containerEl, sl, linkSelector, rowClass);
-  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
 }
 
 export function unhookSuperchargedLinks(app: App, watchId: string): void {
-  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-  const sl = (app as any).plugins?.plugins?.['supercharged-links-obsidian'];
+  const sl = (app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
+    'supercharged-links-obsidian'
+  ];
   if (!sl || !Array.isArray(sl.observers)) return;
-  const observers = sl.observers as Array<[MutationObserver, string, string]>;
-  const idx = observers.findIndex(([, id]) => id === watchId);
+  const idx = sl.observers.findIndex(([, id]) => id === watchId);
   if (idx >= 0) {
-    observers[idx]![0].disconnect();
-    observers.splice(idx, 1);
+    sl.observers[idx]![0].disconnect();
+    sl.observers.splice(idx, 1);
   }
-  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 }
 
 export function getSimilarNotesOptions(settings: HybridSearchSettings): SimilarNotesOptions {

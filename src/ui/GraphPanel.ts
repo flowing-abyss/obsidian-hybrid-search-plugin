@@ -1,6 +1,7 @@
 import type { App } from 'obsidian';
 import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../graph/buildGraph';
 import { hookInternalLinks } from './linkHandler';
+import { type AppWithSuperchargedLinks } from './noteUtils';
 
 export class GraphPanel {
   private el: HTMLDivElement;
@@ -354,8 +355,9 @@ export class GraphPanel {
 
   private watchSuperchargedLinks(): void {
     this.unwatchSuperchargedLinks();
-    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-    const sl = (this.app as any).plugins?.plugins?.['supercharged-links-obsidian'];
+    const sl = (this.app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
+      'supercharged-links-obsidian'
+    ];
     if (!sl || typeof sl._watchContainerDynamic !== 'function') return;
     sl._watchContainerDynamic(
       GraphPanel.SL_WATCH_ID,
@@ -364,20 +366,17 @@ export class GraphPanel {
       'a.ohs-graph-node-link',
       'ohs-graph-node-item',
     );
-    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
   }
 
   private unwatchSuperchargedLinks(): void {
-    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-    const sl = (this.app as any).plugins?.plugins?.['supercharged-links-obsidian'];
+    const sl = (this.app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
+      'supercharged-links-obsidian'
+    ];
     if (!sl || !Array.isArray(sl.observers)) return;
-    const idx = (sl.observers as Array<[MutationObserver, string, string]>).findIndex(
-      ([, id]) => id === GraphPanel.SL_WATCH_ID,
-    );
+    const idx = sl.observers.findIndex(([, id]) => id === GraphPanel.SL_WATCH_ID);
     if (idx >= 0) {
-      (sl.observers[idx] as [MutationObserver, string, string])[0].disconnect();
-      (sl.observers as unknown[]).splice(idx, 1);
+      sl.observers[idx]![0].disconnect();
+      sl.observers.splice(idx, 1);
     }
-    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
   }
 }

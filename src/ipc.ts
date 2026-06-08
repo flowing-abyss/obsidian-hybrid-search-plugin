@@ -336,19 +336,16 @@ export class SearchClient {
     if (this.ready) return Promise.resolve();
     if (this.spawnError) return Promise.reject(this.spawnError);
     return new Promise((resolve, reject) => {
-      // eslint-disable-next-line obsidianmd/prefer-active-window-timers
-      const t = setTimeout(() => {
+      const t = activeWindow.setTimeout(() => {
         const diag = this.diagnostics();
         reject(new Error(`Search server timed out.\n${diag}`));
       }, timeoutMs);
       this.readyCallbacks.push(() => {
-        // eslint-disable-next-line obsidianmd/prefer-active-window-timers
-        clearTimeout(t);
+        activeWindow.clearTimeout(t);
         resolve();
       });
       this.rejectCallbacks.push((err) => {
-        // eslint-disable-next-line obsidianmd/prefer-active-window-timers
-        clearTimeout(t);
+        activeWindow.clearTimeout(t);
         const diag = this.diagnostics();
         reject(new Error(`${err.message}\n${diag}`));
       });
@@ -813,14 +810,15 @@ function errorMessage(err: unknown): string {
 
 function requestWithTimeout(request: RequestUrlParam, timeoutMs: number): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
-    // eslint-disable-next-line obsidianmd/prefer-active-window-timers
-    const timer = setTimeout(() => reject(new Error('HTTP MCP request timed out')), timeoutMs);
+    const timer = activeWindow.setTimeout(
+      () => reject(new Error('HTTP MCP request timed out')),
+      timeoutMs,
+    );
     void requestUrl({ ...request, throw: false })
       .then((response) => resolve(response as HttpResponse))
       .catch(reject)
       .finally(() => {
-        // eslint-disable-next-line obsidianmd/prefer-active-window-timers
-        clearTimeout(timer);
+        activeWindow.clearTimeout(timer);
       });
   });
 }

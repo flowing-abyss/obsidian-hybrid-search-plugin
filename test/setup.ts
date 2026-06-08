@@ -124,7 +124,7 @@ if (typeof HTMLElement !== 'undefined' && !('setCssProps' in HTMLElement.prototy
 
 if (typeof HTMLElement !== 'undefined' && !('show' in HTMLElement.prototype)) {
   (HTMLElement.prototype as HTMLElement & { show: () => void }).show = function (): void {
-    // eslint-disable-next-line obsidianmd/no-static-styles-assignment
+    // eslint-disable-next-line obsidianmd/no-static-styles-assignment -- polyfill show() for jsdom test environment
     this.style.display = '';
   };
 }
@@ -137,7 +137,7 @@ if (typeof HTMLElement !== 'undefined' && !('isShown' in HTMLElement.prototype))
 
 if (typeof HTMLElement !== 'undefined' && !('hide' in HTMLElement.prototype)) {
   (HTMLElement.prototype as HTMLElement & { hide: () => void }).hide = function (): void {
-    // eslint-disable-next-line obsidianmd/no-static-styles-assignment
+    // eslint-disable-next-line obsidianmd/no-static-styles-assignment -- polyfill hide() for jsdom test environment
     this.style.display = 'none';
   };
 }

@@ -139,7 +139,7 @@ describe('SimilarNotesBottomManager', () => {
     expect(matches).toBeTruthy();
     expect(matches?.classList.contains('is-collapsed')).toBe(false);
     expect(sizer.querySelector('.search-result-file-match')?.textContent).toBe(result.snippet);
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
     expect(vi.mocked(MarkdownRenderer.render)).not.toHaveBeenCalled();
     manager.unload();
     vi.useRealTimers();

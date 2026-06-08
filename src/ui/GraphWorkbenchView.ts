@@ -1,4 +1,4 @@
-/* eslint-disable sonarjs/slow-regex */
+/* eslint-disable sonarjs/slow-regex -- graph workbench uses regexes for link parsing and path matching; patterns are bounded by input text length */
 import { ItemView, Notice, setIcon, TFile, type App, type WorkspaceLeaf } from 'obsidian';
 import {
   analyzeGraph,
@@ -2234,3 +2234,5 @@ function isNoisyPath(path: string): boolean {
     /(^|\/)\d{4}-\d{2}-\d{2}\.md$/i.test(path)
   );
 }
+
+/* eslint-enable sonarjs/slow-regex -- graph workbench regexes completed */

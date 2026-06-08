@@ -3,6 +3,14 @@ import type { SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
 import type { SearchModal } from './SearchModal';
 
+interface ModalWithChooser {
+  chooser?: {
+    values?: unknown[];
+    selectedItem?: number;
+    setSelectedItem?: (index: number, evt: KeyboardEvent) => void;
+  };
+}
+
 export function registerModalKeymap(
   modal: SearchModal,
   app: App,
@@ -12,43 +20,31 @@ export function registerModalKeymap(
   // Mod = Cmd on macOS, Ctrl on Windows/Linux
 
   function getSelected(m: SearchModal): SearchResult | undefined {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const chooser = (m as any).chooser;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    return chooser?.values?.[chooser?.selectedItem] as SearchResult | undefined;
+    const chooser = (m as unknown as ModalWithChooser).chooser;
+    return chooser?.values?.[chooser?.selectedItem ?? 0] as SearchResult | undefined;
   }
 
   function getAll(m: SearchModal): SearchResult[] {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const chooser = (m as any).chooser;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const chooser = (m as unknown as ModalWithChooser).chooser;
     return (chooser?.values ?? []) as SearchResult[];
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
 
   modal.scope.register(['Mod'], 'j', (evt: KeyboardEvent) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const chooser = (modal as any).chooser;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const values = (chooser?.values ?? []) as unknown[];
+    const chooser = (modal as unknown as ModalWithChooser).chooser;
+    const values = chooser?.values ?? [];
     if (values.length === 0) return;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const idx = (chooser?.selectedItem ?? 0) as number;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    chooser?.setSelectedItem(Math.min(idx + 1, values.length - 1), evt);
+    const idx = chooser?.selectedItem ?? 0;
+    chooser?.setSelectedItem?.(Math.min(idx + 1, values.length - 1), evt);
   });
 
   modal.scope.register(['Mod'], 'k', (evt: KeyboardEvent) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const chooser = (modal as any).chooser;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const values = (chooser?.values ?? []) as unknown[];
+    const chooser = (modal as unknown as ModalWithChooser).chooser;
+    const values = chooser?.values ?? [];
     if (values.length === 0) return;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const idx = (chooser?.selectedItem ?? 0) as number;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    chooser?.setSelectedItem(Math.max(idx - 1, 0), evt);
+    const idx = chooser?.selectedItem ?? 0;
+    chooser?.setSelectedItem?.(Math.max(idx - 1, 0), evt);
   });
 
   // ── Preview toggle ────────────────────────────────────────────────────────

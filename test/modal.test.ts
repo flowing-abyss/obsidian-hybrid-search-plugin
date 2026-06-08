@@ -10,7 +10,7 @@ const mockClient = { search: mockSearch };
 const mockGetCache = vi.fn().mockReturnValue(null);
 const mockCachedRead = vi.fn().mockResolvedValue('# Note Content\n\nSome body text.');
 const mockGetAbstractFileByPath = vi.fn();
-// eslint-disable-next-line @typescript-eslint/unbound-method
+// eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
 const mockRender = vi.mocked(MarkdownRenderer.render);
 
 const mockOpenFile = vi.fn();

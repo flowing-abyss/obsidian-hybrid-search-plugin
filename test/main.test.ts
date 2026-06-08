@@ -70,7 +70,7 @@ describe('HybridSearchPlugin', () => {
 
   it('loads settings on onload', async () => {
     await plugin.onload();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
     expect(plugin.loadData).toHaveBeenCalled();
     expect(plugin.settings).toBeDefined();
     expect(plugin.settings.defaultMode).toBe('hybrid');
@@ -184,7 +184,7 @@ describe('HybridSearchPlugin', () => {
 
   it('registers search modal, search panel, and graph workbench commands', async () => {
     await plugin.onload();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
     expect(plugin.addCommand).toHaveBeenCalledTimes(11);
     const ids = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls.map(
       (c: unknown[]) => (c[0] as { id: string }).id,
@@ -204,7 +204,7 @@ describe('HybridSearchPlugin', () => {
 
   it('registers ribbon icon', async () => {
     await plugin.onload();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
     expect(plugin.addRibbonIcon).toHaveBeenCalledWith(
       'search',
       'Hybrid search',
@@ -214,19 +214,19 @@ describe('HybridSearchPlugin', () => {
 
   it('adds settings tab', async () => {
     await plugin.onload();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
     expect(plugin.addSettingTab).toHaveBeenCalledTimes(1);
   });
 
   it('registers docked search panel view', async () => {
     await plugin.onload();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
     expect(plugin.registerView).toHaveBeenCalledWith('hybrid-search-panel', expect.any(Function));
   });
 
   it('registers docked graph workbench view', async () => {
     await plugin.onload();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
     expect(plugin.registerView).toHaveBeenCalledWith(
       'hybrid-search-graph-workbench',
       expect.any(Function),
@@ -245,7 +245,7 @@ describe('HybridSearchPlugin', () => {
     await plugin.onload();
     plugin.settings.binaryPath = '/usr/bin/ohs';
     await plugin.saveSettings();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
     expect(plugin.saveData).toHaveBeenCalledWith(
       expect.objectContaining({ binaryPath: '/usr/bin/ohs' }),
     );
