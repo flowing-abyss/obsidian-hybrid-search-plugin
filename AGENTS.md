@@ -106,12 +106,12 @@ This automatically:
 1. Bumps `version` in `package.json`
 2. Runs `version-bump.mjs` — updates `manifest.json` and `versions.json`
 3. Creates a git commit
-4. Creates a `v`-prefixed tag (e.g. `v0.1.8`) — **required by CI**
+4. Creates a tag matching the manifest version exactly (e.g. `0.1.8`) — **do not prefix with `v`**
 5. Pushes the commit and tag to `origin` via the `postversion` script
 
-The CI release workflow (`release.yml`) triggers on `v*.*.*` tags and publishes `main.js`, `manifest.json`, and `styles.css` as GitHub Release assets.
+The CI release workflow (`release.yml`) triggers on `*.*.*` tags and publishes `main.js`, `manifest.json`, and `styles.css` as GitHub Release assets.
 
-**Never** tag manually with `git tag` — it's easy to forget the `v` prefix and CI will not trigger.
+`.npmrc` is configured with `tag-version-prefix=""` so `npm version` produces tags without a `v` prefix. **Never** tag manually with `git tag` — it's easy to create a mismatch and CI will not trigger.
 
 ## Security, privacy, and compliance
 
