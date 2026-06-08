@@ -1082,13 +1082,23 @@ export class GraphWorkbenchView extends ItemView {
       'ohs-workbench-link',
       this.centerPath ?? '',
     );
-    const displayScore = this.getCandidateDisplayScore(candidate);
-    if (displayScore) {
+    if (this.analysisTab === 'best') {
+      const kindIcon = getBestKindIcon(candidate.kind);
       const flairOuter = row.createDiv({ cls: 'tree-item-flair-outer' });
-      flairOuter.createDiv({
-        cls: 'tree-item-flair ohs-workbench-flair',
-        text: displayScore,
+      const flair = flairOuter.createDiv({
+        cls: 'tree-item-flair ohs-workbench-flair ohs-workbench-kind-flair',
       });
+      const iconEl = flair.createSpan({ cls: 'ohs-workbench-kind-flair-icon' });
+      setIcon(iconEl, kindIcon);
+    } else {
+      const displayScore = this.getCandidateDisplayScore(candidate);
+      if (displayScore) {
+        const flairOuter = row.createDiv({ cls: 'tree-item-flair-outer' });
+        flairOuter.createDiv({
+          cls: 'tree-item-flair ohs-workbench-flair',
+          text: displayScore,
+        });
+      }
     }
     return item;
   }
@@ -2122,6 +2132,21 @@ function getCandidateGraphNodeKind(candidate: CandidateNote): GraphNodeKind {
   if (candidate.kind === 'bridge') return 'bridge';
   if (candidate.kind === 'missing') return 'missing';
   return 'semantic';
+}
+
+function getBestKindIcon(kind: CandidateNote['kind']): string {
+  switch (kind) {
+    case 'missing':
+      return 'link-2';
+    case 'bridge':
+      return 'git-fork';
+    case 'similar':
+      return 'radar';
+    case 'neighbor':
+      return 'network';
+    case 'diagnostic':
+      return 'activity';
+  }
 }
 
 function formatSearchBreakdown(result: SearchResult): string | null {

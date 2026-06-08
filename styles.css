@@ -1267,3 +1267,24 @@ li.hybrid-search-semantic-match {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+
+.ohs-workbench-kind-flair {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.ohs-workbench-kind-flair-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.ohs-workbench-kind-flair-icon svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
