@@ -41,7 +41,11 @@ Open the search modal with:
 
 Type to search. Results appear as you type with a relevance score:
 
+<details>
+<summary>Hybrid search results with relevance scores</summary>
+
 ![Hybrid search results with relevance scores](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/search.png)
+</details>
 
 | Score   | Color  | Meaning          |
 | ------- | ------ | ---------------- |
@@ -56,7 +60,11 @@ Leave the query empty and the plugin shows contextually relevant results:
 - If a note is open, it surfaces **semantically similar notes**.
 - If no note is open, it shows recently opened files.
 
+<details>
+<summary>Semantically similar notes</summary>
+
 ![Semantically similar notes](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/similar.png)
+</details>
 
 ### Workbench
 
@@ -71,7 +79,11 @@ The plugin includes a **link-discovery workbench** that analyzes your vault's kn
 
 Each candidate exposes interpretable scores — **cosine**, **Adamic-Adar**, **common** neighbors, **co-citation** count, **semantic** distance, and more — so you can decide whether a suggested link makes sense. You can add links, inspect backlinks, or compare notes directly from the list, while a live **local graph** visualizes the neighborhood around the current file.
 
+<details>
+<summary>Link-discovery workbench</summary>
+
 ![Link-discovery workbench with local graph and scored candidates](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/workbench.png)
+</details>
 
 ## Query Syntax
 
