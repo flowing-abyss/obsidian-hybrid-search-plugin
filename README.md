@@ -6,7 +6,7 @@ The plugin is a thin UI layer that communicates with the [obsidian-hybrid-search
 
 > **Desktop only.**
 
-![screenshot](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/screenshot.png)
+![Search modal with results, preview and local graph](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/modal.png)
 
 ## Requirements
 
@@ -41,16 +41,37 @@ Open the search modal with:
 
 Type to search. Results appear as you type with a relevance score:
 
+![Hybrid search results with relevance scores](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/search.png)
+
 | Score   | Color  | Meaning          |
 | ------- | ------ | ---------------- |
 | >0.8    | Green  | High relevance   |
 | 0.5–0.8 | Orange | Medium relevance |
 | <0.5    | Gray   | Low relevance    |
 
-**Empty query behaviour:**
+### Empty query & similar notes
 
-- If a note is open, shows semantically similar notes.
-- If no note is open, shows recently opened files.
+Leave the query empty and the plugin shows contextually relevant results:
+
+- If a note is open, it surfaces **semantically similar notes**.
+- If no note is open, it shows recently opened files.
+
+![Semantically similar notes](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/similar.png)
+
+### Workbench
+
+The plugin includes a **link-discovery workbench** that analyzes your vault's knowledge graph to surface the most actionable connections for the current note. It runs several graph algorithms side by side:
+
+- **Best** — top candidates ranked by a composite of structural and semantic signals.
+- **Missing Links** — notes that are strongly related but not yet linked.
+- **Bridges** — notes that connect otherwise distant parts of your graph.
+- **Similar** — semantically close notes.
+- **Links** — existing outgoing and incoming links.
+- **Diagnostics** — structural insights about the note's position in the graph.
+
+Each candidate exposes interpretable scores — **cosine**, **Adamic-Adar**, **common** neighbors, **co-citation** count, **semantic** distance, and more — so you can decide whether a suggested link makes sense. You can add links, inspect backlinks, or compare notes directly from the list, while a live **local graph** visualizes the neighborhood around the current file.
+
+![Link-discovery workbench with local graph and scored candidates](https://raw.githubusercontent.com/flowing-abyss/obsidian-hybrid-search-plugin/master/assets/workbench.png)
 
 ## Query Syntax
 
