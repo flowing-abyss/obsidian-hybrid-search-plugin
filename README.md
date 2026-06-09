@@ -1,5 +1,9 @@
 # Hybrid Search
 
+[![Available in Obsidian](https://img.shields.io/badge/Available%20in%20Obsidian-7C3AED?logo=obsidian&logoColor=white&style=flat-square)](https://obsidian.md/plugins?id=hybrid-search)
+[![Release](https://github.com/flowing-abyss/obsidian-hybrid-search-plugin/actions/workflows/release.yml/badge.svg)](https://github.com/flowing-abyss/obsidian-hybrid-search-plugin/actions/workflows/release.yml)
+[![Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&query=%24%5B%22hybrid-search%22%5D.downloads&label=community%20downloads&style=flat-square&color=blue)](https://obsidian.md/plugins?id=hybrid-search)
+
 Fast hybrid search for Obsidian — combines BM25 full-text and semantic (vector) search over your vault.
 
 The plugin is a thin UI layer that communicates with the [obsidian-hybrid-search](https://github.com/flowing-abyss/obsidian-hybrid-search) CLI, which runs as a background process and handles indexing and search.
@@ -20,16 +24,15 @@ The CLI must be available in your `PATH` (or you can set a custom path in plugin
 
 ## Installation
 
-### Via BRAT (recommended)
+### Via Obsidian Community Plugins
 
-1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin.
+Open the [Hybrid Search](https://community.obsidian.md/plugins/hybrid-search) page and click **Add to Obsidian**.
+
+### Via BRAT
+
+1. Install the [BRAT](https://community.obsidian.md/plugins/obsidian42-brat) plugin.
 2. In BRAT settings, click **Add Beta Plugin** and enter this repository's URL.
-3. Enable **Hybrid Search** in Obsidian's plugin list.
-
-### Manual
-
-1. Download `main.js`, `styles.css`, and `manifest.json` from the [latest release](https://github.com/flowing-abyss/obsidian-hybrid-search/releases).
-2. Copy them to `<your vault>/.obsidian/plugins/obsidian-hybrid-search/`.
+   - `https://github.com/flowing-abyss/obsidian-hybrid-search-plugin`
 3. Enable **Hybrid Search** in Obsidian's plugin list.
 
 ## Usage
