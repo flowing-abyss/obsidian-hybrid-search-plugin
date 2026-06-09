@@ -2,7 +2,7 @@
 
 [![Available in Obsidian](https://img.shields.io/badge/Available%20in%20Obsidian-7C3AED?logo=obsidian&logoColor=white&style=flat-square)](https://obsidian.md/plugins?id=hybrid-search)
 [![Release](https://github.com/flowing-abyss/obsidian-hybrid-search-plugin/actions/workflows/release.yml/badge.svg)](https://github.com/flowing-abyss/obsidian-hybrid-search-plugin/actions/workflows/release.yml)
-[![Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&query=%24%5B%22hybrid-search%22%5D.downloads&label=community%20downloads&style=flat-square&color=blue)](https://obsidian.md/plugins?id=hybrid-search)
+[![Downloads](https://img.shields.io/github/downloads/flowing-abyss/obsidian-hybrid-search-plugin/total?style=flat-square&label=downloads&color=blue)](https://github.com/flowing-abyss/obsidian-hybrid-search-plugin/releases)
 
 Fast hybrid search for Obsidian — combines BM25 full-text and semantic (vector) search over your vault.
 
