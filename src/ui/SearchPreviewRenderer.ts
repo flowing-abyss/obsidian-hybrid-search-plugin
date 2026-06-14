@@ -180,7 +180,7 @@ function toDisplayText(s: string): string {
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(MD_STRIP, '');
-  /* eslint-enable sonarjs/slow-regex */
+  /* eslint-enable sonarjs/slow-regex -- bounded markdown link stripping completed */
 }
 
 function snippetScrollCandidates(snippet: string): string[] {

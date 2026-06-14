@@ -1377,6 +1377,6 @@ li.hybrid-search-semantic-match {
 
 @media (max-width: 920px) {
   .hybrid-search-inline-preview {
-    display: none !important;
+    display: none;
   }
 }
