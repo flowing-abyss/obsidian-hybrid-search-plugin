@@ -66,6 +66,8 @@ describe('HybridSearchPlugin', () => {
     plugin.addRibbonIcon = vi.fn();
     plugin.addSettingTab = vi.fn();
     plugin.registerView = vi.fn();
+    plugin.registerEditorExtension = vi.fn();
+    plugin.registerEditorSuggest = vi.fn();
   });
 
   it('loads settings on onload', async () => {

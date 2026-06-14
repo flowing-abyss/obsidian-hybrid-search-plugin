@@ -2,12 +2,13 @@ import { Notice, Plugin, type EventRef } from 'obsidian';
 import type { HttpSearchClientStatusEvent } from './ipc';
 import { HttpSearchClient, SearchClient } from './ipc';
 import type { HybridSearchSettings } from './settings';
-import { DEFAULT_SETTINGS, HybridSearchSettingTab } from './settings';
+import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from './settings';
 import {
   GRAPH_WORKBENCH_VIEW_TYPE,
   GraphWorkbenchView,
   revealGraphWorkbench,
 } from './ui/GraphWorkbenchView';
+import { InlineSearchSuggest } from './ui/InlineSearchSuggest';
 import { SearchModal } from './ui/SearchModal';
 import { revealSearchPanel, SEARCH_PANEL_VIEW_TYPE, SearchPanelView } from './ui/SearchPanelView';
 import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
@@ -24,6 +25,7 @@ export default class HybridSearchPlugin extends Plugin {
     await this.loadSettings();
 
     this.restartClient();
+    this.registerEditorSuggest(new InlineSearchSuggest(this.app, this));
     this.registerView(SEARCH_PANEL_VIEW_TYPE, (leaf) => new SearchPanelView(leaf, this));
     this.registerView(GRAPH_WORKBENCH_VIEW_TYPE, (leaf) => new GraphWorkbenchView(leaf, this));
     if (typeof this.app.workspace.on === 'function') {
@@ -229,10 +231,8 @@ export default class HybridSearchPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign(
-      {},
-      DEFAULT_SETTINGS,
-      (await this.loadData()) as Partial<HybridSearchSettings>,
+    this.settings = normalizeSettings(
+      Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<HybridSearchSettings>),
     );
   }
 

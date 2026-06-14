@@ -23,6 +23,11 @@ export interface HybridSearchSettings {
   similarNotesThreshold: number;
   searchPanelLimit: number;
   searchPanelThreshold: number;
+  inlineSearchEnabled: boolean;
+  inlineSearchTrigger: string;
+  inlineSearchLimit: number;
+  inlineSearchThreshold: number;
+  inlineSearchShowPreview: boolean;
 }
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
@@ -47,7 +52,44 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   similarNotesThreshold: 0,
   searchPanelLimit: 20,
   searchPanelThreshold: 0,
+  inlineSearchEnabled: true,
+  inlineSearchTrigger: ';;',
+  inlineSearchLimit: 10,
+  inlineSearchThreshold: 0,
+  inlineSearchShowPreview: true,
 };
+
+export function normalizeSettings(settings: HybridSearchSettings): HybridSearchSettings {
+  return {
+    ...settings,
+    inlineSearchEnabled:
+      typeof settings.inlineSearchEnabled === 'boolean'
+        ? settings.inlineSearchEnabled
+        : DEFAULT_SETTINGS.inlineSearchEnabled,
+    inlineSearchTrigger:
+      typeof settings.inlineSearchTrigger === 'string' &&
+      settings.inlineSearchTrigger.trim() &&
+      !settings.inlineSearchTrigger.trim().startsWith('[')
+        ? settings.inlineSearchTrigger.trim()
+        : DEFAULT_SETTINGS.inlineSearchTrigger,
+    inlineSearchLimit: clampInteger(
+      settings.inlineSearchLimit,
+      1,
+      50,
+      DEFAULT_SETTINGS.inlineSearchLimit,
+    ),
+    inlineSearchThreshold: clampNumber(
+      settings.inlineSearchThreshold,
+      0,
+      1,
+      DEFAULT_SETTINGS.inlineSearchThreshold,
+    ),
+    inlineSearchShowPreview:
+      typeof settings.inlineSearchShowPreview === 'boolean'
+        ? settings.inlineSearchShowPreview
+        : DEFAULT_SETTINGS.inlineSearchShowPreview,
+  };
+}
 
 const HTTP_START_COMMAND =
   'OBSIDIAN' + '_VAULT_PATH="/path/to/your/vault" obsidian-hybrid-search serve';
@@ -298,6 +340,79 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Inline search')
+      .setDesc('Open a compact search menu in the editor after typing this trigger.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.inlineSearchEnabled).onChange(async (value) => {
+          this.plugin.settings.inlineSearchEnabled = value;
+          await this.plugin.saveSettings();
+          inlineSearchSettingsEl.hidden = !value;
+        }),
+      );
+
+    const inlineSearchSettingsEl = containerEl.createDiv();
+
+    new Setting(inlineSearchSettingsEl)
+      .setName('Trigger text')
+      .setDesc('Text that opens inline search while editing.')
+      .addText((text) =>
+        text
+          .setPlaceholder(';;')
+          .setValue(this.plugin.settings.inlineSearchTrigger)
+          .onChange(async (value) => {
+            const trigger = value.trim();
+            if (trigger.startsWith('[')) return;
+            this.plugin.settings.inlineSearchTrigger =
+              trigger || DEFAULT_SETTINGS.inlineSearchTrigger;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(inlineSearchSettingsEl)
+      .setName('Inline result limit')
+      .setDesc('Maximum number of notes shown in the inline search menu.')
+      .addText((text) =>
+        text
+          .setPlaceholder('10')
+          .setValue(String(this.plugin.settings.inlineSearchLimit))
+          .onChange(async (value) => {
+            const limit = Number(value);
+            if (Number.isInteger(limit) && limit >= 1 && limit <= 50) {
+              this.plugin.settings.inlineSearchLimit = limit;
+              await this.plugin.saveSettings();
+            }
+          }),
+      );
+
+    new Setting(inlineSearchSettingsEl)
+      .setName('Inline minimum relevance')
+      .setDesc('Hide inline results below this score. Use 0 to keep every result.')
+      .addText((text) =>
+        text
+          .setPlaceholder('0')
+          .setValue(String(this.plugin.settings.inlineSearchThreshold))
+          .onChange(async (value) => {
+            const threshold = Number(value);
+            if (Number.isFinite(threshold) && threshold >= 0 && threshold <= 1) {
+              this.plugin.settings.inlineSearchThreshold = threshold;
+              await this.plugin.saveSettings();
+            }
+          }),
+      );
+
+    new Setting(inlineSearchSettingsEl)
+      .setName('Show inline preview')
+      .setDesc('Show a compact note preview next to the inline search menu.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.inlineSearchShowPreview).onChange(async (value) => {
+          this.plugin.settings.inlineSearchShowPreview = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    inlineSearchSettingsEl.hidden = !this.plugin.settings.inlineSearchEnabled;
+
+    new Setting(containerEl)
       .setName('Show similar notes at bottom')
       .setDesc('Display similar notes above embedded backlinks in rendered notes.')
       .addToggle((toggle) =>
@@ -368,4 +483,16 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
       );
   }
+}
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
 }

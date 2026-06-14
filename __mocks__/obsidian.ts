@@ -76,6 +76,8 @@ export class Plugin {
   }
   addSettingTab(_tab: PluginSettingTab) {}
   registerView(_type: string, _viewCreator: (leaf: WorkspaceLeaf) => unknown) {}
+  registerEditorExtension(_extension: unknown) {}
+  registerEditorSuggest(_suggest: unknown) {}
   registerEvent(_eventRef: unknown) {}
   registerDomEvent(el: EventTarget, type: string, listener: EventListenerOrEventListenerObject) {
     el.addEventListener(type, listener);
@@ -160,6 +162,26 @@ export class SuggestModal<T> extends Modal {
   }
   renderSuggestion(_item: T, _el: HTMLElement) {}
   onChooseSuggestion(_item: T, _evt: MouseEvent | KeyboardEvent) {}
+}
+
+export class EditorSuggest<T> {
+  app: App;
+  context: unknown = null;
+  limit = 100;
+  scope = { register: vi.fn() };
+  constructor(app: App) {
+    this.app = app;
+  }
+  setInstructions(_instructions: unknown[]): void {}
+  close(): void {}
+  onTrigger(): unknown {
+    return null;
+  }
+  getSuggestions(): T[] | Promise<T[]> {
+    return [];
+  }
+  renderSuggestion(_item: T, _el: HTMLElement) {}
+  selectSuggestion(_item: T, _evt: MouseEvent | KeyboardEvent) {}
 }
 
 export class TextComponent {

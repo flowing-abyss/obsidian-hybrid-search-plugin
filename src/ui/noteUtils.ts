@@ -197,10 +197,11 @@ export function unhookSuperchargedLinks(app: App, watchId: string): void {
     'supercharged-links-obsidian'
   ];
   if (!sl || !Array.isArray(sl.observers)) return;
-  const idx = sl.observers.findIndex(([, id]) => id === watchId);
-  if (idx >= 0) {
-    sl.observers[idx]![0].disconnect();
-    sl.observers.splice(idx, 1);
+  for (let idx = sl.observers.length - 1; idx >= 0; idx--) {
+    if (sl.observers[idx]?.[1] === watchId) {
+      sl.observers[idx]![0].disconnect();
+      sl.observers.splice(idx, 1);
+    }
   }
 }
 

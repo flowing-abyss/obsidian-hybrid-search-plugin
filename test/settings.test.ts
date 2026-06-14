@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Setting } from '../__mocks__/obsidian';
 import type { HybridSearchSettings } from '../src/settings';
-import { DEFAULT_SETTINGS, HybridSearchSettingTab } from '../src/settings';
+import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from '../src/settings';
 
 const mockPlugin = {
   app: {
@@ -48,6 +48,32 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.similarNotesThreshold).toBe(0);
     expect(DEFAULT_SETTINGS.searchPanelLimit).toBe(20);
     expect(DEFAULT_SETTINGS.searchPanelThreshold).toBe(0);
+  });
+
+  it('has inline search defaults', () => {
+    expect(DEFAULT_SETTINGS.inlineSearchEnabled).toBe(true);
+    expect(DEFAULT_SETTINGS.inlineSearchTrigger).toBe(';;');
+    expect(DEFAULT_SETTINGS.inlineSearchLimit).toBe(10);
+    expect(DEFAULT_SETTINGS.inlineSearchThreshold).toBe(0);
+    expect(DEFAULT_SETTINGS.inlineSearchShowPreview).toBe(true);
+  });
+});
+
+describe('normalizeSettings', () => {
+  it('normalizes invalid inline search settings', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      inlineSearchEnabled: 'yes' as never,
+      inlineSearchTrigger: '   ',
+      inlineSearchLimit: '80' as never,
+      inlineSearchThreshold: 2,
+      inlineSearchShowPreview: 'true' as never,
+    });
+    expect(normalized.inlineSearchEnabled).toBe(DEFAULT_SETTINGS.inlineSearchEnabled);
+    expect(normalized.inlineSearchTrigger).toBe(DEFAULT_SETTINGS.inlineSearchTrigger);
+    expect(normalized.inlineSearchLimit).toBe(50);
+    expect(normalized.inlineSearchThreshold).toBe(1);
+    expect(normalized.inlineSearchShowPreview).toBe(DEFAULT_SETTINGS.inlineSearchShowPreview);
   });
 });
 
@@ -308,6 +334,19 @@ describe('HybridSearchSettingTab', () => {
     expect(graphToggle).toBeDefined();
     graphToggle!.toggleComponents[0]!.triggerChange(true);
     expect(plugin.settings.showGraphPanel).toBe(true);
+    expect(plugin.saveSettings).toHaveBeenCalled();
+  });
+
+  it('inline search settings render and save trigger changes', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS } };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const triggerSetting = Setting.instances.find((s) => s.getName() === 'Trigger text');
+    expect(triggerSetting).toBeDefined();
+    triggerSetting!.textComponents[0]!.triggerChange('::');
+    expect(plugin.settings.inlineSearchTrigger).toBe('::');
     expect(plugin.saveSettings).toHaveBeenCalled();
   });
 });
