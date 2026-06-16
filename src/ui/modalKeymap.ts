@@ -145,9 +145,7 @@ export function registerModalKeymap(
     if (!editor) return;
     const results = getAll(modal);
     const sourcePath = app.workspace.getActiveFile()?.path ?? '';
-    const text = results
-      .map((r) => fileToDragWikiLink(app, r.path, sourcePath))
-      .join('\n');
+    const text = results.map((r) => fileToDragWikiLink(app, r.path, sourcePath)).join('\n');
     editor.replaceRange(text, editor.getCursor());
     modal.close();
   });
