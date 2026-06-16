@@ -1,10 +1,10 @@
 {
-	"id": "hybrid-search",
-	"name": "Hybrid Search",
-	"minAppVersion": "1.4.0",
-	"description": "Fast hybrid search (BM25 + semantic) over your vault via a background CLI.",
-	"author": "flowing-abyss",
-	"authorUrl": "https://github.com/flowing-abyss",
-	"isDesktopOnly": true,
-	"version": "0.6.1"
+  "id": "hybrid-search",
+  "name": "Hybrid Search",
+  "minAppVersion": "1.4.0",
+  "description": "Fast hybrid search (BM25 + semantic) over your vault via a background CLI.",
+  "author": "flowing-abyss",
+  "authorUrl": "https://github.com/flowing-abyss",
+  "isDesktopOnly": true,
+  "version": "0.6.1"
 }
