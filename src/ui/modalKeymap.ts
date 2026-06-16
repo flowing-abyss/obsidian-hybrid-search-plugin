@@ -1,6 +1,7 @@
 import { App, TFile } from 'obsidian';
 import type { SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
+import { fileToDragWikiLink } from './noteUtils';
 import type { SearchModal } from './SearchModal';
 
 interface ModalWithChooser {
@@ -132,8 +133,8 @@ export function registerModalKeymap(
     if (!editor) return;
     const result = getSelected(modal);
     if (!result) return;
-    const linkText = result.title || result.path.replace(/^.*\//, '').replace(/\.md$/, '');
-    const link = '[[' + linkText + ']]';
+    const sourcePath = app.workspace.getActiveFile()?.path ?? '';
+    const link = fileToDragWikiLink(app, result.path, sourcePath);
     editor.replaceRange(link, editor.getCursor());
   });
 
@@ -143,11 +144,9 @@ export function registerModalKeymap(
     const editor = app.workspace.activeEditor?.editor;
     if (!editor) return;
     const results = getAll(modal);
+    const sourcePath = app.workspace.getActiveFile()?.path ?? '';
     const text = results
-      .map((r) => {
-        const linkText = r.title || r.path.replace(/^.*\//, '').replace(/\.md$/, '');
-        return '[[' + linkText + ']]';
-      })
+      .map((r) => fileToDragWikiLink(app, r.path, sourcePath))
       .join('\n');
     editor.replaceRange(text, editor.getCursor());
     modal.close();
