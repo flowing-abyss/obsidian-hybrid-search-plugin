@@ -29,6 +29,7 @@ export class SimilarNotesBottomManager {
   private readonly eventRefs: EventRef[] = [];
   private refreshTimer?: number;
   private refreshInterval?: number;
+  private pendingRefreshForce = false;
   private retryCount = 0;
 
   constructor(
@@ -61,6 +62,7 @@ export class SimilarNotesBottomManager {
       window.clearTimeout(this.refreshTimer);
       this.refreshTimer = undefined;
     }
+    this.pendingRefreshForce = false;
     if (this.refreshInterval !== undefined) {
       window.clearInterval(this.refreshInterval);
       this.refreshInterval = undefined;
@@ -79,7 +81,11 @@ export class SimilarNotesBottomManager {
       this.views.clear();
       return;
     }
-    this.scheduleRefresh(true);
+    this.refresh(true);
+  }
+
+  refresh(force = false): void {
+    this.scheduleRefresh(force);
   }
 
   private handleActiveLeafChange(leaf: WorkspaceLeaf | null): void {
@@ -88,13 +94,16 @@ export class SimilarNotesBottomManager {
   }
 
   private scheduleRefresh(force = false): void {
+    this.pendingRefreshForce = this.pendingRefreshForce || force;
     if (this.refreshTimer !== undefined) window.clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(() => {
       this.refreshTimer = undefined;
-      const attached = this.refreshAll(force);
+      const refreshForce = this.pendingRefreshForce;
+      this.pendingRefreshForce = false;
+      const attached = this.refreshAll(refreshForce);
       if (!attached && this.retryCount < 10) {
         this.retryCount++;
-        this.scheduleRefresh(force);
+        this.scheduleRefresh(refreshForce);
       } else {
         this.retryCount = 0;
       }

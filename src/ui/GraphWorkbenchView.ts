@@ -163,6 +163,7 @@ export class GraphWorkbenchView extends ItemView {
   private analysisTab: AnalysisTab = 'best';
   private centerPath: string | null = null;
   private semanticResults: SearchResult[] = [];
+  private similarNotesScoreMode: 'similarity' | 'structural' = 'similarity';
   private relatedResults: SearchResult[] = [];
   private analysis: GraphAnalysis | null = null;
   private graphIndex: GraphIndex | null = null;
@@ -242,8 +243,10 @@ export class GraphWorkbenchView extends ItemView {
   async refreshFromActiveFile(force = false): Promise<void> {
     const file = this.app.workspace.getActiveFile();
     if (!file) {
+      this.requestId++;
       this.centerPath = null;
       this.semanticResults = [];
+      this.similarNotesScoreMode = 'similarity';
       this.relatedResults = [];
       this.analysis = null;
       this.graphIndex = null;
@@ -257,8 +260,10 @@ export class GraphWorkbenchView extends ItemView {
 
     const path = file.path.normalize('NFC');
     if (!force && path === this.centerPath) return;
+    const requestId = ++this.requestId;
     this.centerPath = path;
     this.semanticResults = [];
+    this.similarNotesScoreMode = 'similarity';
     this.relatedResults = [];
     this.candidateCache = null;
     this.noteTextStats = null;
@@ -267,9 +272,9 @@ export class GraphWorkbenchView extends ItemView {
     this.graphIndex = buildGraphIndex(this.app);
     this.analysis = analyzeGraph(this.app, path, this.resultLimit, this.graphIndex);
     this.noteTextStats = await this.loadNoteTextStats(file);
+    if (this.closed || requestId !== this.requestId) return;
     this.renderLoading(path);
 
-    const requestId = ++this.requestId;
     await this.loadClientResults(path, requestId);
   }
 
@@ -311,25 +316,27 @@ export class GraphWorkbenchView extends ItemView {
     }
 
     try {
-      const [similar, related] = await Promise.allSettled([
-        fetchSimilarNotesDetailed(this.plugin.client, path, {
-          limit: this.resultLimit,
-          threshold: this.plugin.settings.similarNotesThreshold,
-          anchors: true,
-        }),
-        this.plugin.client.search(path, {
-          related: true,
-          depth: 1,
-          direction: 'both',
-          limit: this.resultLimit + 1,
-        }),
-      ]);
+      const similar = await fetchSimilarNotesDetailed(this.plugin.client, path, {
+        limit: this.resultLimit,
+        threshold: this.plugin.settings.similarNotesThreshold,
+        anchors: true,
+      }).catch(() => ({ results: [], scoreMode: 'similarity' as const }));
       if (this.closed || requestId !== this.requestId) return;
-      this.semanticResults = similar.status === 'fulfilled' ? similar.value.results : [];
-      this.relatedResults =
-        related.status === 'fulfilled'
-          ? related.value.filter((result) => result.path.normalize('NFC') !== path)
+      const related =
+        similar.scoreMode === 'similarity'
+          ? await this.plugin.client
+              .search(path, {
+                related: true,
+                depth: 1,
+                direction: 'both',
+                limit: this.resultLimit + 1,
+              })
+              .catch(() => [])
           : [];
+      if (this.closed || requestId !== this.requestId) return;
+      this.semanticResults = similar.results;
+      this.similarNotesScoreMode = similar.scoreMode;
+      this.relatedResults = related.filter((result) => result.path.normalize('NFC') !== path);
       this.candidateCache = null;
       this.render();
     } catch {
@@ -371,7 +378,7 @@ export class GraphWorkbenchView extends ItemView {
     titleEl.createSpan({ text: definition.graphLabel });
     this.graphTabsEl.createDiv({
       cls: 'ohs-workbench-graph-context-subtitle',
-      text: definition.subtitle,
+      text: this.getActiveTabSubtitle(definition),
     });
   }
 
@@ -514,7 +521,7 @@ export class GraphWorkbenchView extends ItemView {
         const existing = nodeMap.get(path);
         const candidateKind = this.getGraphCandidateKind(candidate);
         let edgeKind: GraphEdgeKind = 'predicted';
-        if (this.analysisTab === 'similar') {
+        if (this.analysisTab === 'similar' && this.similarNotesScoreMode === 'similarity') {
           edgeKind = 'semantic';
         } else if (candidate.existingDirectLink) {
           edgeKind = 'link';
@@ -522,18 +529,22 @@ export class GraphWorkbenchView extends ItemView {
           edgeKind = 'bridge';
         }
         const displayScore = this.getCandidateScoreForTab(candidate, this.analysisTab);
+        const graphScore =
+          this.analysisTab === 'similar' && this.similarNotesScoreMode === 'structural'
+            ? undefined
+            : displayScore;
         nodeMap.set(path, {
           path,
           title: existing?.title ?? candidate.title,
           kind: candidateKind,
           depth: existing?.depth ?? 2,
-          score: displayScore,
+          score: graphScore,
         });
         edges.push({
           source: centerPath,
           target: path,
           kind: edgeKind,
-          score: candidate.existingDirectLink ? undefined : displayScore,
+          score: candidate.existingDirectLink ? undefined : graphScore,
         });
       }
     }
@@ -674,6 +685,13 @@ export class GraphWorkbenchView extends ItemView {
       TAB_DEFINITIONS.find((definition) => definition.tab === this.analysisTab) ??
       TAB_DEFINITIONS[0]!
     );
+  }
+
+  private getActiveTabSubtitle(definition: (typeof TAB_DEFINITIONS)[number]): string {
+    if (this.analysisTab === 'similar' && this.similarNotesScoreMode === 'structural') {
+      return 'Structural fallback order from graph traversal.';
+    }
+    return definition.subtitle;
   }
 
   private renderExpandableLinksGraph(): void {
@@ -1276,6 +1294,12 @@ export class GraphWorkbenchView extends ItemView {
       return candidate.direction === 'none' ? [] : [candidate.direction];
     }
     if (this.analysisTab === 'similar') {
+      if (this.similarNotesScoreMode === 'structural') {
+        const evidence = candidate.evidence
+          .filter((item) => item !== 'semantic' && item !== 'structural')
+          .slice(0, 3);
+        return evidence.length > 0 ? evidence : ['structural'];
+      }
       const evidence = candidate.semantic > 0 ? ['semantic'] : [];
       if (candidate.direction !== 'none') evidence.push(candidate.direction);
       return evidence;
@@ -1285,6 +1309,7 @@ export class GraphWorkbenchView extends ItemView {
 
   private getCandidateDisplayScore(candidate: CandidateNote): string {
     if (this.analysisTab === 'neighbors') return '';
+    if (this.analysisTab === 'similar' && this.similarNotesScoreMode === 'structural') return '';
     return this.getCandidateScoreForTab(candidate, this.analysisTab).toFixed(2);
   }
 
@@ -1301,7 +1326,12 @@ export class GraphWorkbenchView extends ItemView {
   }
 
   private getGraphCandidateKind(candidate: CandidateNote): GraphNodeKind {
-    if (this.analysisTab === 'similar') return 'semantic';
+    if (this.analysisTab === 'similar' && this.similarNotesScoreMode === 'similarity') {
+      return 'semantic';
+    }
+    if (this.analysisTab === 'similar' && this.similarNotesScoreMode === 'structural') {
+      return candidate.kind === 'neighbor' ? 'neighbor' : 'bridge';
+    }
     if (this.analysisTab === 'neighbors' || this.analysisTab === 'diagnostics') {
       return getCandidateGraphNodeKind(candidate);
     }
@@ -1355,6 +1385,7 @@ export class GraphWorkbenchView extends ItemView {
     if (evidence === 'semantic' && candidate.semantic > 0) {
       return `semantic ${candidate.semantic.toFixed(2)}`;
     }
+    if (evidence === 'structural') return 'structural fallback';
     if (evidence === 'two-hop' && candidate.cosine > 0) {
       return `cosine ${candidate.cosine.toFixed(2)}`;
     }
@@ -1663,15 +1694,21 @@ export class GraphWorkbenchView extends ItemView {
 
     for (const result of this.semanticResults) {
       const candidate = ensureCandidate(result.path);
-      candidate.semantic = Math.max(candidate.semantic, result.score);
       candidate.snippet = result.snippet;
       candidate.previewAnchors = result.previewAnchors;
       candidate.primaryAnchorIndex = result.primaryAnchorIndex;
-      candidate.evidence.push('semantic');
-      for (const signal of getSearchMatchSignals(result)) candidate.evidence.push(signal);
-      candidate.expandedEvidence.push(`Semantic similarity ${result.score.toFixed(2)}.`);
-      const searchBreakdown = formatSearchBreakdown(result);
-      if (searchBreakdown) candidate.expandedEvidence.push(searchBreakdown);
+      if (this.similarNotesScoreMode === 'similarity') {
+        candidate.semantic = Math.max(candidate.semantic, result.score);
+        candidate.evidence.push('semantic');
+        for (const signal of getSearchMatchSignals(result)) candidate.evidence.push(signal);
+        candidate.expandedEvidence.push(`Semantic similarity ${result.score.toFixed(2)}.`);
+        const searchBreakdown = formatSearchBreakdown(result);
+        if (searchBreakdown) candidate.expandedEvidence.push(searchBreakdown);
+      } else {
+        candidate.relatedTraversal = true;
+        candidate.evidence.push('structural');
+        candidate.expandedEvidence.push('Found by structural fallback.');
+      }
     }
 
     for (const item of this.analysis.predicted) {

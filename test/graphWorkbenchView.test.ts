@@ -622,6 +622,82 @@ describe('GraphWorkbenchView', () => {
     expect(view.containerEl.querySelector('[data-path="Similar.md"]')).not.toBeNull();
   });
 
+  it('renders similar notes structural fallback without semantic scores', async () => {
+    const app = makeApp();
+    app.workspace.getActiveFile = vi
+      .fn()
+      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+    const client = {
+      search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
+        if (options.notePath) return Promise.resolve([]);
+        return Promise.resolve([result('Structural.md', 0.42)]);
+      }),
+    };
+    const view = makeView(app, client);
+
+    await view.onOpen();
+    view.containerEl
+      .querySelectorAll<HTMLButtonElement>('.ohs-workbench-tabs-bottom .ohs-workbench-tab')[3]!
+      .click();
+
+    expect(view.containerEl.querySelector('[data-path="Structural.md"]')).not.toBeNull();
+    expect(view.containerEl.querySelector('.ohs-workbench-evidence-line')?.textContent).toContain(
+      'structural fallback',
+    );
+    expect(view.containerEl.querySelector('.ohs-workbench-row')?.textContent).not.toContain('0.42');
+    const graphNode = view.containerEl.querySelector<HTMLElement>(
+      '.ohs-workbench-node-item[data-path="Structural.md"]',
+    );
+    const graphLink = graphNode?.querySelector<HTMLElement>('.ohs-workbench-node-link');
+    expect(graphNode?.classList.contains('ohs-workbench-node-semantic')).toBe(false);
+    expect(graphLink?.getAttribute('title')).not.toContain('0.42');
+    expect(graphLink?.getAttribute('title')).not.toContain('0.00');
+    expect(graphLink?.style.getPropertyValue('--ohs-workbench-node-score')).toBe('');
+    expect(client.search).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores stale async results after a forced refresh starts', async () => {
+    const app = makeApp();
+    app.workspace.getActiveFile = vi
+      .fn()
+      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+    const staleSemantic = deferred<ReturnType<typeof result>[]>();
+    const statsRefresh = deferred<string>();
+    let notePathCalls = 0;
+    const client = {
+      search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
+        if (options.notePath) {
+          notePathCalls++;
+          return notePathCalls === 1
+            ? staleSemantic.promise
+            : Promise.resolve([result('Fresh.md', 0.88)]);
+        }
+        return Promise.resolve([]);
+      }),
+    };
+    const view = makeView(app, client);
+
+    const openA = view.onOpen();
+    for (let index = 0; index < 10 && notePathCalls === 0; index++) await Promise.resolve();
+    expect(notePathCalls).toBe(1);
+    (app.vault.cachedRead as ReturnType<typeof vi.fn>).mockReturnValueOnce(statsRefresh.promise);
+    const refreshA = view.refreshFromActiveFile(true);
+
+    staleSemantic.resolve([result('Stale.md', 0.99)]);
+    await openA;
+    await Promise.resolve();
+
+    expect(view.containerEl.querySelector('[data-path="Stale.md"]')).toBeNull();
+
+    statsRefresh.resolve('');
+    await refreshA;
+    for (let index = 0; index < 10 && notePathCalls < 2; index++) await Promise.resolve();
+    expect(notePathCalls).toBe(2);
+
+    expect(view.containerEl.querySelector('[data-path="Fresh.md"]')).not.toBeNull();
+    expect(view.containerEl.querySelector('[data-path="Stale.md"]')).toBeNull();
+  });
+
   it('ignores stale async results after the active note changes', async () => {
     const app = makeApp();
     let activePath = 'A.md';

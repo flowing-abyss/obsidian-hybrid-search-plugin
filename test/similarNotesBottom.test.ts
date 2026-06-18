@@ -66,6 +66,109 @@ describe('SimilarNotesBottomManager', () => {
     vi.useRealTimers();
   });
 
+  it('refresh forces reload for the same note', async () => {
+    vi.useFakeTimers();
+    const leaf = new WorkspaceLeaf();
+    const markdownView = new MarkdownView(leaf);
+    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
+    const sizer = activeDocument.createDiv();
+    sizer.className = 'markdown-preview-sizer';
+    markdownView.containerEl.appendChild(sizer);
+    leaf.view = markdownView;
+
+    const search = vi.fn().mockResolvedValue([result]);
+    const app = {
+      workspace: {
+        on: vi.fn().mockReturnValue({}),
+        offref: vi.fn(),
+        getLeavesOfType: vi.fn().mockReturnValue([leaf]),
+        trigger: vi.fn(),
+      },
+      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      metadataCache: {
+        getCache: () => null,
+        getFirstLinkpathDest: () => Object.assign(new TFile(), { path: 'related.md' }),
+      },
+    };
+    const plugin = {
+      app,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        showSimilarNotesAtBottom: true,
+        similarNotesBottomLimit: 5,
+      },
+      client: { search },
+    };
+    const manager = new SimilarNotesBottomManager(app as never, plugin as never);
+
+    manager.load();
+    vi.advanceTimersByTime(150);
+    await Promise.resolve();
+    expect(search).toHaveBeenCalledTimes(1);
+
+    manager.refresh(true);
+    vi.advanceTimersByTime(150);
+    await Promise.resolve();
+
+    expect(search).toHaveBeenCalledTimes(2);
+    manager.unload();
+    vi.useRealTimers();
+  });
+
+  it('keeps a forced refresh when a normal refresh is queued before debounce fires', async () => {
+    vi.useFakeTimers();
+    const leaf = new WorkspaceLeaf();
+    const markdownView = new MarkdownView(leaf);
+    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
+    const sizer = activeDocument.createDiv();
+    sizer.className = 'markdown-preview-sizer';
+    markdownView.containerEl.appendChild(sizer);
+    leaf.view = markdownView;
+
+    const layoutCallbacks: Array<() => void> = [];
+    const search = vi.fn().mockResolvedValue([result]);
+    const app = {
+      workspace: {
+        on: vi.fn().mockImplementation((eventName: string, callback: () => void) => {
+          if (eventName === 'layout-change') layoutCallbacks.push(callback);
+          return {};
+        }),
+        offref: vi.fn(),
+        getLeavesOfType: vi.fn().mockReturnValue([leaf]),
+        trigger: vi.fn(),
+      },
+      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      metadataCache: {
+        getCache: () => null,
+        getFirstLinkpathDest: () => Object.assign(new TFile(), { path: 'related.md' }),
+      },
+    };
+    const plugin = {
+      app,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        showSimilarNotesAtBottom: true,
+        similarNotesBottomLimit: 5,
+      },
+      client: { search },
+    };
+    const manager = new SimilarNotesBottomManager(app as never, plugin as never);
+
+    manager.load();
+    vi.advanceTimersByTime(150);
+    await Promise.resolve();
+    expect(search).toHaveBeenCalledTimes(1);
+
+    manager.refresh(true);
+    layoutCallbacks[0]!();
+    vi.advanceTimersByTime(150);
+    await Promise.resolve();
+
+    expect(search).toHaveBeenCalledTimes(2);
+    manager.unload();
+    vi.useRealTimers();
+  });
+
   it('attaches to the markdown body when embedded backlinks are not present', async () => {
     vi.useFakeTimers();
     const leaf = new WorkspaceLeaf();

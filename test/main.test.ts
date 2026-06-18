@@ -33,6 +33,8 @@ vi.mock('../src/ipc', () => {
 
 import { App, Notice } from 'obsidian';
 import HybridSearchPlugin from '../src/main';
+import { GraphWorkbenchView } from '../src/ui/GraphWorkbenchView';
+import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
 
 const mockGetBasePath = vi.fn().mockReturnValue('/vault');
 const mockGetActiveFile = vi.fn().mockReturnValue({ path: 'active.md' });
@@ -59,6 +61,7 @@ describe('HybridSearchPlugin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     NoticeMock.mockClear();
+    delete (mockApp.workspace as { getLeavesOfType?: unknown }).getLeavesOfType;
     plugin = new HybridSearchPlugin(mockApp as unknown as App, mockManifest as never);
     plugin.loadData = vi.fn().mockResolvedValue({});
     plugin.saveData = vi.fn().mockResolvedValue(undefined);
@@ -147,6 +150,57 @@ describe('HybridSearchPlugin', () => {
     expect(NoticeMock).toHaveBeenCalledWith(
       'Hybrid search: reconnected to primary server remote.example.com:3939.',
     );
+  });
+
+  it('refreshes endpoint-sensitive panes when HTTP endpoint changes', async () => {
+    const { HttpSearchClient } = await import('../src/ipc');
+    const similarRefresh = vi.spyOn(SimilarNotesBottomManager.prototype, 'refresh');
+    const refreshFromActiveFile = vi.fn().mockResolvedValue(undefined);
+    const workbenchView = Object.assign(Object.create(GraphWorkbenchView.prototype), {
+      refreshFromActiveFile,
+    }) as GraphWorkbenchView;
+    (mockApp.workspace as { getLeavesOfType?: ReturnType<typeof vi.fn> }).getLeavesOfType = vi
+      .fn()
+      .mockReturnValue([{ view: workbenchView }]);
+    plugin.loadData = vi.fn().mockResolvedValue({
+      transport: 'http',
+      httpHost: 'remote.example.com',
+      httpPort: 3939,
+      httpFallbackEnabled: true,
+      httpFallbackHost: '127.0.0.1',
+      httpFallbackPort: 4949,
+    });
+
+    await plugin.onload();
+
+    const options = vi.mocked(HttpSearchClient).mock.calls[0]?.[2] as
+      | { onStatusChange?: (event: unknown) => void }
+      | undefined;
+    options!.onStatusChange!({
+      type: 'fallback-activated',
+      from: { host: 'remote.example.com', port: 3939, label: 'remote.example.com:3939' },
+      to: { host: '127.0.0.1', port: 4949, label: '127.0.0.1:4949' },
+      reason: 'HTTP MCP request timed out',
+    });
+    await flushPromises();
+
+    expect(similarRefresh).toHaveBeenCalledWith(true);
+    expect(refreshFromActiveFile).toHaveBeenCalledWith(true);
+    expect(
+      (mockApp.workspace as unknown as { getLeavesOfType: ReturnType<typeof vi.fn> })
+        .getLeavesOfType,
+    ).toHaveBeenCalledWith('hybrid-search-graph-workbench');
+
+    options!.onStatusChange!({
+      type: 'primary-restored',
+      from: { host: '127.0.0.1', port: 4949, label: '127.0.0.1:4949' },
+      to: { host: 'remote.example.com', port: 3939, label: 'remote.example.com:3939' },
+    });
+    await flushPromises();
+
+    expect(similarRefresh).toHaveBeenCalledTimes(2);
+    expect(refreshFromActiveFile).toHaveBeenCalledTimes(2);
+    similarRefresh.mockRestore();
   });
 
   it('shows fallback failure reason without duplicate generic startup notice', async () => {

@@ -216,11 +216,13 @@ export default class HybridSearchPlugin extends Plugin {
 
   private handleHttpStatusChange(event: HttpSearchClientStatusEvent): void {
     if (event.type === 'fallback-activated') {
+      this.refreshEndpointSensitiveViews();
       new Notice(`Hybrid search: primary server unavailable; using fallback ${event.to.label}.`);
       return;
     }
 
     if (event.type === 'primary-restored') {
+      this.refreshEndpointSensitiveViews();
       new Notice(`Hybrid search: reconnected to primary server ${event.to.label}.`);
       return;
     }
@@ -242,6 +244,11 @@ export default class HybridSearchPlugin extends Plugin {
 
   onSimilarNotesSettingsChanged(): void {
     this.similarNotesBottom?.settingsChanged();
+  }
+
+  private refreshEndpointSensitiveViews(): void {
+    this.similarNotesBottom?.refresh(true);
+    void this.refreshGraphWorkbenchViews(true);
   }
 
   private async refreshGraphWorkbenchViews(force = false): Promise<void> {
