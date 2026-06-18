@@ -8,7 +8,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
-  ...obsidianmd.configs.recommended,
+  ...obsidianmd.configs.recommendedWithLocalesEn,
   sonarjs.configs.recommended,
   {
     languageOptions: {
