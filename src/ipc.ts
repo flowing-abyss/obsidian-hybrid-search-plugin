@@ -18,10 +18,17 @@ export interface SearchResult {
   path: string;
   title: string;
   score: number;
+  rank?: number;
+  depth?: number;
   snippet?: string;
   tags: string[];
   aliases: string[];
   matchedBy?: string[];
+  links?: string[];
+  backlinks?: string[];
+  markdownLinks?: string[];
+  markdownBacklinks?: string[];
+  urls?: string[];
   scores?: {
     semantic?: number | null;
     bm25?: number | null;
@@ -46,6 +53,7 @@ interface SearchOptions {
   rerank?: boolean;
   depth?: number;
   direction?: 'outgoing' | 'backlinks' | 'both';
+  linkType?: 'wiki' | 'markdown' | 'all';
 }
 
 interface StdioResponse {
@@ -699,6 +707,7 @@ export class HttpSearchClient {
       ...(options.rerank !== undefined && { rerank: options.rerank }),
       ...(options.depth !== undefined && { depth: options.depth }),
       ...(options.direction !== undefined && { direction: options.direction }),
+      ...(options.linkType !== undefined && { link_type: options.linkType }),
     };
   }
 

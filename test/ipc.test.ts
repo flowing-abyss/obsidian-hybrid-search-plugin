@@ -2217,6 +2217,7 @@ describe('HttpSearchClient', () => {
       snippetLength: 400,
       notePath: 'source.md',
       anchors: true,
+      linkType: 'markdown',
     });
 
     expect(results).toHaveLength(1);
@@ -2234,6 +2235,7 @@ describe('HttpSearchClient', () => {
       snippet_length: 400,
       path: 'source.md',
       anchors: true,
+      link_type: 'markdown',
     });
     expect(requestUrlMock.mock.calls[2]?.[0]).toEqual(
       expect.objectContaining({
