@@ -18,7 +18,10 @@ import {
   createInternalLink,
   createTreeItemLink,
   fetchSimilarNotesDetailed,
+  getAnchorOffset,
+  getPrimaryAnchor,
   hookSuperchargedLinks,
+  offsetToEditorPosition,
   openResult,
   unhookSuperchargedLinks,
 } from './noteUtils';
@@ -2228,43 +2231,6 @@ function relevanceColor(score: number): string {
   if (score >= 0.35) return '#b39a62';
   if (score >= 0.2) return '#7f8b99';
   return '#62676f';
-}
-
-function getPrimaryAnchor(candidate: CandidateNote): MatchAnchor | undefined {
-  const anchors = candidate.previewAnchors;
-  if (!anchors || anchors.length === 0) return undefined;
-  const index =
-    typeof candidate.primaryAnchorIndex === 'number' && candidate.primaryAnchorIndex >= 0
-      ? candidate.primaryAnchorIndex
-      : 0;
-  return anchors[index] ?? anchors[0];
-}
-
-function getAnchorOffset(content: string, anchor: MatchAnchor): number {
-  if (
-    typeof anchor.charStart === 'number' &&
-    anchor.charStart >= 0 &&
-    anchor.charStart <= content.length
-  ) {
-    if (!anchor.matchText || content.startsWith(anchor.matchText, anchor.charStart)) {
-      return anchor.charStart;
-    }
-  }
-  if (!anchor.matchText) return -1;
-  return content.indexOf(anchor.matchText);
-}
-
-function offsetToEditorPosition(content: string, offset: number): { line: number; ch: number } {
-  let line = 0;
-  let lineStart = 0;
-  const boundedOffset = Math.max(0, Math.min(offset, content.length));
-  for (let index = 0; index < boundedOffset; index++) {
-    if (content.charCodeAt(index) === 10) {
-      line++;
-      lineStart = index + 1;
-    }
-  }
-  return { line, ch: boundedOffset - lineStart };
 }
 
 function isNoisyPath(path: string): boolean {

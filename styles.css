@@ -1000,32 +1000,7 @@ li.hybrid-search-semantic-match {
 .ohs-workbench-result {
   margin-inline-start: 0;
   padding-inline-start: 0;
-  box-shadow: inset 2px 0 0 var(--ohs-workbench-result-accent, transparent);
   border-radius: 3px;
-}
-
-.ohs-workbench-result-very-strong {
-  --ohs-workbench-result-accent: rgba(211, 106, 95, 0.78);
-}
-
-.ohs-workbench-result-strong {
-  --ohs-workbench-result-accent: rgba(200, 86, 79, 0.7);
-}
-
-.ohs-workbench-result-medium {
-  --ohs-workbench-result-accent: rgba(179, 154, 98, 0.58);
-}
-
-.ohs-workbench-result-weak {
-  --ohs-workbench-result-accent: rgba(127, 139, 153, 0.38);
-}
-
-.ohs-workbench-result-noise {
-  --ohs-workbench-result-accent: rgba(98, 103, 111, 0.28);
-}
-
-.ohs-workbench-result-link {
-  --ohs-workbench-result-accent: rgba(127, 139, 153, 0.22);
 }
 
 .ohs-workbench-row {

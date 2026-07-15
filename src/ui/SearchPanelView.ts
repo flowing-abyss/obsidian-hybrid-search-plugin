@@ -1,12 +1,15 @@
 import { ItemView, Notice, setIcon, TFile, type WorkspaceLeaf } from 'obsidian';
-import type { MatchAnchor, SearchResult } from '../ipc';
+import type { SearchResult } from '../ipc';
 import type HybridSearchPlugin from '../main';
 import {
   createInternalLink,
   fileToDragWikiLink,
+  getAnchorOffset,
+  getPrimaryAnchor,
   getResultTitle,
   hookSuperchargedLinks,
   modeLabel,
+  offsetToEditorPosition,
   openResult,
   scoreColor,
   type SearchMode,
@@ -612,41 +615,4 @@ function modeForShortcut(key: string): SearchMode | undefined {
   if (key === '3') return 'fulltext';
   if (key === '4') return 'title';
   return undefined;
-}
-
-function getPrimaryAnchor(result: SearchResult): MatchAnchor | undefined {
-  const anchors = result.previewAnchors;
-  if (!anchors || anchors.length === 0) return undefined;
-  const index =
-    typeof result.primaryAnchorIndex === 'number' && result.primaryAnchorIndex >= 0
-      ? result.primaryAnchorIndex
-      : 0;
-  return anchors[index] ?? anchors[0];
-}
-
-function getAnchorOffset(content: string, anchor: MatchAnchor): number {
-  if (
-    typeof anchor.charStart === 'number' &&
-    anchor.charStart >= 0 &&
-    anchor.charStart <= content.length
-  ) {
-    if (!anchor.matchText || content.startsWith(anchor.matchText, anchor.charStart)) {
-      return anchor.charStart;
-    }
-  }
-  if (!anchor.matchText) return -1;
-  return content.indexOf(anchor.matchText);
-}
-
-function offsetToEditorPosition(content: string, offset: number): { line: number; ch: number } {
-  let line = 0;
-  let lineStart = 0;
-  const boundedOffset = Math.max(0, Math.min(offset, content.length));
-  for (let i = 0; i < boundedOffset; i++) {
-    if (content.charCodeAt(i) === 10) {
-      line++;
-      lineStart = i + 1;
-    }
-  }
-  return { line, ch: boundedOffset - lineStart };
 }

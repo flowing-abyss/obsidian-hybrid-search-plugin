@@ -16,6 +16,7 @@ import {
   applySuperchargedLinkAttributes,
   createInternalLink,
   fetchSimilarNotesDetailed,
+  getAnchorOffset,
   getResultTitle,
   modeLabel,
   scoreColor,
@@ -33,6 +34,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private previewMetaEl?: HTMLDivElement;
   private previewChild?: MarkdownRenderChild;
   private currentPreviewPath?: string;
+  private currentPreviewContent?: string;
   private currentAnchorKey?: string;
   private previewCallId = 0;
   private isRecentMode = false;
@@ -114,6 +116,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewMetaEl?.remove();
     this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
+    this.currentPreviewContent = undefined;
     this.currentAnchorKey = undefined;
   }
 
@@ -172,19 +175,22 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     const needle = anchor.matchText.toLowerCase();
     const blockSel = 'p, li, h1, h2, h3, h4, h5, h6, blockquote';
+    const matches: HTMLElement[] = [];
 
     for (const el of region) {
       if (el.closest('.callout')) continue;
-      if (el.matches(blockSel)) {
-        if ((el.textContent ?? '').toLowerCase().includes(needle)) return el as HTMLElement;
+      if (el.matches(blockSel) && (el.textContent ?? '').toLowerCase().includes(needle)) {
+        matches.push(el as HTMLElement);
       }
       // Check nested blocks inside container elements (e.g. div.callout excluded above)
       for (const nested of el.querySelectorAll(blockSel)) {
         if ((nested.textContent ?? '').toLowerCase().includes(needle)) {
-          return nested as HTMLElement;
+          matches.push(nested as HTMLElement);
         }
       }
     }
+    if (matches.length > 0) return this.pickClosestByOffset(matches, anchor);
+
     // Fallback A: search inside callout titles and content (for notes whose content is entirely callout blocks)
     for (const titleEl of this.previewEl.querySelectorAll('.callout-title-inner')) {
       if ((titleEl.textContent ?? '').toLowerCase().includes(needle)) return titleEl as HTMLElement;
@@ -195,6 +201,38 @@ export class SearchModal extends SuggestModal<SearchResult> {
     }
     // Fallback B: heading element itself
     return headingEl;
+  }
+
+  /** Multiple rendered blocks can contain the same matchText (repeated phrasing across a note).
+   *  Use the anchor's real source offset — validated via the same getAnchorOffset the search
+   *  panel/graph workbench use for cursor positioning — to pick the occurrence actually meant,
+   *  instead of always taking the first DOM match. */
+  private pickClosestByOffset(matches: HTMLElement[], anchor: MatchAnchor): HTMLElement {
+    if (matches.length === 1 || !this.previewEl || !this.currentPreviewContent) return matches[0]!;
+
+    const offset = getAnchorOffset(this.currentPreviewContent, anchor);
+    if (offset < 0) return matches[0]!;
+    const targetFraction = offset / this.currentPreviewContent.length;
+
+    const allBlocks = Array.from(
+      this.previewEl.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote'),
+    ).filter((b) => !b.closest('.callout'));
+    const totalLength = this.previewEl.textContent?.length || 1;
+
+    let best = matches[0]!;
+    let bestDiff = Infinity;
+    let consumed = 0;
+    for (const block of allBlocks) {
+      if (matches.includes(block as HTMLElement)) {
+        const diff = Math.abs(consumed / totalLength - targetFraction);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = block as HTMLElement;
+        }
+      }
+      consumed += (block.textContent ?? '').length;
+    }
+    return best;
   }
 
   triggerPreview(
@@ -449,6 +487,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (callId !== this.previewCallId) return;
 
     this.currentPreviewPath = nfcPath;
+    this.currentPreviewContent = content;
     this.currentAnchorKey = key;
 
     if (anchors?.length && this.settings.scrollToSnippet) {
@@ -611,8 +650,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
       const block = this.findAnchorBlock(anchor);
       if (!block) continue;
 
-      block.classList.add('hybrid-search-semantic-match');
-      collectedBlocks.push({ el: block, isPrimary: i === primaryIdx });
+      const isPrimary = i === primaryIdx;
+      // Only the primary anchor's block gets the "this is the match" accent — a secondary
+      // (e.g. bm25) anchor pointing at unrelated text would otherwise show an identical
+      // accent next to it with nothing to distinguish which one is actually scrolled to.
+      if (isPrimary) block.classList.add('hybrid-search-semantic-match');
+      collectedBlocks.push({ el: block, isPrimary });
 
       const headingEl = this.findHeadingElement(anchor.headingPath);
       if (headingEl) {
