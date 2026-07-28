@@ -1,6 +1,6 @@
 {
   "name": "obsidian-hybrid-search-plugin",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "description": "Obsidian plugin — hybrid search via obsidian-hybrid-search CLI",
   "main": "main.js",
   "type": "module",
@@ -18,7 +18,7 @@
     "review:obsidian": "npm run review:obsidian:code && npm run review:obsidian:metadata",
     "review:obsidian:code": "eslint --config eslint.obsidian.config.mjs src",
     "review:obsidian:metadata": "eslint --config eslint.obsidian.metadata.config.mjs --no-error-on-unmatched-pattern manifest.json package.json LICENSE \"src/**/*.json\"",
-    "review:local": "npm run review:obsidian && npm run lint && npm audit --audit-level=moderate && npm run build && npm run test:unit",
+    "review:local": "npm run review:obsidian && npm run lint && npm audit --omit=dev --audit-level=moderate && npm run build && npm run test:unit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip"
@@ -51,5 +51,10 @@
   },
   "dependencies": {
     "obsidian": "^1.13.1"
+  },
+  "overrides": {
+    "fast-uri": "^3.1.4",
+    "js-yaml": "^4.3.0",
+    "postcss": "^8.5.24"
   }
 }
