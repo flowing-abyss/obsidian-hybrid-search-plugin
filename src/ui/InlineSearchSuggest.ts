@@ -16,7 +16,7 @@ import {
   unhookSuperchargedLinks,
   type SearchMode,
 } from './noteUtils';
-import { parseQuery } from './queryParser';
+import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
 import { SearchPreviewRenderer } from './SearchPreviewRenderer';
 
 const INLINE_SEARCH_SNIPPET_LENGTH = 400;
@@ -150,7 +150,12 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
   }
 
   private async runSearch(query: string, requestId: number): Promise<InlineSearchSuggestion[]> {
-    const { query: parsedQuery, overrides } = parseQuery(query);
+    const { query: parsedQuery, overrides } = parseQuery(
+      applyDefaultFilters(
+        applyCustomPostfixes(query, this.plugin.settings.customPostfixes),
+        this.plugin.settings.defaultSearchFilters,
+      ),
+    );
     const mode = overrides.mode ?? this.currentMode;
     const limit = overrides.limit ?? this.plugin.settings.inlineSearchLimit;
     const threshold = overrides.threshold ?? this.plugin.settings.inlineSearchThreshold;

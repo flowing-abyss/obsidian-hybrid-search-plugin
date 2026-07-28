@@ -100,22 +100,26 @@ hybrid: zettelkasten tag:project limit:20 @rerank
 zettelkasten #project @limit:20 @rerank @hybrid
 ```
 
-| Inline                | Postfix                  | Description                   |
-| --------------------- | ------------------------ | ----------------------------- |
-| _(plain text)_        | —                        | Hybrid search (default)       |
-| `hybrid:`             | `@hybrid` / `@hyb`       | Hybrid mode (BM25 + semantic) |
-| `semantic:` / `sem:`  | `@semantic` / `@sem`     | Semantic (vector) only        |
-| `fulltext:` / `full:` | `@full`                  | Full-text (BM25) only         |
-| `title:`              | `@title`                 | Fuzzy title match             |
-| `tag:`                | `#tag`                   | Filter by tag (include)       |
-| `tag:-`               | `-#tag`                  | Filter by tag (exclude)       |
-| `folder:`             | —                        | Limit to a folder             |
-| `limit:N`             | `@limit:N` / `@lim:N`    | Override result count         |
-| `threshold:N`         | `@threshold:N` / `@th:N` | Minimum score threshold       |
-| —                     | `@rerank`                | Re-rank with cross-encoder    |
-| `key:value`           | —                        | Filter by frontmatter field   |
+| Inline                | Postfix                  | Description                                 |
+| --------------------- | ------------------------ | ------------------------------------------- |
+| _(plain text)_        | —                        | Hybrid search (default)                     |
+| `hybrid:`             | `@hybrid` / `@hyb`       | Hybrid mode (BM25 + semantic)               |
+| `semantic:` / `sem:`  | `@semantic` / `@sem`     | Semantic (vector) only                      |
+| `fulltext:` / `full:` | `@full`                  | Full-text (BM25) only                       |
+| `title:`              | `@title`                 | Fuzzy title match                           |
+| `tag:` / `tag:#tag`   | `#tag`                   | Filter by tag (include)                     |
+| `-tag:` / `-tag:#tag` | `-#tag`                  | Filter by tag (exclude)                     |
+| `folder:` / `path:`   | —                        | Limit to a folder (quote names with spaces) |
+| `-folder:` / `-path:` | —                        | Exclude a folder                            |
+| `limit:N`             | `@limit:N` / `@lim:N`    | Override result count                       |
+| `threshold:N`         | `@threshold:N` / `@th:N` | Minimum score threshold                     |
+| —                     | `@rerank`                | Re-rank with cross-encoder                  |
+| `key:value`           | —                        | Filter by frontmatter field                 |
+| `-key:value`          | —                        | Exclude by frontmatter field                |
 
-Filters can be combined freely.
+Exclusion is a leading `-` before the operator, matching [Obsidian's own core search syntax](https://help.obsidian.md/plugins/search) (e.g. `-tag:#archive`, `-folder:Templates`). The `#` on tag values is optional — `tag:project` and `tag:#project` are equivalent. Filters can be combined freely.
+
+In settings, you can also define your own `@name` shortcuts that expand to a filter string, e.g. `@work` → `-tag:personal folder:work`, and a **Default search filters** field applied to every search automatically.
 
 ## Hotkeys
 

@@ -22,7 +22,7 @@ import {
   scoreColor,
   type AppWithSuperchargedLinks,
 } from './noteUtils';
-import { parseQuery } from './queryParser';
+import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
@@ -284,7 +284,12 @@ export class SearchModal extends SuggestModal<SearchResult> {
     }
     this.isRecentMode = false;
 
-    const { query: parsedQuery, overrides } = parseQuery(query);
+    const { query: parsedQuery, overrides } = parseQuery(
+      applyDefaultFilters(
+        applyCustomPostfixes(query, this.settings.customPostfixes),
+        this.settings.defaultSearchFilters,
+      ),
+    );
     this.currentMode = overrides.mode ?? this.forcedMode ?? this.settings.defaultMode;
     this.currentQueryWords = parsedQuery
       .split(/\s+/)

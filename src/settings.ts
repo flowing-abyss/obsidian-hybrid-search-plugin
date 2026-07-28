@@ -1,5 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type { SearchClient } from './ipc';
+import type { CustomPostfix } from './ui/queryParser';
+import { isReservedPostfixName, normalizePostfixName } from './ui/queryParser';
 
 export interface HybridSearchSettings {
   binaryPath: string;
@@ -10,6 +12,8 @@ export interface HybridSearchSettings {
   httpFallbackHost: string;
   httpFallbackPort: number;
   defaultMode: 'hybrid' | 'semantic' | 'fulltext' | 'title';
+  defaultSearchFilters: string;
+  customPostfixes: CustomPostfix[];
   showMeta: boolean;
   showPreviewMeta: boolean;
   centerPanels: boolean;
@@ -39,6 +43,8 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   httpFallbackHost: '127.0.0.1',
   httpFallbackPort: 3939,
   defaultMode: 'hybrid',
+  defaultSearchFilters: '',
+  customPostfixes: [],
   showMeta: false,
   showPreviewMeta: true,
   centerPanels: false,
@@ -59,9 +65,38 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   inlineSearchShowPreview: true,
 };
 
+function normalizeCustomPostfixes(value: unknown): CustomPostfix[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: CustomPostfix[] = [];
+  for (const entry of value) {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      typeof (entry as { name?: unknown }).name !== 'string' ||
+      typeof (entry as { filters?: unknown }).filters !== 'string'
+    ) {
+      continue;
+    }
+    const { name, filters } = entry as CustomPostfix;
+    const normalizedName = normalizePostfixName(name);
+    if (!normalizedName || isReservedPostfixName(normalizedName) || seen.has(normalizedName)) {
+      continue;
+    }
+    seen.add(normalizedName);
+    result.push({ name, filters });
+  }
+  return result;
+}
+
 export function normalizeSettings(settings: HybridSearchSettings): HybridSearchSettings {
   return {
     ...settings,
+    defaultSearchFilters:
+      typeof settings.defaultSearchFilters === 'string'
+        ? settings.defaultSearchFilters
+        : DEFAULT_SETTINGS.defaultSearchFilters,
+    customPostfixes: normalizeCustomPostfixes(settings.customPostfixes),
     inlineSearchEnabled:
       typeof settings.inlineSearchEnabled === 'boolean'
         ? settings.inlineSearchEnabled
@@ -114,6 +149,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+    containerEl.addClass('hybrid-search-settings');
+
+    new Setting(containerEl).setName('Connection').setHeading();
 
     new Setting(containerEl)
       .setName('Connection mode')
@@ -243,6 +281,29 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     );
 
     new Setting(containerEl)
+      .setName('Test connection')
+      .setDesc('Send a test query to verify the server is running.')
+      .addButton((btn) =>
+        btn
+          .setButtonText('Test')
+          .setCta()
+          .onClick(async () => {
+            if (!this.plugin.client) {
+              new Notice('Search client not initialised.');
+              return;
+            }
+            try {
+              await this.plugin.client.search('test', { limit: 1 });
+              new Notice('Connected. Server running.');
+            } catch (err) {
+              new Notice(`Connection failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }),
+      );
+
+    new Setting(containerEl).setName('Search behavior').setHeading();
+
+    new Setting(containerEl)
       .setName('Default mode')
       .setDesc('Search mode used when opening the modal.')
       .addDropdown((dropdown) =>
@@ -257,6 +318,56 @@ export class HybridSearchSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+
+    new Setting(containerEl)
+      .setName('Default search filters')
+      .setDesc(
+        'Always applied to every search, in addition to what you type. Use the same operators as inline search: tag:value, -tag:value to exclude, folder:value (or path:value), -folder:value to exclude. Mode prefixes (hybrid:, title:, ...) are not supported here. Example: -tag:archive -folder:templates',
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder('-tag:archive -folder:templates')
+          .setValue(this.plugin.settings.defaultSearchFilters)
+          .onChange(async (value) => {
+            this.plugin.settings.defaultSearchFilters = value;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName('Custom search postfixes')
+      .setDesc(
+        'Define your own @name shortcuts that expand to a filter string when typed in search, e.g. @work expands to -tag:personal folder:work.',
+      );
+
+    const postfixListEl = containerEl.createDiv();
+    const renderPostfixList = (): void => {
+      postfixListEl.empty();
+      this.plugin.settings.customPostfixes.forEach((postfix, index) => {
+        renderCustomPostfixRow(postfixListEl, this.plugin, index, renderPostfixList);
+      });
+    };
+    renderPostfixList();
+
+    new Setting(containerEl).addButton((btn) =>
+      btn.setButtonText('Add postfix').onClick(async () => {
+        this.plugin.settings.customPostfixes.push({ name: '', filters: '' });
+        await this.plugin.saveSettings();
+        renderPostfixList();
+      }),
+    );
+
+    new Setting(containerEl)
+      .setName('Remember last search query')
+      .setDesc('Restore the previous search query when reopening the search modal.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.rememberLastQuery).onChange(async (value) => {
+          this.plugin.settings.rememberLastQuery = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl).setName('Display').setHeading();
 
     new Setting(containerEl)
       .setName('Show path and tags')
@@ -329,18 +440,10 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     previewSettingsEl.hidden = !this.plugin.settings.showPreview;
 
-    new Setting(containerEl)
-      .setName('Remember last search query')
-      .setDesc('Restore the previous search query when reopening the search modal.')
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.rememberLastQuery).onChange(async (value) => {
-          this.plugin.settings.rememberLastQuery = value;
-          await this.plugin.saveSettings();
-        }),
-      );
+    new Setting(containerEl).setName('Inline search').setHeading();
 
     new Setting(containerEl)
-      .setName('Inline search')
+      .setName('Enable inline search')
       .setDesc('Open a compact search menu in the editor after typing this trigger.')
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.inlineSearchEnabled).onChange(async (value) => {
@@ -412,6 +515,8 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     inlineSearchSettingsEl.hidden = !this.plugin.settings.inlineSearchEnabled;
 
+    new Setting(containerEl).setName('Similar notes').setHeading();
+
     new Setting(containerEl)
       .setName('Show similar notes at bottom')
       .setDesc('Display similar notes above embedded backlinks in rendered notes.')
@@ -461,28 +566,58 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       );
 
     similarNotesSettingsEl.hidden = !this.plugin.settings.showSimilarNotesAtBottom;
-
-    new Setting(containerEl)
-      .setName('Test connection')
-      .setDesc('Send a test query to verify the server is running.')
-      .addButton((btn) =>
-        btn
-          .setButtonText('Test')
-          .setCta()
-          .onClick(async () => {
-            if (!this.plugin.client) {
-              new Notice('Search client not initialised.');
-              return;
-            }
-            try {
-              await this.plugin.client.search('test', { limit: 1 });
-              new Notice('Connected. Server running.');
-            } catch (err) {
-              new Notice(`Connection failed: ${err instanceof Error ? err.message : String(err)}`);
-            }
-          }),
-      );
   }
+}
+
+function renderCustomPostfixRow(
+  container: HTMLElement,
+  plugin: PluginRef,
+  index: number,
+  rerender: () => void,
+): void {
+  const postfix = plugin.settings.customPostfixes[index]!;
+
+  const handleNameChange = async (value: string): Promise<void> => {
+    const normalized = normalizePostfixName(value);
+    if (normalized && isReservedPostfixName(normalized)) {
+      new Notice(`"@${normalized}" is a built-in postfix and can't be reused.`);
+      return;
+    }
+    if (
+      normalized &&
+      plugin.settings.customPostfixes.some(
+        (p, i) => i !== index && normalizePostfixName(p.name) === normalized,
+      )
+    ) {
+      new Notice(`"@${normalized}" is already used by another postfix.`);
+      return;
+    }
+    plugin.settings.customPostfixes[index]!.name = value;
+    await plugin.saveSettings();
+  };
+
+  const handleFiltersChange = async (value: string): Promise<void> => {
+    plugin.settings.customPostfixes[index]!.filters = value;
+    await plugin.saveSettings();
+  };
+
+  const handleRemove = async (): Promise<void> => {
+    plugin.settings.customPostfixes.splice(index, 1);
+    await plugin.saveSettings();
+    rerender();
+  };
+
+  new Setting(container)
+    .addText((text) =>
+      text.setPlaceholder('Work').setValue(postfix.name).onChange(handleNameChange),
+    )
+    .addText((text) =>
+      text
+        .setPlaceholder('-tag:personal folder:work')
+        .setValue(postfix.filters)
+        .onChange(handleFiltersChange),
+    )
+    .addExtraButton((btn) => btn.setIcon('trash').setTooltip('Remove').onClick(handleRemove));
 }
 
 function clampInteger(value: unknown, min: number, max: number, fallback: number): number {

@@ -20,6 +20,8 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.httpHost).toBe('127.0.0.1');
     expect(DEFAULT_SETTINGS.httpPort).toBe(3939);
     expect(DEFAULT_SETTINGS.defaultMode).toBe('hybrid');
+    expect(DEFAULT_SETTINGS.defaultSearchFilters).toBe('');
+    expect(DEFAULT_SETTINGS.customPostfixes).toEqual([]);
     expect(DEFAULT_SETTINGS.showMeta).toBe(false);
   });
 
@@ -74,6 +76,70 @@ describe('normalizeSettings', () => {
     expect(normalized.inlineSearchLimit).toBe(50);
     expect(normalized.inlineSearchThreshold).toBe(1);
     expect(normalized.inlineSearchShowPreview).toBe(DEFAULT_SETTINGS.inlineSearchShowPreview);
+  });
+
+  it('defaults defaultSearchFilters to empty string when missing or non-string', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      defaultSearchFilters: 42 as never,
+    });
+    expect(normalized.defaultSearchFilters).toBe('');
+  });
+
+  it('preserves a valid defaultSearchFilters string', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      defaultSearchFilters: '-tag:archive -folder:Templates',
+    });
+    expect(normalized.defaultSearchFilters).toBe('-tag:archive -folder:Templates');
+  });
+
+  it('defaults customPostfixes to an empty array when missing or not an array', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      customPostfixes: 'not-an-array' as never,
+    });
+    expect(normalized.customPostfixes).toEqual([]);
+  });
+
+  it('preserves valid customPostfixes entries', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      customPostfixes: [{ name: 'work', filters: '-tag:personal folder:work' }],
+    });
+    expect(normalized.customPostfixes).toEqual([
+      { name: 'work', filters: '-tag:personal folder:work' },
+    ]);
+  });
+
+  it('drops entries with a reserved name', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      customPostfixes: [
+        { name: 'rerank', filters: 'tag:x' },
+        { name: 'work', filters: 'tag:y' },
+      ],
+    });
+    expect(normalized.customPostfixes).toEqual([{ name: 'work', filters: 'tag:y' }]);
+  });
+
+  it('drops entries with an empty or malformed name', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      customPostfixes: [{ name: '   ', filters: 'tag:x' }, { name: 42, filters: 'tag:y' } as never],
+    });
+    expect(normalized.customPostfixes).toEqual([]);
+  });
+
+  it('deduplicates entries by normalized name, keeping the first', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      customPostfixes: [
+        { name: 'work', filters: 'tag:first' },
+        { name: '@Work', filters: 'tag:second' },
+      ],
+    });
+    expect(normalized.customPostfixes).toEqual([{ name: 'work', filters: 'tag:first' }]);
   });
 });
 

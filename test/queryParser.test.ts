@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseQuery } from '../src/ui/queryParser';
+import {
+  applyCustomPostfixes,
+  applyDefaultFilters,
+  isReservedPostfixName,
+  normalizePostfixName,
+  parseQuery,
+} from '../src/ui/queryParser';
 
 describe('parseQuery — mode prefix operators', () => {
   it('hybrid: sets mode and strips operator', () => {
@@ -83,14 +89,39 @@ describe('parseQuery — tag operators', () => {
     expect(overrides.tag).toBe('pkm');
   });
 
-  it('tag: with exclusion prefix -', () => {
-    const { overrides } = parseQuery('tag:-spam query');
+  it('-tag: excludes (Obsidian-style: leading - before the operator)', () => {
+    const { overrides } = parseQuery('-tag:spam query');
     expect(overrides.tag).toBe('-spam');
+  });
+
+  it('tag:#value strips the optional leading # on the value', () => {
+    const { overrides } = parseQuery('tag:#pkm query');
+    expect(overrides.tag).toBe('pkm');
+  });
+
+  it('-tag:#value and -tag:value behave identically', () => {
+    const withHash = parseQuery('-tag:#archive query');
+    const withoutHash = parseQuery('-tag:archive query');
+    expect(withHash.overrides.tag).toBe('-archive');
+    expect(withoutHash.overrides.tag).toBe('-archive');
   });
 
   it('multiple tag: operators → array', () => {
     const { overrides } = parseQuery('tag:pkm tag:cs query');
     expect(overrides.tag).toEqual(['pkm', 'cs']);
+  });
+
+  it('mix of include and exclude tag: operators → array', () => {
+    const { overrides } = parseQuery('tag:pkm -tag:archive query');
+    expect(overrides.tag).toEqual(['pkm', '-archive']);
+  });
+
+  it('a hyphen inside an unrelated compound word is not mistaken for the exclusion prefix', () => {
+    // Falls through to the generic hyphenated-property filter (like due-date:), not a tag exclusion.
+    const { query, overrides } = parseQuery('sub-tag:x query');
+    expect(overrides.tag).toBeUndefined();
+    expect(overrides.frontmatter).toBe('sub-tag:x');
+    expect(query).toBe('query');
   });
 });
 
@@ -148,9 +179,30 @@ describe('parseQuery — folder operators', () => {
     expect(overrides.scope).toBe('notes');
   });
 
-  it('folder: with exclusion prefix -', () => {
-    const { overrides } = parseQuery('folder:-archive query');
+  it('-folder: excludes (Obsidian-style: leading - before the operator)', () => {
+    const { overrides } = parseQuery('-folder:archive query');
     expect(overrides.scope).toBe('-archive');
+  });
+
+  it('path: is an alias for folder:', () => {
+    const { query, overrides } = parseQuery('path:sources query');
+    expect(overrides.scope).toBe('sources');
+    expect(query).toBe('query');
+  });
+
+  it('-path: excludes, same as -folder:', () => {
+    const { overrides } = parseQuery('-path:archive query');
+    expect(overrides.scope).toBe('-archive');
+  });
+
+  it('folder: with a quoted value containing spaces', () => {
+    const { overrides } = parseQuery('folder:"My Folder" query');
+    expect(overrides.scope).toBe('My Folder');
+  });
+
+  it('-folder: with a quoted value containing spaces', () => {
+    const { overrides } = parseQuery('-folder:"My Folder" query');
+    expect(overrides.scope).toBe('-My Folder');
   });
 
   it('multiple folder: operators → array', () => {
@@ -407,5 +459,133 @@ describe('parseQuery — combinations', () => {
   it('query with multiple spaces collapsed', () => {
     const { query } = parseQuery('hybrid: one   two');
     expect(query).toBe('one two');
+  });
+});
+
+describe('applyDefaultFilters', () => {
+  it('returns the query unchanged when defaultFilters is empty', () => {
+    expect(applyDefaultFilters('project notes', '')).toBe('project notes');
+  });
+
+  it('returns the query unchanged when defaultFilters is whitespace only', () => {
+    expect(applyDefaultFilters('project notes', '   ')).toBe('project notes');
+  });
+
+  it('appends a non-empty defaultFilters with a single space', () => {
+    expect(applyDefaultFilters('project notes', '-tag:archive')).toBe('project notes -tag:archive');
+  });
+
+  it('trims surrounding whitespace from defaultFilters before appending', () => {
+    expect(applyDefaultFilters('project notes', '  -folder:Templates  ')).toBe(
+      'project notes -folder:Templates',
+    );
+  });
+
+  it('combines with parseQuery so defaults apply alongside typed filters', () => {
+    const combined = applyDefaultFilters('project notes', '-tag:archive');
+    const { query, overrides } = parseQuery(combined);
+    expect(query).toBe('project notes');
+    expect(overrides.tag).toBe('-archive');
+  });
+
+  it('appended filters accumulate into an array alongside a typed tag filter', () => {
+    const combined = applyDefaultFilters('project tag:work', '-tag:archive');
+    const { query, overrides } = parseQuery(combined);
+    expect(query).toBe('project');
+    expect(overrides.tag).toEqual(['work', '-archive']);
+  });
+});
+
+describe('normalizePostfixName / isReservedPostfixName', () => {
+  it('trims, strips a leading @, and lowercases', () => {
+    expect(normalizePostfixName('  @Work  ')).toBe('work');
+  });
+
+  it('strips multiple leading @', () => {
+    expect(normalizePostfixName('@@work')).toBe('work');
+  });
+
+  it('recognizes built-in postfix names as reserved, case-insensitively', () => {
+    expect(isReservedPostfixName('rerank')).toBe(true);
+    expect(isReservedPostfixName('SEM')).toBe(true);
+    expect(isReservedPostfixName('@Hybrid')).toBe(true);
+  });
+
+  it('does not flag a custom name as reserved', () => {
+    expect(isReservedPostfixName('work')).toBe(false);
+  });
+});
+
+describe('applyCustomPostfixes', () => {
+  it('returns the query unchanged when there are no postfixes', () => {
+    expect(applyCustomPostfixes('project notes', [])).toBe('project notes');
+  });
+
+  it('expands a matching @name to its configured filters', () => {
+    const result = applyCustomPostfixes('project @work', [
+      { name: 'work', filters: '-tag:personal folder:work' },
+    ]);
+    expect(result).toBe('project -tag:personal folder:work');
+  });
+
+  it('is case-insensitive when matching the trigger', () => {
+    const result = applyCustomPostfixes('project @WORK', [
+      { name: 'work', filters: '-tag:personal' },
+    ]);
+    expect(result).toBe('project -tag:personal');
+  });
+
+  it('does not match a longer word that merely starts with the postfix name', () => {
+    const result = applyCustomPostfixes('project @workshop', [
+      { name: 'work', filters: '-tag:personal' },
+    ]);
+    expect(result).toBe('project @workshop');
+  });
+
+  it('expands every occurrence and every configured postfix', () => {
+    const postfixes = [
+      { name: 'work', filters: '-tag:personal' },
+      { name: 'urgent', filters: 'tag:urgent' },
+    ];
+    const result = applyCustomPostfixes('@work notes @urgent @work', postfixes);
+    expect(result).toBe('-tag:personal notes tag:urgent -tag:personal');
+  });
+
+  it('skips entries with an empty name or empty filters', () => {
+    const result = applyCustomPostfixes('project @work', [
+      { name: '', filters: '-tag:personal' },
+      { name: 'work', filters: '   ' },
+    ]);
+    expect(result).toBe('project @work');
+  });
+
+  it('composes with parseQuery so the expanded filters are picked up as real operators', () => {
+    const expanded = applyCustomPostfixes('project @work', [
+      { name: 'work', filters: '-tag:personal folder:work' },
+    ]);
+    const { query, overrides } = parseQuery(expanded);
+    expect(query).toBe('project');
+    expect(overrides.tag).toBe('-personal');
+    expect(overrides.scope).toBe('work');
+  });
+
+  it('does not expand @name inside an email-like token (requires a boundary before @)', () => {
+    const result = applyCustomPostfixes('contact foo@work.com about it', [
+      { name: 'work', filters: '-tag:personal' },
+    ]);
+    expect(result).toBe('contact foo@work.com about it');
+  });
+
+  it('matches a name ending in punctuation without needing a trailing word character', () => {
+    const result = applyCustomPostfixes('search @c++ notes', [{ name: 'c++', filters: 'tag:cpp' }]);
+    expect(result).toBe('search tag:cpp notes');
+  });
+
+  it('does not chain: one postfix expansion referencing @other is not itself expanded', () => {
+    const result = applyCustomPostfixes('@a', [
+      { name: 'a', filters: '@b' },
+      { name: 'b', filters: 'tag:should-not-expand' },
+    ]);
+    expect(result).toBe('@b');
   });
 });

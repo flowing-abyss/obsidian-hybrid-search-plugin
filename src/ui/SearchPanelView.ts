@@ -15,7 +15,7 @@ import {
   type SearchMode,
   unhookSuperchargedLinks,
 } from './noteUtils';
-import { parseQuery } from './queryParser';
+import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
 
 export const SEARCH_PANEL_VIEW_TYPE = 'hybrid-search-panel';
 const SEARCH_PANEL_SNIPPET_LENGTH = 400;
@@ -171,7 +171,12 @@ export class SearchPanelView extends ItemView {
     }
 
     this.renderEmpty('Searching...');
-    const { query: parsedQuery, overrides } = parseQuery(query);
+    const { query: parsedQuery, overrides } = parseQuery(
+      applyDefaultFilters(
+        applyCustomPostfixes(query, this.plugin.settings.customPostfixes),
+        this.plugin.settings.defaultSearchFilters,
+      ),
+    );
     const mode = overrides.mode ?? this.panelMode;
     this.updateModeBadge(mode, overrides.rerank ?? false);
     const limit = overrides.limit ?? this.panelLimit;

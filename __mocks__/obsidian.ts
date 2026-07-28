@@ -272,6 +272,23 @@ export class ButtonComponent {
   }
 }
 
+export class ExtraButtonComponent {
+  private cb?: (evt: MouseEvent) => void;
+  setIcon(_icon: string): this {
+    return this;
+  }
+  setTooltip(_tooltip: string): this {
+    return this;
+  }
+  onClick(cb: (evt: MouseEvent) => void): this {
+    this.cb = cb;
+    return this;
+  }
+  triggerClick(evt?: MouseEvent): void {
+    this.cb?.(evt ?? new MouseEvent('click'));
+  }
+}
+
 export class Setting {
   static readonly instances: Setting[] = [];
   static clearInstances(): void {
@@ -283,11 +300,14 @@ export class Setting {
   toggleComponents: ToggleComponent[] = [];
   dropdownComponents: DropdownComponent[] = [];
   buttonComponents: ButtonComponent[] = [];
+  extraButtonComponents: ExtraButtonComponent[] = [];
+  private settingEl: HTMLElement;
   constructor(containerEl: HTMLElement) {
     Setting.instances.push(this);
     const item = activeDocument.createDiv();
     item.className = 'setting-item';
     containerEl.appendChild(item);
+    this.settingEl = item;
     const nameEl = activeDocument.createDiv();
     nameEl.className = 'setting-item-name';
     item.appendChild(nameEl);
@@ -306,6 +326,10 @@ export class Setting {
   }
   setDesc(desc: string): this {
     this.descEl.textContent = desc;
+    return this;
+  }
+  setHeading(): this {
+    this.settingEl.className += ' setting-item-heading';
     return this;
   }
   addText(cb: (text: TextComponent) => void): this {
@@ -332,6 +356,12 @@ export class Setting {
   addButton(cb: (btn: ButtonComponent) => void): this {
     const b = new ButtonComponent();
     this.buttonComponents.push(b);
+    cb(b);
+    return this;
+  }
+  addExtraButton(cb: (btn: ExtraButtonComponent) => void): this {
+    const b = new ExtraButtonComponent();
+    this.extraButtonComponents.push(b);
     cb(b);
     return this;
   }

@@ -740,7 +740,6 @@ li.hybrid-search-semantic-match {
   gap: 4px;
   flex: 0 0 auto;
   overflow-x: auto;
-  scrollbar-width: none;
 }
 
 .ohs-workbench-tabs::-webkit-scrollbar {
@@ -1354,4 +1353,15 @@ li.hybrid-search-semantic-match {
   .hybrid-search-inline-preview {
     display: none;
   }
+}
+
+.hybrid-search-settings .setting-item-heading .setting-item-name {
+  font-size: var(--font-ui-large);
+  font-weight: 700;
+}
+
+.hybrid-search-settings .setting-item-heading:not(:first-child) {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 1px solid var(--background-modifier-border);
 }
