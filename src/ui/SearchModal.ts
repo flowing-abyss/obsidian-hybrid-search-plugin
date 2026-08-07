@@ -19,6 +19,7 @@ import {
   getAnchorOffset,
   getResultTitle,
   modeLabel,
+  resolveSimilarTarget,
   scoreColor,
   type AppWithSuperchargedLinks,
 } from './noteUtils';
@@ -290,24 +291,43 @@ export class SearchModal extends SuggestModal<SearchResult> {
         this.settings.defaultSearchFilters,
       ),
     );
+    // `@similar` resolves against the snapshot taken when the modal opened — the same
+    // source of truth the empty-query `~` mode uses. Computed here, outside the debounce
+    // closure below, so the badge and the request agree on one resolution.
+    const notePath = overrides.similar
+      ? resolveSimilarTarget(this.app, overrides.similar, this.activePath, this.activePath ?? '')
+      : null;
+
+    if (overrides.similar && !notePath) {
+      this.emptyStateText = 'Open a note to use @similar.';
+      this.updateModeBadge('~');
+      return [];
+    }
+    this.emptyStateText = 'No results found.';
+
     this.currentMode = overrides.mode ?? this.forcedMode ?? this.settings.defaultMode;
     this.currentQueryWords = parsedQuery
       .split(/\s+/)
       .map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
       .filter((w) => w.length >= 2);
     this.updateModeBadge(
-      modeLabel(
-        overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
-        overrides.rerank ?? false,
-      ),
+      notePath
+        ? '~'
+        : modeLabel(
+            overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
+            overrides.rerank ?? false,
+          ),
     );
 
     return new Promise((resolve) => {
       window.clearTimeout(this.debounce);
       this.debounce = window.setTimeout(() => {
         this.client
-          .search(parsedQuery, {
+          // The backend ignores the query string during a path lookup, so send '' rather
+          // than the leftover free text — it would only look like it had been searched for.
+          .search(notePath ? '' : parsedQuery, {
             mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
+            ...(notePath && { notePath }),
             ...(overrides.limit !== undefined && { limit: overrides.limit }),
             snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
             anchors: this.settings.showPreview && this.settings.scrollToSnippet,

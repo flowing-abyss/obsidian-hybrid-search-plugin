@@ -119,6 +119,38 @@ describe('SearchModal', () => {
     vi.useRealTimers();
   });
 
+  it('getSuggestions sends notePath when the query uses @sim', async () => {
+    mockSearch.mockResolvedValue([]);
+    const simModal = new SearchModal(
+      mockApp as never,
+      mockClient,
+      DEFAULT_SETTINGS,
+      vi.fn(),
+      'Now/Today.md',
+    );
+    vi.useFakeTimers();
+    const promise = simModal.getSuggestions('@sim #system/meta');
+    vi.runAllTimers();
+    await promise;
+    expect(mockSearch).toHaveBeenCalledWith(
+      '',
+      expect.objectContaining({ notePath: 'Now/Today.md', tag: 'system/meta' }),
+    );
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions does not search when @sim has no active note', async () => {
+    mockSearch.mockResolvedValue([]);
+    const simModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
+    vi.useFakeTimers();
+    const promise = simModal.getSuggestions('@sim');
+    vi.runAllTimers();
+    const results = await promise;
+    expect(results).toEqual([]);
+    expect(mockSearch).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('getSuggestions returns empty array on client error', async () => {
     mockSearch.mockRejectedValue(new Error('connection failed'));
     vi.useFakeTimers();
