@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { findInlineSearchTrigger } from '../src/ui/InlineSearchSuggest';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '../src/settings';
+import { findInlineSearchTrigger, InlineSearchSuggest } from '../src/ui/InlineSearchSuggest';
 
 describe('findInlineSearchTrigger', () => {
   it('finds the last trigger before the cursor', () => {
@@ -26,5 +27,42 @@ describe('findInlineSearchTrigger', () => {
       ch: 5,
       query: 'semantic',
     });
+  });
+});
+
+describe('InlineSearchSuggest @similar', () => {
+  function createSuggest(activeFile: { path: string } | null, search: ReturnType<typeof vi.fn>) {
+    const app = {
+      workspace: { getActiveFile: () => activeFile },
+      metadataCache: { getCache: () => null, getFirstLinkpathDest: () => null },
+      vault: { getAbstractFileByPath: () => null },
+    };
+    const plugin = { settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const suggest = new InlineSearchSuggest(app as never, plugin as never);
+    return suggest as unknown as {
+      runSearch: (query: string, requestId: number) => Promise<unknown[]>;
+    };
+  }
+
+  it('sends notePath when the query uses @sim', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const suggest = createSuggest({ path: 'Now/Today.md' }, search);
+
+    await suggest.runSearch('@sim #system/meta', 0);
+
+    expect(search).toHaveBeenCalledWith(
+      '',
+      expect.objectContaining({ notePath: 'Now/Today.md', tag: 'system/meta' }),
+    );
+  });
+
+  it('does not search when @sim has no active note', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const suggest = createSuggest(null, search);
+
+    const suggestions = await suggest.runSearch('@sim', 0);
+
+    expect(search).not.toHaveBeenCalled();
+    expect(suggestions).toEqual([{ kind: 'status', message: 'Open a note to use @similar.' }]);
   });
 });

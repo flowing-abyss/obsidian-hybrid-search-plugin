@@ -12,6 +12,7 @@ import {
   createInternalLink,
   fileToDragWikiLink,
   hookSuperchargedLinks,
+  resolveSimilarTarget,
   scoreColor,
   unhookSuperchargedLinks,
   type SearchMode,
@@ -156,6 +157,17 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
         this.plugin.settings.defaultSearchFilters,
       ),
     );
+    // runSearch has no EditorSuggestContext, so `context.file` is unreachable here; the
+    // suggester runs inside the editor of the note being typed in, so the live active file
+    // is the correct source for "the active note".
+    const activePath = this.app.workspace.getActiveFile()?.path;
+    const notePath = overrides.similar
+      ? resolveSimilarTarget(this.app, overrides.similar, activePath, activePath ?? '')
+      : null;
+    if (overrides.similar && !notePath) {
+      this.hidePreview();
+      return [{ kind: 'status', message: 'Open a note to use @similar.' }];
+    }
     const mode = overrides.mode ?? this.currentMode;
     const limit = overrides.limit ?? this.plugin.settings.inlineSearchLimit;
     const threshold = overrides.threshold ?? this.plugin.settings.inlineSearchThreshold;
@@ -163,8 +175,11 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
     try {
       const client = this.plugin.client;
       if (!client) return [{ kind: 'status', message: 'Search client not ready.' }];
-      const results = await client.search(parsedQuery, {
+      // The backend ignores the query string during a path lookup, so send '' rather than
+      // the leftover free text — it would only look like it had been searched for.
+      const results = await client.search(notePath ? '' : parsedQuery, {
         mode,
+        ...(notePath && { notePath }),
         limit,
         anchors: true,
         snippetLength: INLINE_SEARCH_SNIPPET_LENGTH,
