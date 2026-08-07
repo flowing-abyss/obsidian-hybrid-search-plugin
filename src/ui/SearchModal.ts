@@ -266,6 +266,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   async getSuggestions(query: string): Promise<SearchResult[]> {
+    // Reset up front so the "@similar" message set below cannot survive into an unrelated
+    // query — including the empty-query paths (similar-to-active, recent files), which
+    // return before any later reset would run.
+    this.emptyStateText = 'No results found.';
     if (!query.trim()) {
       if (this.activePath) {
         // Active note open: show semantically similar notes
@@ -303,13 +307,16 @@ export class SearchModal extends SuggestModal<SearchResult> {
       this.updateModeBadge('~');
       return [];
     }
-    this.emptyStateText = 'No results found.';
 
     this.currentMode = overrides.mode ?? this.forcedMode ?? this.settings.defaultMode;
-    this.currentQueryWords = parsedQuery
-      .split(/\s+/)
-      .map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
-      .filter((w) => w.length >= 2);
+    // With a notePath the free text was never sent to the backend, so highlighting it in the
+    // preview would mark words that had no influence on the results.
+    this.currentQueryWords = notePath
+      ? []
+      : parsedQuery
+          .split(/\s+/)
+          .map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
+          .filter((w) => w.length >= 2);
     this.updateModeBadge(
       notePath
         ? '~'

@@ -224,6 +224,66 @@ describe('SearchPanelView', () => {
     );
   });
 
+  it('drops the similar badge after the query is cleared and the mode is cycled', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => ({ path: 'Now/Today.md' }),
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+    const inputEl = view.containerEl.querySelector<HTMLInputElement>('.hybrid-search-panel-input')!;
+    inputEl.value = '@sim';
+
+    await (view as unknown as { search: (query: string) => Promise<void> }).search('@sim');
+    // Escape clears the input and re-renders without running a search.
+    inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(inputEl.value).toBe('');
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      'H',
+    );
+
+    view.setMode('fulltext');
+
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      'F',
+    );
+  });
+
+  it('drops the similar badge when the query is emptied by editing', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => ({ path: 'Now/Today.md' }),
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+    const runSearch = (view as unknown as { search: (query: string) => Promise<void> }).search;
+
+    await runSearch.call(view, '@sim');
+    await runSearch.call(view, '');
+
+    view.setMode('fulltext');
+
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      'F',
+    );
+  });
+
   it('shows a message when @sim has no active note', async () => {
     const search = vi.fn().mockResolvedValue([]);
     const app = {

@@ -166,6 +166,10 @@ export class SearchPanelView extends ItemView {
     this.allExpanded = false;
     if (!query) {
       this.results = [];
+      // `similarPath` describes the results currently on screen; an empty query has none,
+      // so leaving it set would let a later setMode paint a "~" the panel is not honouring.
+      this.similarPath = null;
+      this.updateModeBadge(this.panelMode, false);
       this.renderEmpty('Type to search.');
       return;
     }
@@ -393,6 +397,10 @@ export class SearchPanelView extends ItemView {
       this.inputEl.value = '';
       this.results = [];
       this.expandedPaths.clear();
+      // Escape discards the results without going through search(), so clear the similar
+      // state here too — otherwise the badge keeps claiming "~" for results that are gone.
+      this.similarPath = null;
+      this.updateModeBadge(this.panelMode, false);
       this.renderEmpty('Type to search.');
     }
   }
