@@ -2,6 +2,7 @@ import { MarkdownRenderer, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { SearchResult } from '../src/ipc';
 import { DEFAULT_SETTINGS } from '../src/settings';
+import { fetchSimilarNotesDetailed } from '../src/ui/noteUtils';
 import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
 
 const result: SearchResult = {
@@ -573,5 +574,16 @@ describe('SimilarNotesBottomManager', () => {
     });
     manager.unload();
     vi.useRealTimers();
+  });
+
+  it('still queries without filters after the @similar work', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    await fetchSimilarNotesDetailed({ search }, 'Now/Today.md', { limit: 5, threshold: 0 });
+
+    const options = search.mock.calls[0]![1];
+    expect(options.notePath).toBe('Now/Today.md');
+    expect(options.tag).toBeUndefined();
+    expect(options.scope).toBeUndefined();
+    expect(options.frontmatter).toBeUndefined();
   });
 });
