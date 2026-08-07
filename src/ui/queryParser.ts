@@ -1,5 +1,9 @@
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
+/** Target of the `@similar` / `@sim` operator: either the currently active note
+ *  (`@sim` with no value) or an explicitly named note (`@sim:[[Note]]`). */
+export type SimilarTarget = { kind: 'active' } | { kind: 'note'; ref: string };
+
 interface ParsedQuery {
   query: string;
   overrides: {
@@ -10,6 +14,7 @@ interface ParsedQuery {
     rerank?: boolean;
     threshold?: number;
     frontmatter?: string | string[];
+    similar?: SimilarTarget;
   };
 }
 
@@ -36,6 +41,10 @@ const RESERVED_POSTFIX_NAMES = new Set([
   'lim',
   'threshold',
   'th',
+  // Reserved because applyCustomPostfixes' (?!\w) guard passes on "@sim:" (":" is not \w),
+  // so a user postfix named "sim" would swallow the @similar operator before parseQuery sees it.
+  'similar',
+  'sim',
 ]);
 
 /** Trims, strips any leading "@", and lowercases a postfix name so stored settings and
@@ -59,6 +68,28 @@ export function parseQuery(input: string): ParsedQuery {
     overrides.mode = MODE_MAP[modeMatch[1]!.toLowerCase()];
     remaining = remaining.slice(modeMatch[0].length);
   }
+
+  // 1b. @similar / @sim — must run FIRST among the operator passes.
+  // The step-5 frontmatter catch-all's (?<!@) lookbehind does NOT protect this:
+  // it only blocks a match starting at "s", so the engine restarts one char later
+  // and turns "@sim:Areas/PKM.md" into the filter "im:Areas/PKM.md". Step 3b's
+  // "#tag" shorthand would likewise chew a "#" out of a quoted path. Running
+  // before both is the only safe placement — only the start-anchored mode prefix
+  // precedes us, and it never matches "@sim".
+  remaining = remaining.replace(
+    /(?:^|\s)@(?:sim|similar)(?::(\[\[[^\]]+\]\]|"[^"]+"|\S+))?(?!\w)/gi,
+    (_match, rawRef: string | undefined) => {
+      if (rawRef === undefined) {
+        overrides.similar = { kind: 'active' };
+      } else {
+        let ref = rawRef;
+        if (ref.startsWith('[[')) ref = ref.slice(2, -2);
+        else if (ref.startsWith('"') && ref.endsWith('"')) ref = ref.slice(1, -1);
+        overrides.similar = ref ? { kind: 'note', ref } : { kind: 'active' };
+      }
+      return ' ';
+    },
+  );
 
   // 2. limit:N
   remaining = remaining.replace(/(?<!@)\blimit:\s*(\d+)/gi, (_, n: string) => {

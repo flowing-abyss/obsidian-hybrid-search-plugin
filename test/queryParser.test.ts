@@ -589,3 +589,64 @@ describe('applyCustomPostfixes', () => {
     expect(result).toBe('@b');
   });
 });
+
+describe('@similar operator', () => {
+  it.each([
+    ['@sim', { kind: 'active' }],
+    ['@similar', { kind: 'active' }],
+    ['@sim:[[Zettelkasten]]', { kind: 'note', ref: 'Zettelkasten' }],
+    ['@sim:[[Areas/PKM#Метод]]', { kind: 'note', ref: 'Areas/PKM#Метод' }],
+    ['@sim:"Areas/My Note.md"', { kind: 'note', ref: 'Areas/My Note.md' }],
+    ['@sim:Areas/PKM.md', { kind: 'note', ref: 'Areas/PKM.md' }],
+  ])('parses %s', (input, expected) => {
+    const { query, overrides } = parseQuery(input);
+    expect(overrides.similar).toEqual(expected);
+    expect(query).toBe('');
+  });
+
+  it('combines with a tag filter', () => {
+    const { query, overrides } = parseQuery('@sim #system/meta');
+    expect(overrides.similar).toEqual({ kind: 'active' });
+    expect(overrides.tag).toBe('system/meta');
+    expect(query).toBe('');
+  });
+
+  it('combines with an explicit target and a folder filter', () => {
+    const { overrides } = parseQuery('@sim:"Areas/My Note.md" folder:Projects');
+    expect(overrides.similar).toEqual({ kind: 'note', ref: 'Areas/My Note.md' });
+    expect(overrides.scope).toBe('Projects');
+  });
+
+  it('does not leak the operator into a frontmatter filter', () => {
+    const { overrides } = parseQuery('@sim:Areas/PKM.md');
+    expect(overrides.frontmatter).toBeUndefined();
+  });
+
+  it('protects a quoted path containing a hash', () => {
+    const { overrides } = parseQuery('@sim:"Areas/My #1 Note.md"');
+    expect(overrides.similar).toEqual({ kind: 'note', ref: 'Areas/My #1 Note.md' });
+    expect(overrides.tag).toBeUndefined();
+  });
+
+  it('does not match @simple', () => {
+    const { query, overrides } = parseQuery('@simple');
+    expect(overrides.similar).toBeUndefined();
+    expect(query).toBe('@simple');
+  });
+
+  it('drops free text alongside the operator', () => {
+    const { query, overrides } = parseQuery('пкм система @sim #system/meta');
+    expect(overrides.similar).toEqual({ kind: 'active' });
+    expect(query).toBe('пкм система');
+  });
+
+  it('reserves sim and similar as postfix names', () => {
+    expect(isReservedPostfixName('sim')).toBe(true);
+    expect(isReservedPostfixName('@Similar')).toBe(true);
+  });
+
+  it('still treats a bare sim: as a frontmatter filter', () => {
+    const { overrides } = parseQuery('sim:value');
+    expect(overrides.frontmatter).toBe('sim:value');
+  });
+});
