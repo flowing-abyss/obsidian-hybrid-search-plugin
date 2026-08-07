@@ -55,17 +55,30 @@ if (typeof SVGElement !== 'undefined' && !('createSvg' in SVGElement.prototype))
   };
 }
 
+// jsdom does not implement scrollIntoView; panel/modal keyboard navigation calls it.
+if (typeof Element !== 'undefined' && !('scrollIntoView' in Element.prototype)) {
+  (Element.prototype as Element & { scrollIntoView: () => void }).scrollIntoView = function () {};
+}
+
 if (typeof HTMLElement !== 'undefined' && !('createDiv' in HTMLElement.prototype)) {
   (
     HTMLElement.prototype as HTMLElement & {
-      createDiv: (cls?: string | { cls?: string }) => HTMLDivElement;
+      createDiv: (
+        cls?: string | { cls?: string; text?: string; attr?: Record<string, string> },
+      ) => HTMLDivElement;
     }
-  ).createDiv = function (cls?: string | { cls?: string }): HTMLDivElement {
+  ).createDiv = function (
+    cls?: string | { cls?: string; text?: string; attr?: Record<string, string> },
+  ): HTMLDivElement {
     const div = activeDocument.createDiv();
     if (typeof cls === 'string') {
       div.className = cls;
-    } else if (cls?.cls) {
-      div.className = cls.cls;
+    } else if (cls) {
+      if (cls.cls) div.className = cls.cls;
+      if (cls.text) div.textContent = cls.text;
+      if (cls.attr) {
+        for (const [key, value] of Object.entries(cls.attr)) div.setAttribute(key, value);
+      }
     }
     this.appendChild(div);
     return div;

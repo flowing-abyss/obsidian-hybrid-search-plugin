@@ -170,6 +170,84 @@ describe('SearchPanelView', () => {
     );
   });
 
+  it('sends notePath when the query uses @sim', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => ({ path: 'Now/Today.md' }),
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+
+    await (view as unknown as { search: (query: string) => Promise<void> }).search(
+      '@sim #system/meta',
+    );
+
+    expect(search).toHaveBeenCalledWith(
+      '',
+      expect.objectContaining({ notePath: 'Now/Today.md', tag: 'system/meta' }),
+    );
+  });
+
+  it('shows the similar badge for @sim and keeps it when the mode is cycled', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => ({ path: 'Now/Today.md' }),
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+
+    await (view as unknown as { search: (query: string) => Promise<void> }).search('@sim');
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      '~',
+    );
+
+    view.setMode('semantic');
+
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      '~',
+    );
+  });
+
+  it('shows a message when @sim has no active note', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => null,
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+
+    await (view as unknown as { search: (query: string) => Promise<void> }).search('@sim');
+
+    expect(search).not.toHaveBeenCalled();
+    expect(view.containerEl.querySelector('.search-empty-state')?.textContent).toBe(
+      'Open a note to use @similar.',
+    );
+  });
+
   it('triggers Obsidian hover preview for panel links', async () => {
     const trigger = vi.fn();
     const app = {

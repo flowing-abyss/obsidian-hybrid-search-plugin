@@ -11,6 +11,7 @@ import {
   modeLabel,
   offsetToEditorPosition,
   openResult,
+  resolveSimilarTarget,
   scoreColor,
   type SearchMode,
   unhookSuperchargedLinks,
@@ -38,6 +39,10 @@ export class SearchPanelView extends ItemView {
   private expandAllButtonEl?: HTMLButtonElement;
   private panelLimit: number;
   private panelThreshold: number;
+  /** Resolved `@similar` target of the current query, or null when the query has none.
+   *  Held on the view (not folded into `panelMode`) so mode cycling re-renders the badge
+   *  through the same helper and cannot overwrite the `~` with a stale mode letter. */
+  private similarPath: string | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -177,13 +182,25 @@ export class SearchPanelView extends ItemView {
         this.plugin.settings.defaultSearchFilters,
       ),
     );
+    const activePath = this.app.workspace.getActiveFile()?.path;
+    this.similarPath = overrides.similar
+      ? resolveSimilarTarget(this.app, overrides.similar, activePath, activePath ?? '')
+      : null;
+    if (overrides.similar && !this.similarPath) {
+      this.results = [];
+      this.renderEmpty('Open a note to use @similar.');
+      return;
+    }
     const mode = overrides.mode ?? this.panelMode;
     this.updateModeBadge(mode, overrides.rerank ?? false);
     const limit = overrides.limit ?? this.panelLimit;
     const threshold = overrides.threshold ?? this.panelThreshold;
     try {
-      const results = await this.plugin.client.search(parsedQuery, {
+      // The backend ignores the query string during a path lookup, so send '' rather than
+      // the leftover free text — it would only look like it had been searched for.
+      const results = await this.plugin.client.search(this.similarPath ? '' : parsedQuery, {
         mode,
+        ...(this.similarPath && { notePath: this.similarPath }),
         limit,
         anchors: true,
         snippetLength: SEARCH_PANEL_SNIPPET_LENGTH,
@@ -541,8 +558,8 @@ export class SearchPanelView extends ItemView {
 
   private updateModeBadge(mode: SearchMode, rerank: boolean): void {
     if (!this.modeEl) return;
-    this.modeEl.textContent = modeLabel(mode, rerank);
-    this.modeEl.setAttribute('title', `Search mode: ${mode}`);
+    this.modeEl.textContent = this.similarPath ? '~' : modeLabel(mode, rerank);
+    this.modeEl.setAttribute('title', this.similarPath ? 'Similar notes' : `Search mode: ${mode}`);
   }
 
   private async openResultFromPanel(
