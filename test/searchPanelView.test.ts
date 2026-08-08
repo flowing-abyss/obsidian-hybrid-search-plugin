@@ -2,7 +2,7 @@ import { TFile, WorkspaceLeaf } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { SearchResult } from '../src/ipc';
 import { DEFAULT_SETTINGS } from '../src/settings';
-import { SearchPanelView } from '../src/ui/SearchPanelView';
+import { revealSearchPanel, SearchPanelView } from '../src/ui/SearchPanelView';
 
 const result: SearchResult = {
   path: 'target.md',
@@ -167,6 +167,144 @@ describe('SearchPanelView', () => {
     expect(search).toHaveBeenLastCalledWith(
       'target',
       expect.objectContaining({ mode: 'semantic' }),
+    );
+  });
+
+  it('sends notePath when the query uses @sim', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => ({ path: 'Now/Today.md' }),
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+
+    await (view as unknown as { search: (query: string) => Promise<void> }).search(
+      '@sim #system/meta',
+    );
+
+    expect(search).toHaveBeenCalledWith(
+      '',
+      expect.objectContaining({ notePath: 'Now/Today.md', tag: 'system/meta' }),
+    );
+  });
+
+  it('shows the similar badge for @sim and keeps it when the mode is cycled', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => ({ path: 'Now/Today.md' }),
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+
+    await (view as unknown as { search: (query: string) => Promise<void> }).search('@sim');
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      '~',
+    );
+
+    view.setMode('semantic');
+
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      '~',
+    );
+  });
+
+  it('drops the similar badge after the query is cleared and the mode is cycled', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => ({ path: 'Now/Today.md' }),
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+    const inputEl = view.containerEl.querySelector<HTMLInputElement>('.hybrid-search-panel-input')!;
+    inputEl.value = '@sim';
+
+    await (view as unknown as { search: (query: string) => Promise<void> }).search('@sim');
+    // Escape clears the input and re-renders without running a search.
+    inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(inputEl.value).toBe('');
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      'H',
+    );
+
+    view.setMode('fulltext');
+
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      'F',
+    );
+  });
+
+  it('drops the similar badge when the query is emptied by editing', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => ({ path: 'Now/Today.md' }),
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+    const runSearch = (view as unknown as { search: (query: string) => Promise<void> }).search;
+
+    await runSearch.call(view, '@sim');
+    await runSearch.call(view, '');
+
+    view.setMode('fulltext');
+
+    expect(view.containerEl.querySelector('.hybrid-search-panel-mode-badge')?.textContent).toBe(
+      'F',
+    );
+  });
+
+  it('shows a message when @sim has no active note', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const app = {
+      workspace: {
+        getActiveFile: () => null,
+        getLeavesOfType: () => [],
+        getLeaf: () => ({ openFile: vi.fn() }),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null },
+    };
+    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const view = new SearchPanelView(leaf, plugin as never);
+    await view.onOpen();
+
+    await (view as unknown as { search: (query: string) => Promise<void> }).search('@sim');
+
+    expect(search).not.toHaveBeenCalled();
+    expect(view.containerEl.querySelector('.search-empty-state')?.textContent).toBe(
+      'Open a note to use @similar.',
     );
   });
 
@@ -570,5 +708,26 @@ describe('SearchPanelView', () => {
       'target',
       expect.objectContaining({ limit: 3, threshold: 0.2 }),
     );
+  });
+
+  it('calls workspace.revealLeaf bound to the workspace object', async () => {
+    const leaf = Object.assign(new WorkspaceLeaf(), {
+      setViewState: vi.fn().mockResolvedValue(undefined),
+      view: null,
+    });
+    const workspace = {
+      getLeavesOfType: () => [],
+      getRightLeaf: () => leaf,
+      revealLeaf(this: unknown, _workspaceLeaf: WorkspaceLeaf) {
+        if (this !== workspace) {
+          throw new TypeError("Cannot read properties of undefined (reading 'isWorkspaceFocused')");
+        }
+        return Promise.resolve();
+      },
+    };
+    const app = { workspace };
+    const plugin = { app };
+
+    await expect(revealSearchPanel(plugin as never)).resolves.toBeUndefined();
   });
 });

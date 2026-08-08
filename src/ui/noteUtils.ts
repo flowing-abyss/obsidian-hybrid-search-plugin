@@ -1,6 +1,7 @@
 import { TFile, type App } from 'obsidian';
 import type { MatchAnchor, SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
+import type { SimilarTarget } from './queryParser';
 
 export type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
@@ -262,6 +263,27 @@ export function scoreColor(score: number): string {
   if (score >= 0.8) return '#4caf50';
   if (score >= 0.5) return '#ff9800';
   return '#9e9e9e';
+}
+
+/**
+ * Turn a parsed @similar target into a vault-relative path.
+ *
+ * `activePath` is a parameter rather than an app lookup because the surfaces
+ * disagree about what "active" means: the modal holds a snapshot taken when it
+ * opened, while the panel and inline suggester track the live active file.
+ *
+ * An unresolvable wikilink falls through to the raw ref — the backend has its own
+ * path resolution and reports ambiguity, so guessing here would only lose information.
+ */
+export function resolveSimilarTarget(
+  app: App,
+  target: SimilarTarget,
+  activePath: string | undefined,
+  sourcePath: string,
+): string | null {
+  if (target.kind === 'active') return activePath ?? null;
+  const dest = app.metadataCache.getFirstLinkpathDest(target.ref, sourcePath);
+  return dest?.path ?? target.ref;
 }
 
 export function modeLabel(mode: SearchMode, rerank: boolean): string {

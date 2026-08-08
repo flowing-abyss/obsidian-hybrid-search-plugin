@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian';
+import { TFile, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { SearchResult } from '../src/ipc';
 import {
@@ -7,6 +7,7 @@ import {
   fetchSimilarNotesDetailed,
   fileToDragWikiLink,
   getResultTitle,
+  resolveSimilarTarget,
 } from '../src/ui/noteUtils';
 
 const related: SearchResult = {
@@ -149,5 +150,34 @@ describe('noteUtils', () => {
 
     expect(link.getAttribute('href')).toBe('folder/target');
     expect(link.getAttribute('data-href')).toBe('folder/target');
+  });
+});
+
+describe('resolveSimilarTarget', () => {
+  const app = {
+    metadataCache: {
+      getFirstLinkpathDest: (linktext: string) =>
+        linktext === 'Zettelkasten' ? { path: 'Areas/Zettelkasten.md' } : null,
+    },
+  } as unknown as App;
+
+  it('returns the active path for an active target', () => {
+    expect(resolveSimilarTarget(app, { kind: 'active' }, 'Now/Today.md', '')).toBe('Now/Today.md');
+  });
+
+  it('returns null when there is no active file', () => {
+    expect(resolveSimilarTarget(app, { kind: 'active' }, undefined, '')).toBeNull();
+  });
+
+  it('resolves a wikilink through the metadata cache', () => {
+    expect(resolveSimilarTarget(app, { kind: 'note', ref: 'Zettelkasten' }, undefined, '')).toBe(
+      'Areas/Zettelkasten.md',
+    );
+  });
+
+  it('falls back to the raw ref when Obsidian cannot resolve it', () => {
+    expect(resolveSimilarTarget(app, { kind: 'note', ref: 'Areas/PKM.md' }, undefined, '')).toBe(
+      'Areas/PKM.md',
+    );
   });
 });

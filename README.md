@@ -107,6 +107,9 @@ zettelkasten #project @limit:20 @rerank @hybrid
 | `semantic:` / `sem:`  | `@semantic` / `@sem`     | Semantic (vector) only                      |
 | `fulltext:` / `full:` | `@full`                  | Full-text (BM25) only                       |
 | `title:`              | `@title`                 | Fuzzy title match                           |
+| —                     | `@sim` / `@similar`      | Notes similar to the active note            |
+| —                     | `@sim:[[Note]]`          | Notes similar to a specific note            |
+| —                     | `@sim:"path/note.md"`    | Same, by path                               |
 | `tag:` / `tag:#tag`   | `#tag`                   | Filter by tag (include)                     |
 | `-tag:` / `-tag:#tag` | `-#tag`                  | Filter by tag (exclude)                     |
 | `folder:` / `path:`   | —                        | Limit to a folder (quote names with spaces) |
@@ -118,6 +121,8 @@ zettelkasten #project @limit:20 @rerank @hybrid
 | `-key:value`          | —                        | Exclude by frontmatter field                |
 
 Exclusion is a leading `-` before the operator, matching [Obsidian's own core search syntax](https://help.obsidian.md/plugins/search) (e.g. `-tag:#archive`, `-folder:Templates`). The `#` on tag values is optional — `tag:project` and `tag:#project` are equivalent. Filters can be combined freely.
+
+`@sim` / `@similar` searches by note, not by words: any free text alongside it is ignored. Combine it with a filter to narrow the result, e.g. `@sim #system/meta` or `@sim:[[Zettelkasten]] folder:Areas`. The bare form requires an open note — with no note open and no explicit target, it shows a prompt instead of results.
 
 In settings, you can also define your own `@name` shortcuts that expand to a filter string, e.g. `@work` → `-tag:personal folder:work`, and a **Default search filters** field applied to every search automatically.
 

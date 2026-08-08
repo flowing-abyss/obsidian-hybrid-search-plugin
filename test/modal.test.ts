@@ -119,6 +119,98 @@ describe('SearchModal', () => {
     vi.useRealTimers();
   });
 
+  it('getSuggestions sends notePath when the query uses @sim', async () => {
+    mockSearch.mockResolvedValue([]);
+    const simModal = new SearchModal(
+      mockApp as never,
+      mockClient,
+      DEFAULT_SETTINGS,
+      vi.fn(),
+      'Now/Today.md',
+    );
+    vi.useFakeTimers();
+    const promise = simModal.getSuggestions('@sim #system/meta');
+    vi.runAllTimers();
+    await promise;
+    expect(mockSearch).toHaveBeenCalledWith(
+      '',
+      expect.objectContaining({ notePath: 'Now/Today.md', tag: 'system/meta' }),
+    );
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions does not search when @sim has no active note', async () => {
+    mockSearch.mockResolvedValue([]);
+    const simModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
+    vi.useFakeTimers();
+    const promise = simModal.getSuggestions('@sim');
+    vi.runAllTimers();
+    const results = await promise;
+    expect(results).toEqual([]);
+    expect(mockSearch).not.toHaveBeenCalled();
+    expect(simModal.emptyStateText).toBe('Open a note to use @similar.');
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions resets the @similar message on the next query', async () => {
+    mockSearch.mockResolvedValue([]);
+    const simModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
+    vi.useFakeTimers();
+    await simModal.getSuggestions('@sim');
+    const promise = simModal.getSuggestions('zettel');
+    vi.runAllTimers();
+    await promise;
+    expect(simModal.emptyStateText).not.toBe('Open a note to use @similar.');
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions resets the @similar message when the query is cleared', async () => {
+    mockSearch.mockResolvedValue([]);
+    const simModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
+    vi.useFakeTimers();
+    await simModal.getSuggestions('@sim');
+    await simModal.getSuggestions('');
+    expect(simModal.emptyStateText).not.toBe('Open a note to use @similar.');
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions resets the @similar message when falling back to similar-to-active', async () => {
+    mockSearch.mockResolvedValue([]);
+    const simModal = new SearchModal(
+      mockApp as never,
+      mockClient,
+      DEFAULT_SETTINGS,
+      vi.fn(),
+      'Now/Today.md',
+    );
+    vi.useFakeTimers();
+    // Force the "no target" branch even though a snapshot exists: an unresolvable note ref.
+    (simModal as unknown as { emptyStateText: string }).emptyStateText =
+      'Open a note to use @similar.';
+    const promise = simModal.getSuggestions('');
+    vi.runAllTimers();
+    await promise;
+    expect(simModal.emptyStateText).not.toBe('Open a note to use @similar.');
+    vi.useRealTimers();
+  });
+
+  it('getSuggestions does not highlight leftover query words when @sim is active', async () => {
+    mockSearch.mockResolvedValue([]);
+    const simModal = new SearchModal(
+      mockApp as never,
+      mockClient,
+      DEFAULT_SETTINGS,
+      vi.fn(),
+      'Now/Today.md',
+    );
+    vi.useFakeTimers();
+    const promise = simModal.getSuggestions('@sim leftover words');
+    vi.runAllTimers();
+    await promise;
+    expect((simModal as unknown as { currentQueryWords: string[] }).currentQueryWords).toEqual([]);
+    vi.useRealTimers();
+  });
+
   it('getSuggestions returns empty array on client error', async () => {
     mockSearch.mockRejectedValue(new Error('connection failed'));
     vi.useFakeTimers();

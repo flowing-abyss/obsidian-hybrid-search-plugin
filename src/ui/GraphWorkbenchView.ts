@@ -1885,12 +1885,10 @@ export async function revealGraphWorkbench(plugin: HybridSearchPlugin): Promise<
     return;
   }
   await leaf.setViewState({ type: GRAPH_WORKBENCH_VIEW_TYPE, active: true });
-  const revealLeaf = (
-    plugin.app.workspace as unknown as {
-      revealLeaf?: (workspaceLeaf: WorkspaceLeaf) => void | Promise<void>;
-    }
-  )['revealLeaf'];
-  await revealLeaf?.(leaf);
+  const workspace = plugin.app.workspace as unknown as {
+    revealLeaf?: (workspaceLeaf: WorkspaceLeaf) => void | Promise<void>;
+  };
+  await workspace.revealLeaf?.(leaf);
   if (leaf.view instanceof GraphWorkbenchView) await leaf.view.refreshFromActiveFile(true);
 }
 
