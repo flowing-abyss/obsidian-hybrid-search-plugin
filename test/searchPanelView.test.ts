@@ -2,7 +2,7 @@ import { TFile, WorkspaceLeaf } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { SearchResult } from '../src/ipc';
 import { DEFAULT_SETTINGS } from '../src/settings';
-import { SearchPanelView } from '../src/ui/SearchPanelView';
+import { revealSearchPanel, SearchPanelView } from '../src/ui/SearchPanelView';
 
 const result: SearchResult = {
   path: 'target.md',
@@ -708,5 +708,26 @@ describe('SearchPanelView', () => {
       'target',
       expect.objectContaining({ limit: 3, threshold: 0.2 }),
     );
+  });
+
+  it('calls workspace.revealLeaf bound to the workspace object', async () => {
+    const leaf = Object.assign(new WorkspaceLeaf(), {
+      setViewState: vi.fn().mockResolvedValue(undefined),
+      view: null,
+    });
+    const workspace = {
+      getLeavesOfType: () => [],
+      getRightLeaf: () => leaf,
+      revealLeaf(this: unknown, _workspaceLeaf: WorkspaceLeaf) {
+        if (this !== workspace) {
+          throw new TypeError("Cannot read properties of undefined (reading 'isWorkspaceFocused')");
+        }
+        return Promise.resolve();
+      },
+    };
+    const app = { workspace };
+    const plugin = { app };
+
+    await expect(revealSearchPanel(plugin as never)).resolves.toBeUndefined();
   });
 });

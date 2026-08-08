@@ -626,12 +626,10 @@ export async function revealSearchPanel(
     return;
   }
   await leaf.setViewState({ type: SEARCH_PANEL_VIEW_TYPE, active: true });
-  const revealLeaf = (
-    plugin.app.workspace as unknown as {
-      revealLeaf?: (workspaceLeaf: WorkspaceLeaf) => void | Promise<void>;
-    }
-  )['revealLeaf'];
-  await revealLeaf?.(leaf);
+  const workspace = plugin.app.workspace as unknown as {
+    revealLeaf?: (workspaceLeaf: WorkspaceLeaf) => void | Promise<void>;
+  };
+  await workspace.revealLeaf?.(leaf);
   const view = leaf.view;
   if (view instanceof SearchPanelView) {
     if (mode) view.setMode(mode);
