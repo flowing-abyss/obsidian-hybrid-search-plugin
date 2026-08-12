@@ -60,6 +60,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     private readonly saveSettings: () => Promise<void>,
     private readonly activePath?: string,
     private readonly forcedMode?: SearchMode,
+    private readonly onDidClose?: (modal: SearchModal) => void,
   ) {
     super(app);
     this.setPlaceholder('Hybrid search: type to search your vault...');
@@ -252,17 +253,24 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   onClose(): void {
-    if (this.settings.rememberLastQuery && this.inputEl) {
-      this.settings.lastQuery = this.inputEl.value.trim();
-      void this.saveSettings();
+    try {
+      if (this.settings.rememberLastQuery && this.inputEl) {
+        this.settings.lastQuery = this.inputEl.value.trim();
+        void this.saveSettings();
+      }
+      this.unhookSuperchargedLinks();
+    } finally {
+      try {
+        this.hidePreviewPanel();
+        this.graphPanel?.unload();
+        this.graphPanel = undefined;
+        // Restore modal's default centering (in case positionPreview shifted it)
+        this.modalEl.style.left = ``;
+        this.modalEl.style.transform = ``;
+      } finally {
+        this.onDidClose?.(this);
+      }
     }
-    this.unhookSuperchargedLinks();
-    this.hidePreviewPanel();
-    this.graphPanel?.unload();
-    this.graphPanel = undefined;
-    // Restore modal's default centering (in case positionPreview shifted it)
-    this.modalEl.style.left = ``;
-    this.modalEl.style.transform = ``;
   }
 
   async getSuggestions(query: string): Promise<SearchResult[]> {

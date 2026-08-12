@@ -443,6 +443,28 @@ describe('SearchModal — hover preview', () => {
     expect(activeDocument.body.contains(previewEl)).toBe(false);
   });
 
+  it('onClose notifies its owner after removing the body-level preview', async () => {
+    const onDidClose = vi.fn();
+    const ownedModal = new SearchModal(
+      mockApp as never,
+      mockClient,
+      DEFAULT_SETTINGS,
+      vi.fn(),
+      undefined,
+      undefined,
+      onDidClose,
+    );
+    const internals = ownedModal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    const previewEl = internals.previewEl!;
+
+    ownedModal.onClose();
+
+    expect(activeDocument.body.contains(previewEl)).toBe(false);
+    expect(onDidClose).toHaveBeenCalledOnce();
+    expect(onDidClose).toHaveBeenCalledWith(ownedModal);
+  });
+
   it('onSelectedChange calls updatePreview for the selected result', () => {
     // Assign a mock directly (vi.spyOn requires the property to exist first)
     const updateMock = vi.fn();

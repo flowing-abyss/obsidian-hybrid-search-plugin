@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('obsidian', async (importOriginal) => {
   const actual = await importOriginal<typeof import('obsidian')>();
@@ -34,6 +34,7 @@ vi.mock('../src/ipc', () => {
 import { App, Notice } from 'obsidian';
 import HybridSearchPlugin from '../src/main';
 import { GraphWorkbenchView } from '../src/ui/GraphWorkbenchView';
+import { SearchModal } from '../src/ui/SearchModal';
 import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
 
 const mockGetBasePath = vi.fn().mockReturnValue('/vault');
@@ -50,6 +51,13 @@ const mockApp = {
 
 const mockManifest = { id: 'hybrid-search', name: 'Hybrid Search', version: '0.1.0' };
 
+const BODY_PANEL_SELECTOR = [
+  '.hybrid-search-preview',
+  '.hybrid-search-preview-meta-panel',
+  '.hybrid-search-inline-preview',
+  '.ohs-graph-panel',
+].join(', ');
+
 async function flushPromises() {
   await Promise.resolve();
 }
@@ -60,6 +68,7 @@ describe('HybridSearchPlugin', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    activeDocument.querySelectorAll(BODY_PANEL_SELECTOR).forEach((el) => el.remove());
     NoticeMock.mockClear();
     delete (mockApp.workspace as { getLeavesOfType?: unknown }).getLeavesOfType;
     plugin = new HybridSearchPlugin(mockApp as unknown as App, mockManifest as never);
@@ -71,6 +80,11 @@ describe('HybridSearchPlugin', () => {
     plugin.registerView = vi.fn();
     plugin.registerEditorExtension = vi.fn();
     plugin.registerEditorSuggest = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    activeDocument.querySelectorAll(BODY_PANEL_SELECTOR).forEach((el) => el.remove());
   });
 
   it('loads settings on onload', async () => {
@@ -294,6 +308,66 @@ describe('HybridSearchPlugin', () => {
     expect(plugin.client).toBeDefined();
     plugin.onunload();
 
+    expect(plugin.client!.dispose).toHaveBeenCalled();
+  });
+
+  it('onload removes stale body-level panels left by a previous plugin instance', async () => {
+    for (const className of [
+      'hybrid-search-preview',
+      'hybrid-search-preview-meta-panel',
+      'hybrid-search-inline-preview',
+      'ohs-graph-panel',
+    ]) {
+      activeDocument.body.createDiv(className);
+    }
+    expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(4);
+
+    await plugin.onload();
+
+    expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(0);
+  });
+
+  it('onunload closes every active search modal and removes their body-level panels', async () => {
+    const openSpy = vi.spyOn(SearchModal.prototype, 'open').mockImplementation(() => {
+      activeDocument.body.createDiv('ohs-graph-panel');
+    });
+    const closeSpy = vi.spyOn(SearchModal.prototype, 'close');
+    await plugin.onload();
+    const commands = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { id: string; callback?: () => void },
+    );
+    commands.find((command) => command.id === 'open-search')?.callback?.();
+    commands.find((command) => command.id === 'search-semantic')?.callback?.();
+    expect(activeDocument.querySelectorAll('.ohs-graph-panel')).toHaveLength(2);
+
+    plugin.onunload();
+
+    expect(closeSpy).toHaveBeenCalledTimes(2);
+    expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(0);
+    openSpy.mockRestore();
+    closeSpy.mockRestore();
+  });
+
+  it('onunload continues closing modals and sweeping panels after one close fails', async () => {
+    vi.spyOn(SearchModal.prototype, 'open').mockImplementation(() => {
+      activeDocument.body.createDiv('ohs-graph-panel');
+    });
+    let closeCount = 0;
+    const closeSpy = vi.spyOn(SearchModal.prototype, 'close').mockImplementation(() => {
+      closeCount++;
+      if (closeCount === 1) throw new Error('modal close failed');
+    });
+    await plugin.onload();
+    const commands = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { id: string; callback?: () => void },
+    );
+    commands.find((command) => command.id === 'open-search')?.callback?.();
+    commands.find((command) => command.id === 'search-semantic')?.callback?.();
+
+    expect(() => plugin.onunload()).not.toThrow();
+
+    expect(closeSpy).toHaveBeenCalledTimes(2);
+    expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(0);
     expect(plugin.client!.dispose).toHaveBeenCalled();
   });
 
