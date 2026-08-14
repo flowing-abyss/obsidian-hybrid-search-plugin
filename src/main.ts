@@ -15,7 +15,7 @@ import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
-const BODY_PANEL_SELECTOR = [
+export const BODY_PANEL_SELECTOR = [
   '.hybrid-search-preview',
   '.hybrid-search-preview-meta-panel',
   '.hybrid-search-inline-preview',
@@ -195,8 +195,9 @@ export default class HybridSearchPlugin extends Plugin {
     for (const modal of modals) {
       try {
         modal.close();
-      } catch {
-        // Keep unloading the remaining modals. The orphan sweep below is the final DOM fallback.
+      } catch (error) {
+        console.error('Hybrid search: failed to close search modal during plugin unload.', error);
+        // Keep unloading the remaining modals. The sweep below removes only body-level panels.
       }
     }
   }

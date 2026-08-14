@@ -32,7 +32,7 @@ vi.mock('../src/ipc', () => {
 });
 
 import { App, Notice } from 'obsidian';
-import HybridSearchPlugin from '../src/main';
+import HybridSearchPlugin, { BODY_PANEL_SELECTOR } from '../src/main';
 import { GraphWorkbenchView } from '../src/ui/GraphWorkbenchView';
 import { SearchModal } from '../src/ui/SearchModal';
 import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
@@ -50,13 +50,6 @@ const mockApp = {
 };
 
 const mockManifest = { id: 'hybrid-search', name: 'Hybrid Search', version: '0.1.0' };
-
-const BODY_PANEL_SELECTOR = [
-  '.hybrid-search-preview',
-  '.hybrid-search-preview-meta-panel',
-  '.hybrid-search-inline-preview',
-  '.ohs-graph-panel',
-].join(', ');
 
 async function flushPromises() {
   await Promise.resolve();
@@ -328,7 +321,7 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('onunload closes every active search modal and removes their body-level panels', async () => {
-    const openSpy = vi.spyOn(SearchModal.prototype, 'open').mockImplementation(() => {
+    vi.spyOn(SearchModal.prototype, 'open').mockImplementation(() => {
       activeDocument.body.createDiv('ohs-graph-panel');
     });
     const closeSpy = vi.spyOn(SearchModal.prototype, 'close');
@@ -344,8 +337,6 @@ describe('HybridSearchPlugin', () => {
 
     expect(closeSpy).toHaveBeenCalledTimes(2);
     expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(0);
-    openSpy.mockRestore();
-    closeSpy.mockRestore();
   });
 
   it('onunload continues closing modals and sweeping panels after one close fails', async () => {
@@ -353,6 +344,7 @@ describe('HybridSearchPlugin', () => {
       activeDocument.body.createDiv('ohs-graph-panel');
     });
     let closeCount = 0;
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const closeSpy = vi.spyOn(SearchModal.prototype, 'close').mockImplementation(() => {
       closeCount++;
       if (closeCount === 1) throw new Error('modal close failed');
@@ -367,6 +359,10 @@ describe('HybridSearchPlugin', () => {
     expect(() => plugin.onunload()).not.toThrow();
 
     expect(closeSpy).toHaveBeenCalledTimes(2);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Hybrid search: failed to close search modal during plugin unload.',
+      expect.objectContaining({ message: 'modal close failed' }),
+    );
     expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(0);
     expect(plugin.client!.dispose).toHaveBeenCalled();
   });
