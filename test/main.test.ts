@@ -31,7 +31,7 @@ vi.mock('../src/ipc', () => {
   };
 });
 
-import { App, Notice, type PluginManifest } from 'obsidian';
+import { App, Notice, SecretStorage, type PluginManifest } from 'obsidian';
 import HybridSearchPlugin from '../src/main';
 import { GraphWorkbenchView } from '../src/ui/GraphWorkbenchView';
 import { SearchModal } from '../src/ui/SearchModal';
@@ -48,6 +48,7 @@ const mockApp = {
   workspace: {
     getActiveFile: mockGetActiveFile,
   },
+  secretStorage: new SecretStorage(),
 };
 
 const mockManifest: PluginManifest = {
@@ -83,6 +84,8 @@ describe('HybridSearchPlugin', () => {
     vi.clearAllMocks();
     activeDocument.querySelectorAll(ALL_BODY_PANELS).forEach((el) => el.remove());
     NoticeMock.mockClear();
+    // The keychain mock is shared across the file; keep each test independent of order.
+    mockApp.secretStorage = new SecretStorage();
     delete (mockApp.workspace as { getLeavesOfType?: unknown }).getLeavesOfType;
     plugin = new HybridSearchPlugin(mockApp as unknown as App, mockManifest);
     plugin.loadData = vi.fn().mockResolvedValue({});
@@ -108,10 +111,18 @@ describe('HybridSearchPlugin', () => {
     expect(plugin.settings.defaultMode).toBe('hybrid');
   });
 
-  it('initialises SearchClient with binary and vault path', async () => {
+  it('initialises SearchClient with binary, vault path and api key', async () => {
     const { SearchClient } = await import('../src/ipc');
     await plugin.onload();
-    expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault');
+    expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault', '');
+  });
+
+  it('passes the stored api key to SearchClient', async () => {
+    const { SearchClient } = await import('../src/ipc');
+    const { setApiKey } = await import('../src/secrets');
+    setApiKey(plugin.app, 'sk-test-key');
+    await plugin.onload();
+    expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault', 'sk-test-key');
   });
 
   it('initialises HttpSearchClient when HTTP transport is selected', async () => {

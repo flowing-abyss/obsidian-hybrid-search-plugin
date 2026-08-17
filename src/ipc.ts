@@ -60,6 +60,7 @@ interface StdioResponse {
   ready?: boolean;
   id?: string;
   results?: SearchResult[];
+  status?: Record<string, unknown>;
   error?: string;
 }
 
@@ -67,6 +68,7 @@ interface McpResponse {
   id?: number;
   result?: {
     content?: Array<{ type?: string; text?: string }>;
+    isError?: boolean;
   };
   error?: { message?: string };
 }
@@ -253,9 +255,36 @@ function resolveBinary(binaryPath: string): string {
   return binaryPath;
 }
 
+/** Environment for every CLI process the plugin starts.
+ *  Obsidian is launched by the OS session, not by a shell, so it never reads the
+ *  user's shell config and the API key is missing from `process.env`.  Passing it
+ *  explicitly is what lets authenticated embedding providers work at all. */
+export function buildCliEnv(vaultPath: string, apiKey: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PATH: augmentedPath(),
+    OBSIDIAN_VAULT_PATH: vaultPath,
+    ...(apiKey ? { OPENAI_API_KEY: apiKey } : {}),
+  };
+}
+
+const OUTDATED_CLI_MESSAGE =
+  'The installed obsidian-hybrid-search CLI is too old to report status. ' +
+  'Update it with "npm install -g obsidian-hybrid-search", then reload the plugin. ' +
+  'Search itself keeps working in the meantime.';
+
+/**
+ * A server without the status action does not recognise the request at all: it
+ * falls through to the search schema and complains about a missing `query`.
+ * Surfacing that raw is useless to the user, so it is translated here.
+ */
+export function isUnsupportedStatusError(message: string): boolean {
+  return message.includes('stdio request') && message.includes('query');
+}
+
 export class SearchClient {
   private proc: ChildProcess;
-  private pending = new Map<string, (results: SearchResult[]) => void>();
+  private pending = new Map<string, (msg: StdioResponse) => void>();
   private counter = 0;
   private ready = false;
   private readyCallbacks: Array<() => void> = [];
@@ -266,14 +295,14 @@ export class SearchClient {
   private binaryPath: string;
   private resolvedPath: string;
 
-  constructor(binaryPath: string, vaultPath: string) {
+  constructor(binaryPath: string, vaultPath: string, apiKey = '') {
     this.binaryPath = binaryPath;
     this.resolvedPath = resolveBinary(binaryPath);
     const needsShell =
       process.platform === 'win32' &&
       (this.resolvedPath.endsWith('.cmd') || this.resolvedPath.endsWith('.bat'));
     this.proc = spawn(this.resolvedPath, ['serve', '--stdio'], {
-      env: { ...process.env, PATH: augmentedPath(), OBSIDIAN_VAULT_PATH: vaultPath },
+      env: buildCliEnv(vaultPath, apiKey),
       shell: needsShell,
     });
 
@@ -293,7 +322,7 @@ export class SearchClient {
           } else if (msg.id !== undefined) {
             const resolve = this.pending.get(msg.id);
             if (resolve) {
-              resolve(msg.error ? [] : (msg.results ?? []));
+              resolve(msg);
               this.pending.delete(msg.id);
             }
           }
@@ -363,8 +392,47 @@ export class SearchClient {
   search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     return new Promise((resolve) => {
       const id = String(++this.counter);
-      this.pending.set(id, resolve);
+      this.pending.set(id, (msg) => {
+        resolve(msg.error ? [] : (msg.results ?? []));
+      });
       this.proc.stdin!.write(JSON.stringify({ id, query, options }) + '\n');
+    });
+  }
+
+  /** Index and provider report from the already-running server.
+   *  Uses the live connection rather than a second process, so it costs one
+   *  round-trip and never touches the database on its own. */
+  statusReport(timeoutMs = 15_000): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      const id = String(++this.counter);
+      const timer = window.setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error('Status request timed out.'));
+      }, timeoutMs);
+
+      this.pending.set(id, (msg) => {
+        window.clearTimeout(timer);
+        if (msg.error) {
+          reject(new Error(isUnsupportedStatusError(msg.error) ? OUTDATED_CLI_MESSAGE : msg.error));
+          return;
+        }
+        if (!msg.status) {
+          reject(new Error(OUTDATED_CLI_MESSAGE));
+          return;
+        }
+        resolve(msg.status);
+      });
+
+      this.waitReady(timeoutMs).then(
+        () => {
+          this.proc.stdin!.write(JSON.stringify({ id, action: 'status' }) + '\n');
+        },
+        (err: unknown) => {
+          window.clearTimeout(timer);
+          this.pending.delete(id);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        },
+      );
     });
   }
 
@@ -373,9 +441,9 @@ export class SearchClient {
     if (this.proc.exitCode === null && !this.proc.killed) {
       this.proc.kill();
     }
-    // Drain any pending searches so they don't leak
+    // Drain any pending requests so they don't leak
     for (const resolve of this.pending.values()) {
-      resolve([]);
+      resolve({ error: 'Search server was restarted.' });
     }
     this.pending.clear();
   }
@@ -521,6 +589,49 @@ export class HttpSearchClient {
       }
       throw err;
     }
+  }
+
+  /** Index and provider report from the `status` mcp tool.
+   *  Talks to the active endpoint only — diagnostics must not trigger a failover. */
+  async statusReport(timeoutMs = 15_000): Promise<Record<string, unknown>> {
+    const endpoint = this.active;
+    await this.waitReadyForEndpoint(endpoint, timeoutMs);
+    const response = await this.postMcp(
+      endpoint,
+      {
+        jsonrpc: '2.0',
+        id: ++this.counter,
+        method: 'tools/call',
+        params: { name: 'status', arguments: {} },
+      },
+      timeoutMs,
+    );
+    if (response.error) {
+      throw new Error(response.error.message ?? 'Status request failed.');
+    }
+    const text = response.result?.content?.find((part) => part.type === 'text')?.text;
+    if (!text) throw new Error('Status returned no content.');
+    // A failing tool answers with a normal result carrying isError, so without this
+    // the server's own explanation is lost and the parser below reports bad json.
+    if (response.result?.isError === true) throw new Error(text);
+
+    // The tool appends a human-readable warning after the json body.
+    const jsonEnd = text.lastIndexOf('}');
+    if (jsonEnd < 0) throw new Error('Status returned no json.');
+    const payload = JSON.parse(text.slice(0, jsonEnd + 1)) as Record<string, unknown>;
+
+    // Servers older than the failed_chunks field only state the count in that
+    // warning, and losing it would hide exactly what the panel exists to show.
+    if (typeof payload.failed_chunks !== 'number') {
+      const match = /(\d{1,9}) chunk/.exec(text.slice(jsonEnd + 1));
+      payload.failed_chunks = match ? Number(match[1]) : 0;
+    }
+    return payload;
+  }
+
+  /** The endpoint currently serving requests, which may be the fallback. */
+  activeEndpointLabel(): string {
+    return `${this.active.host}:${String(this.active.port)}`;
   }
 
   private async searchOnce(

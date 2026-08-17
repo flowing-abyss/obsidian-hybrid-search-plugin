@@ -46,6 +46,7 @@ export class App {
     },
     getAbstractFileByPath: (path: string) => new TFile(path),
   };
+  secretStorage = new SecretStorage();
 }
 
 export class Component {
@@ -312,12 +313,17 @@ export class Setting {
   buttonComponents: ButtonComponent[] = [];
   extraButtonComponents: ExtraButtonComponent[] = [];
   private settingEl: HTMLElement;
+  controlEl: HTMLElement;
   constructor(containerEl: HTMLElement) {
     Setting.instances.push(this);
     const item = activeDocument.createDiv();
     item.className = 'setting-item';
     containerEl.appendChild(item);
     this.settingEl = item;
+    const controlEl = activeDocument.createDiv();
+    controlEl.className = 'setting-item-control';
+    item.appendChild(controlEl);
+    this.controlEl = controlEl;
     const nameEl = activeDocument.createDiv();
     nameEl.className = 'setting-item-name';
     item.appendChild(nameEl);
@@ -374,6 +380,39 @@ export class Setting {
     this.extraButtonComponents.push(b);
     cb(b);
     return this;
+  }
+}
+
+export class SecretComponent {
+  static readonly instances: SecretComponent[] = [];
+  static clearInstances(): void {
+    SecretComponent.instances.length = 0;
+  }
+  value = '';
+  changeCallback: ((value: string) => unknown) | null = null;
+  constructor(_app: App, _containerEl: HTMLElement) {
+    SecretComponent.instances.push(this);
+  }
+  setValue(value: string): this {
+    this.value = value;
+    return this;
+  }
+  onChange(cb: (value: string) => unknown): this {
+    this.changeCallback = cb;
+    return this;
+  }
+}
+
+export class SecretStorage {
+  private store = new Map<string, string>();
+  setSecret(id: string, secret: string): void {
+    this.store.set(id, secret);
+  }
+  getSecret(id: string): string | null {
+    return this.store.get(id) ?? null;
+  }
+  listSecrets(): string[] {
+    return [...this.store.keys()];
   }
 }
 
