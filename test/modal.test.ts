@@ -60,6 +60,32 @@ describe('SearchModal', () => {
     expect(mockSearch).not.toHaveBeenCalled();
   });
 
+  it('onClose settles and cancels a debounced search before it reaches the backend', async () => {
+    vi.useFakeTimers();
+    const pending = modal.getSuggestions('zettel');
+
+    modal.onClose();
+    vi.runAllTimers();
+
+    await expect(pending).resolves.toEqual([]);
+    expect(mockSearch).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('settles a superseded debounce and only searches the newest query', async () => {
+    vi.useFakeTimers();
+    const superseded = modal.getSuggestions('first');
+    const current = modal.getSuggestions('second');
+
+    vi.runAllTimers();
+
+    await expect(superseded).resolves.toEqual([]);
+    await expect(current).resolves.toEqual([sampleResult]);
+    expect(mockSearch).toHaveBeenCalledOnce();
+    expect(mockSearch).toHaveBeenCalledWith('second', expect.any(Object));
+    vi.useRealTimers();
+  });
+
   it('getSuggestions passes mode from query operator', async () => {
     vi.useFakeTimers();
     const promise = modal.getSuggestions('semantic: zettel');
@@ -367,6 +393,7 @@ type ModalInternals = {
   previewMetaEl: HTMLElement | undefined;
   previewChild: { unload: () => void } | undefined;
   currentPreviewPath: string | undefined;
+  graphPanel: { unload: () => void } | undefined;
   hidePreviewPanel(): void;
 };
 
@@ -454,6 +481,40 @@ describe('SearchModal — hover preview', () => {
     expect(activeDocument.body.contains(previewEl)).toBe(false);
     expect(onDidClose).toHaveBeenCalledOnce();
     expect(onDidClose).toHaveBeenCalledWith(ownedModal);
+  });
+
+  it('onClose finishes every cleanup stage when preview child unload fails', async () => {
+    const failure = new Error('preview child unload failed');
+    const onDidClose = vi.fn();
+    const ownedModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
+      onDidClose,
+    });
+    const internals = ownedModal as unknown as ModalInternals;
+    await internals.updatePreview(sampleResult.path);
+    const previewEl = internals.previewEl!;
+    const previewMetaEl = internals.previewMetaEl!;
+    internals.previewChild = {
+      unload: vi.fn(() => {
+        throw failure;
+      }),
+    };
+    const graphUnload = vi.fn();
+    internals.graphPanel = { unload: graphUnload };
+    ownedModal.modalEl.style.left = '12px';
+    ownedModal.modalEl.style.transform = 'translateX(8px)';
+
+    expect(() => ownedModal.onClose()).toThrow(failure);
+
+    expect(activeDocument.body.contains(previewEl)).toBe(false);
+    expect(activeDocument.body.contains(previewMetaEl)).toBe(false);
+    expect(internals.previewEl).toBeUndefined();
+    expect(internals.previewMetaEl).toBeUndefined();
+    expect(internals.previewChild).toBeUndefined();
+    expect(graphUnload).toHaveBeenCalledOnce();
+    expect(internals.graphPanel).toBeUndefined();
+    expect(ownedModal.modalEl.style.left).toBe('');
+    expect(ownedModal.modalEl.style.transform).toBe('');
+    expect(onDidClose).toHaveBeenCalledOnce();
   });
 
   it('stamps its body-level panels with the owner id so the sweep can scope by instance', async () => {
