@@ -1,6 +1,7 @@
 import { Notice, Plugin, type EventRef } from 'obsidian';
 import type { HttpSearchClientStatusEvent } from './ipc';
 import { HttpSearchClient, SearchClient } from './ipc';
+import { getApiKey } from './secrets';
 import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from './settings';
 import {
@@ -222,6 +223,7 @@ export default class HybridSearchPlugin extends Plugin {
         : new SearchClient(
             this.settings.binaryPath || 'obsidian-hybrid-search',
             (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.() ?? '',
+            getApiKey(this.app),
           );
 
     this.client.waitReady(30_000).catch((err: unknown) => {

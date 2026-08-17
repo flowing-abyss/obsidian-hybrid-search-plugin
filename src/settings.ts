@@ -1,7 +1,9 @@
-import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
-import type { SearchClient } from './ipc';
+import { App, Notice, PluginSettingTab, SecretComponent, Setting, setIcon } from 'obsidian';
+import type { HttpSearchClient, SearchClient } from './ipc';
+import { getApiKey, isSecretStorageAvailable, setApiKey } from './secrets';
 import type { CustomPostfix } from './ui/queryParser';
 import { isReservedPostfixName, normalizePostfixName } from './ui/queryParser';
+import { StatusSection } from './ui/statusSection';
 
 export interface HybridSearchSettings {
   binaryPath: string;
@@ -135,10 +137,25 @@ interface PluginRef {
   saveSettings(): Promise<void>;
   restartClient?(): void | Promise<void>;
   onSimilarNotesSettingsChanged?(): void;
-  client?: Pick<SearchClient, 'search'>;
+  client?: SearchClient | HttpSearchClient;
 }
 
+const API_KEY_DESC =
+  'Optional. Needed only if your embedding provider requires authentication. ' +
+  'Stored in the Obsidian keychain, never in the vault.';
+
+const API_KEY_UNSUPPORTED_DESC =
+  'Optional. Storing a key requires Obsidian 1.11.4 or newer. On older versions, set OPENAI_API_KEY ' +
+  'in the environment and use the HTTP connection mode with a server you start yourself.';
+
+const API_KEY_APPLY_DELAY_MS = 600;
+
 export class HybridSearchSettingTab extends PluginSettingTab {
+  private statusSection: StatusSection | null = null;
+  private apiKeyApplyTimer = 0;
+  /** Runs the pending key edit if the tab closes before the debounce lands. */
+  private pendingApiKey: (() => void) | null = null;
+
   constructor(
     app: App,
     private plugin: PluginRef,
@@ -151,9 +168,19 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.addClass('hybrid-search-settings');
 
-    new Setting(containerEl).setName('Connection').setHeading();
+    this.statusSection?.dispose();
+    const statusSection = new StatusSection({
+      settings: this.plugin.settings,
+      getApiKey: () => getApiKey(this.app),
+      getClient: () => this.plugin.client,
+      getEndpointLabel: () => this.endpointLabel(),
+    });
+    this.statusSection = statusSection;
+    statusSection.renderSummary(this.addSection(containerEl, 'Index', 'database', { open: true }));
 
-    new Setting(containerEl)
+    const connectionEl = this.addSection(containerEl, 'Connection', 'plug-zap');
+
+    new Setting(connectionEl)
       .setName('Connection mode')
       .setDesc(
         'Use stdio to let the plugin start the local CLI process, or HTTP to connect to a shared mcp server.',
@@ -175,9 +202,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
       );
 
-    const httpSettingsEl = containerEl.createDiv();
-    const fallbackSettingsEl = containerEl.createDiv();
-    const stdioSettingsEl = containerEl.createDiv();
+    const httpSettingsEl = connectionEl.createDiv();
+    const fallbackSettingsEl = connectionEl.createDiv();
+    const stdioSettingsEl = connectionEl.createDiv();
 
     new Setting(httpSettingsEl).setName('Start server').setDesc(HTTP_START_COMMAND);
 
@@ -274,13 +301,15 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
       );
 
+    this.renderApiKeySetting(stdioSettingsEl);
+
     httpSettingsEl.hidden = this.plugin.settings.transport !== 'http';
     stdioSettingsEl.hidden = this.plugin.settings.transport !== 'stdio';
     fallbackSettingsEl.hidden = !(
       this.plugin.settings.transport === 'http' && this.plugin.settings.httpFallbackEnabled
     );
 
-    new Setting(containerEl)
+    new Setting(connectionEl)
       .setName('Test connection')
       .setDesc('Send a test query to verify the server is running.')
       .addButton((btn) =>
@@ -301,9 +330,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl).setName('Search behavior').setHeading();
+    const searchEl = this.addSection(containerEl, 'Search behavior', 'search');
 
-    new Setting(containerEl)
+    new Setting(searchEl)
       .setName('Default mode')
       .setDesc('Search mode used when opening the modal.')
       .addDropdown((dropdown) =>
@@ -319,7 +348,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl)
+    new Setting(searchEl)
       .setName('Default search filters')
       .setDesc(
         'Always applied to every search, in addition to what you type. Use the same operators as inline search: tag:value, -tag:value to exclude, folder:value (or path:value), -folder:value to exclude. Mode prefixes (hybrid:, title:, ...) are not supported here. Example: -tag:archive -folder:templates',
@@ -334,30 +363,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl)
-      .setName('Custom search postfixes')
-      .setDesc(
-        'Define your own @name shortcuts that expand to a filter string when typed in search, e.g. @work expands to -tag:personal folder:work.',
-      );
-
-    const postfixListEl = containerEl.createDiv();
-    const renderPostfixList = (): void => {
-      postfixListEl.empty();
-      this.plugin.settings.customPostfixes.forEach((postfix, index) => {
-        renderCustomPostfixRow(postfixListEl, this.plugin, index, renderPostfixList);
-      });
-    };
-    renderPostfixList();
-
-    new Setting(containerEl).addButton((btn) =>
-      btn.setButtonText('Add postfix').onClick(async () => {
-        this.plugin.settings.customPostfixes.push({ name: '', filters: '' });
-        await this.plugin.saveSettings();
-        renderPostfixList();
-      }),
-    );
-
-    new Setting(containerEl)
+    new Setting(searchEl)
       .setName('Remember last search query')
       .setDesc('Restore the previous search query when reopening the search modal.')
       .addToggle((toggle) =>
@@ -367,9 +373,32 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName('Display').setHeading();
+    new Setting(searchEl)
+      .setName('Custom search postfixes')
+      .setDesc(
+        'Define your own @name shortcuts that expand to a filter string when typed in search, e.g. @work expands to -tag:personal folder:work.',
+      );
 
-    new Setting(containerEl)
+    const postfixListEl = searchEl.createDiv();
+    const renderPostfixList = (): void => {
+      postfixListEl.empty();
+      this.plugin.settings.customPostfixes.forEach((postfix, index) => {
+        renderCustomPostfixRow(postfixListEl, this.plugin, index, renderPostfixList);
+      });
+    };
+    renderPostfixList();
+
+    new Setting(searchEl).addButton((btn) =>
+      btn.setButtonText('Add postfix').onClick(async () => {
+        this.plugin.settings.customPostfixes.push({ name: '', filters: '' });
+        await this.plugin.saveSettings();
+        renderPostfixList();
+      }),
+    );
+
+    const displayEl = this.addSection(containerEl, 'Display', 'layout-list');
+
+    new Setting(displayEl)
       .setName('Show path and tags')
       .setDesc('Display folder path and tags below the note title in search results.')
       .addToggle((toggle) =>
@@ -379,7 +408,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl)
+    new Setting(displayEl)
       .setName('Show preview')
       .setDesc('Show a live preview panel next to search results when hovering or navigating.')
       .addToggle((toggle) =>
@@ -390,9 +419,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         }),
       );
 
-    const previewSettingsEl = containerEl.createDiv();
+    const previewSettingsEl = displayEl.createDiv();
 
-    new Setting(containerEl)
+    new Setting(displayEl)
       .setName('Show graph panel')
       .setDesc(
         'Show an interactive local graph panel to the right of the preview when hovering or navigating search results.',
@@ -440,9 +469,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     previewSettingsEl.hidden = !this.plugin.settings.showPreview;
 
-    new Setting(containerEl).setName('Inline search').setHeading();
+    const inlineEl = this.addSection(containerEl, 'Inline search', 'text-cursor-input');
 
-    new Setting(containerEl)
+    new Setting(inlineEl)
       .setName('Enable inline search')
       .setDesc('Open a compact search menu in the editor after typing this trigger.')
       .addToggle((toggle) =>
@@ -453,7 +482,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         }),
       );
 
-    const inlineSearchSettingsEl = containerEl.createDiv();
+    const inlineSearchSettingsEl = inlineEl.createDiv();
 
     new Setting(inlineSearchSettingsEl)
       .setName('Trigger text')
@@ -515,9 +544,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     inlineSearchSettingsEl.hidden = !this.plugin.settings.inlineSearchEnabled;
 
-    new Setting(containerEl).setName('Similar notes').setHeading();
+    const similarEl = this.addSection(containerEl, 'Similar notes', 'git-compare');
 
-    new Setting(containerEl)
+    new Setting(similarEl)
       .setName('Show similar notes at bottom')
       .setDesc('Display similar notes above embedded backlinks in rendered notes.')
       .addToggle((toggle) =>
@@ -529,7 +558,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         }),
       );
 
-    const similarNotesSettingsEl = containerEl.createDiv();
+    const similarNotesSettingsEl = similarEl.createDiv();
 
     new Setting(similarNotesSettingsEl)
       .setName('Similar notes limit')
@@ -566,6 +595,117 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       );
 
     similarNotesSettingsEl.hidden = !this.plugin.settings.showSimilarNotesAtBottom;
+
+    statusSection.renderDiagnostics(this.addSection(containerEl, 'Diagnostics', 'stethoscope'));
+    void statusSection.refresh();
+  }
+
+  /** Settings tabs are re-rendered on every open, so a pending status request from a
+   *  previous open must not paint into the detached tree it captured. */
+  hide(): void {
+    // Flush rather than clear: the key is only written inside applyApiKey, so
+    // cancelling a pending edit would silently discard what the user just typed.
+    if (this.apiKeyApplyTimer !== 0) {
+      window.clearTimeout(this.apiKeyApplyTimer);
+      this.apiKeyApplyTimer = 0;
+      this.pendingApiKey?.();
+      this.pendingApiKey = null;
+    }
+    this.statusSection?.dispose();
+    this.statusSection = null;
+  }
+
+  /**
+   * A collapsible card holding one group of settings, collapsed by default so the
+   * whole tab can be scanned at a glance. Returns the body to render into.
+   */
+  private addSection(
+    containerEl: HTMLElement,
+    title: string,
+    icon: string,
+    opts: { hidden?: boolean; open?: boolean } = {},
+  ): HTMLElement {
+    const section = containerEl.createDiv({ cls: 'hybrid-search-section' });
+    section.hidden = opts.hidden ?? false;
+    if (opts.open) section.addClass('is-open');
+
+    const header = section.createDiv({ cls: 'hybrid-search-section__header' });
+    setIcon(header.createDiv({ cls: 'hybrid-search-section__icon' }), icon);
+    header.createSpan({ cls: 'hybrid-search-section__label', text: title });
+    setIcon(header.createDiv({ cls: 'hybrid-search-section__chevron' }), 'chevron-right');
+
+    // One inner wrapper, because the collapse animates a single grid row.
+    const body = section.createDiv({ cls: 'hybrid-search-section__body' });
+    const inner = body.createDiv({ cls: 'hybrid-search-section__inner' });
+    header.addEventListener('click', () => {
+      section.classList.toggle('is-open');
+    });
+    return inner;
+  }
+
+  /** Where the last report came from, which under HTTP may be the fallback server. */
+  private endpointLabel(): string {
+    const { settings, client } = this.plugin;
+    if (settings.transport !== 'http') {
+      return settings.binaryPath || 'obsidian-hybrid-search';
+    }
+    if (client && 'activeEndpointLabel' in client) {
+      return client.activeEndpointLabel();
+    }
+    return `${settings.httpHost}:${String(settings.httpPort)}`;
+  }
+
+  /** Key field backed by the Obsidian keychain. Nothing about it reaches `data.json`. */
+  private renderApiKeySetting(container: HTMLElement): void {
+    const setting = new Setting(container).setName('Embedding API key');
+
+    if (!isSecretStorageAvailable(this.app)) {
+      setting.setDesc(API_KEY_UNSUPPORTED_DESC);
+      return;
+    }
+
+    setting.setDesc(API_KEY_DESC);
+
+    // Shown only once the key actually changes, so the row stays quiet until it matters.
+    const appliedHint = setting.descEl.createDiv({
+      cls: 'hybrid-search-setting-alert',
+      text: 'Search server restarted with the new key.',
+    });
+    appliedHint.hidden = true;
+
+    // eslint-disable-next-line obsidianmd/no-unsupported-api -- guarded by isSecretStorageAvailable
+    const secret = new SecretComponent(this.app, setting.controlEl);
+    // eslint-disable-next-line obsidianmd/no-unsupported-api -- guarded by isSecretStorageAvailable
+    secret.setValue(getApiKey(this.app)).onChange((value) => {
+      // onChange fires per keystroke, and applying the key restarts the server
+      // process. Without this delay, pasting a key would restart it once per character.
+      window.clearTimeout(this.apiKeyApplyTimer);
+      this.pendingApiKey = () => {
+        this.applyApiKey(value, appliedHint);
+      };
+      this.apiKeyApplyTimer = window.setTimeout(() => {
+        this.apiKeyApplyTimer = 0;
+        this.pendingApiKey = null;
+        this.applyApiKey(value, appliedHint);
+      }, API_KEY_APPLY_DELAY_MS);
+    });
+  }
+
+  private applyApiKey(value: string, appliedHint: HTMLElement): void {
+    try {
+      setApiKey(this.app, value);
+    } catch (err) {
+      new Notice(`Could not save the API key: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    // The cli reads its environment once at spawn, so a running process would
+    // otherwise keep using the previous key.
+    void Promise.resolve(this.plugin.restartClient?.()).then(() => {
+      // The settings tab may already be gone when a flush on hide() lands here.
+      if (!appliedHint.isConnected) return;
+      appliedHint.hidden = false;
+      return this.statusSection?.refresh();
+    });
   }
 }
 
