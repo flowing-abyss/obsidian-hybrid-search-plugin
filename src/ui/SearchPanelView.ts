@@ -13,8 +13,9 @@ import {
   openResult,
   resolveSimilarTarget,
   scoreColor,
-  type SearchMode,
   unhookSuperchargedLinks,
+  type SearchMode,
+  type SuperchargedWatch,
 } from './noteUtils';
 import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
 
@@ -56,6 +57,10 @@ export class SearchPanelView extends ItemView {
 
   getViewType(): string {
     return SEARCH_PANEL_VIEW_TYPE;
+  }
+
+  private get slWatch(): SuperchargedWatch {
+    return { ownerId: this.plugin.manifest.id, id: SEARCH_PANEL_VIEW_TYPE };
   }
 
   getDisplayText(): string {
@@ -134,7 +139,7 @@ export class SearchPanelView extends ItemView {
     this.registerDomEvent(this.resultsEl, 'click', (evt) => this.handleClick(evt));
     hookSuperchargedLinks(
       this.app,
-      SEARCH_PANEL_VIEW_TYPE,
+      this.slWatch,
       this.resultsEl,
       'a.hybrid-search-panel-link',
       'hybrid-search-panel-row',
@@ -147,7 +152,7 @@ export class SearchPanelView extends ItemView {
     this.closed = true;
     this.requestId++;
     if (this.debounce !== undefined) window.clearTimeout(this.debounce);
-    unhookSuperchargedLinks(this.app, SEARCH_PANEL_VIEW_TYPE);
+    unhookSuperchargedLinks(this.app, this.slWatch);
   }
 
   private scheduleSearch(): void {

@@ -73,7 +73,9 @@ export interface SuperchargedLinksPlugin {
   observers?: Array<[MutationObserver, string, string]>;
 }
 
-export interface AppWithSuperchargedLinks {
+// Not exported: talking to supercharged-links is this module's job now, so nothing else needs
+// to reach into its internals.
+interface AppWithSuperchargedLinks {
   plugins?: {
     plugins?: Record<string, SuperchargedLinksPlugin | undefined>;
   };
@@ -224,9 +226,27 @@ export function applySuperchargedLinkAttributes(app: App, link: HTMLElement, pat
   }
 }
 
+/**
+ * Identifies one container we ask supercharged-links to watch.
+ *
+ * The observers live in the supercharged-links plugin's own shared array, and unhooking works by
+ * matching the id, so two installed copies of this plugin sharing an id would disconnect each
+ * other's observers. `ownerId` namespaces the key; it is a required field with a nullable value
+ * so that forgetting to wire it is a compile error rather than silent cross-copy interference.
+ */
+export interface SuperchargedWatch {
+  ownerId: string | undefined;
+  /** Identifies the container within one plugin instance. */
+  id: string;
+}
+
+function watchKey(watch: SuperchargedWatch): string {
+  return watch.ownerId ? `${watch.ownerId}:${watch.id}` : watch.id;
+}
+
 export function hookSuperchargedLinks(
   app: App,
-  watchId: string,
+  watch: SuperchargedWatch,
   containerEl: HTMLElement,
   linkSelector: string,
   rowClass: string,
@@ -235,17 +255,19 @@ export function hookSuperchargedLinks(
     'supercharged-links-obsidian'
   ];
   if (!sl || typeof sl._watchContainerDynamic !== 'function') return;
-  unhookSuperchargedLinks(app, watchId);
-  sl._watchContainerDynamic(watchId, containerEl, sl, linkSelector, rowClass);
+  unhookSuperchargedLinks(app, watch);
+  sl._watchContainerDynamic(watchKey(watch), containerEl, sl, linkSelector, rowClass);
 }
 
-export function unhookSuperchargedLinks(app: App, watchId: string): void {
+export function unhookSuperchargedLinks(app: App, ...watches: SuperchargedWatch[]): void {
   const sl = (app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
     'supercharged-links-obsidian'
   ];
   if (!sl || !Array.isArray(sl.observers)) return;
+  const keys = new Set(watches.map(watchKey));
   for (let idx = sl.observers.length - 1; idx >= 0; idx--) {
-    if (sl.observers[idx]?.[1] === watchId) {
+    const id = sl.observers[idx]?.[1];
+    if (id !== undefined && keys.has(id)) {
       sl.observers[idx]![0].disconnect();
       sl.observers.splice(idx, 1);
     }

@@ -19,10 +19,12 @@ import {
   fetchSimilarNotesDetailed,
   getAnchorOffset,
   getResultTitle,
+  hookSuperchargedLinks,
   modeLabel,
   resolveSimilarTarget,
   scoreColor,
-  type AppWithSuperchargedLinks,
+  unhookSuperchargedLinks,
+  type SuperchargedWatch,
 } from './noteUtils';
 import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
 
@@ -828,18 +830,13 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private hookMetaLinks(): void {
     if (!this.previewMetaEl) return;
     this.hookInternalLinks(this.previewMetaEl);
-    const sl = (this.app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
-      'supercharged-links-obsidian'
-    ];
-    if (sl && typeof sl._watchContainerDynamic === 'function') {
-      sl._watchContainerDynamic(
-        SearchModal.SL_META_WATCH_ID,
-        this.previewMetaEl,
-        sl,
-        'a.hybrid-search-preview-meta-link',
-        'hybrid-search-preview-meta-row',
-      );
-    }
+    hookSuperchargedLinks(
+      this.app,
+      this.slMetaWatch,
+      this.previewMetaEl,
+      'a.hybrid-search-preview-meta-link',
+      'hybrid-search-preview-meta-row',
+    );
   }
 
   private createMetaLink(parent: HTMLElement, path: string): void {
@@ -962,37 +959,28 @@ export class SearchModal extends SuggestModal<SearchResult> {
   // SL will then run its full rule pipeline (icons, colours, CSS vars) on each
   // suggestion item as it is added to the DOM.
 
-  private static readonly SL_WATCH_ID = 'hybrid-search-modal';
-  private static readonly SL_META_WATCH_ID = 'hybrid-search-preview-meta';
+  private get slWatch(): SuperchargedWatch {
+    return { ownerId: this.ownerId, id: 'hybrid-search-modal' };
+  }
+
+  private get slMetaWatch(): SuperchargedWatch {
+    return { ownerId: this.ownerId, id: 'hybrid-search-preview-meta' };
+  }
 
   private hookSuperchargedLinks(): void {
-    const sl = (this.app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
-      'supercharged-links-obsidian'
-    ];
-    if (!sl || typeof sl._watchContainerDynamic !== 'function') return;
     const resultsEl = this.containerEl.querySelector<HTMLElement>('.prompt-results');
     if (!resultsEl) return;
-    sl._watchContainerDynamic(
-      SearchModal.SL_WATCH_ID,
+    hookSuperchargedLinks(
+      this.app,
+      this.slWatch,
       resultsEl,
-      sl,
       'a.hybrid-search-name',
       'suggestion-item',
     );
   }
 
   private unhookSuperchargedLinks(): void {
-    const sl = (this.app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
-      'supercharged-links-obsidian'
-    ];
-    if (!sl || !Array.isArray(sl.observers)) return;
-    for (const watchId of [SearchModal.SL_WATCH_ID, SearchModal.SL_META_WATCH_ID]) {
-      const idx = sl.observers.findIndex(([, id]) => id === watchId);
-      if (idx >= 0) {
-        sl.observers[idx]![0].disconnect();
-        sl.observers.splice(idx, 1);
-      }
-    }
+    unhookSuperchargedLinks(this.app, this.slWatch, this.slMetaWatch);
   }
 }
 

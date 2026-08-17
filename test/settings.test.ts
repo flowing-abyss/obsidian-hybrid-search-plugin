@@ -294,6 +294,7 @@ describe('HybridSearchSettingTab', () => {
     const { App } = await import('obsidian');
     const app = new App();
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       ...mockPlugin,
       settings: {
         ...DEFAULT_SETTINGS,
@@ -330,6 +331,7 @@ describe('HybridSearchSettingTab', () => {
     const { App } = await import('obsidian');
     const app = new App();
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       ...mockPlugin,
       settings: { ...DEFAULT_SETTINGS },
       restartClient: vi.fn().mockResolvedValue(undefined),
@@ -375,6 +377,7 @@ describe('HybridSearchSettingTab', () => {
     const { App } = await import('obsidian');
     const app = new App();
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       ...mockPlugin,
       settings: { ...DEFAULT_SETTINGS },
       onSimilarNotesSettingsChanged: vi.fn(),

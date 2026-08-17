@@ -17,6 +17,7 @@ import {
   scoreColor,
   unhookSuperchargedLinks,
   type SearchMode,
+  type SuperchargedWatch,
 } from './noteUtils';
 import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
 import { SearchPreviewRenderer } from './SearchPreviewRenderer';
@@ -72,13 +73,17 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
   private renderedContainer?: HTMLElement;
   private selectedObserver?: MutationObserver;
   private lastResults: SearchResult[] = [];
-  private readonly superchargedLinksWatchId = `hybrid-search-inline-suggest-${++inlineSuggestInstanceId}`;
+  private readonly slWatch: SuperchargedWatch;
 
   constructor(
     app: App,
     private readonly plugin: Pick<HybridSearchPlugin, 'client' | 'settings' | 'manifest'>,
   ) {
     super(app);
+    this.slWatch = {
+      ownerId: plugin.manifest.id,
+      id: `hybrid-search-inline-suggest-${++inlineSuggestInstanceId}`,
+    };
     this.currentMode = plugin.settings.defaultMode;
     this.limit = plugin.settings.inlineSearchLimit;
     this.setInstructions([
@@ -290,7 +295,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
     this.selectedObserver?.disconnect();
     this.selectedObserver = undefined;
     this.renderedContainer = undefined;
-    unhookSuperchargedLinks(this.app, this.superchargedLinksWatchId);
+    unhookSuperchargedLinks(this.app, this.slWatch);
   }
 
   private openResult(result: SearchResult, newLeaf: boolean): void {
@@ -362,7 +367,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
     container.addClass('hybrid-search-inline-suggest-container');
     hookSuperchargedLinks(
       this.app,
-      this.superchargedLinksWatchId,
+      this.slWatch,
       container,
       'a.hybrid-search-inline-name',
       'hybrid-search-inline-row',

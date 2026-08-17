@@ -84,7 +84,7 @@ describe('GraphPanel', () => {
     const panel = new GraphPanel(app, { onCloseModal: vi.fn(), ownerId: 'hybrid-search' });
     panel.show('A.md');
     expect(watch).toHaveBeenCalledWith(
-      'hybrid-search-graph-panel',
+      'hybrid-search:hybrid-search-graph-panel',
       expect.any(HTMLElement),
       expect.anything(),
       'a.ohs-graph-node-link',

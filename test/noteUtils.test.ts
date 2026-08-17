@@ -7,7 +7,9 @@ import {
   fetchSimilarNotesDetailed,
   fileToDragWikiLink,
   getResultTitle,
+  hookSuperchargedLinks,
   resolveSimilarTarget,
+  unhookSuperchargedLinks,
 } from '../src/ui/noteUtils';
 
 const related: SearchResult = {
@@ -179,5 +181,81 @@ describe('resolveSimilarTarget', () => {
     expect(resolveSimilarTarget(app, { kind: 'note', ref: 'Areas/PKM.md' }, undefined, '')).toBe(
       'Areas/PKM.md',
     );
+  });
+});
+
+describe('supercharged-links watch scoping', () => {
+  function appWithSl() {
+    const observers: Array<[{ disconnect: () => void }, string]> = [];
+    const app = {
+      plugins: {
+        plugins: {
+          'supercharged-links-obsidian': {
+            observers,
+            _watchContainerDynamic: (watchKey: string) => {
+              observers.push([{ disconnect: vi.fn() }, watchKey]);
+            },
+          },
+        },
+      },
+    } as unknown as App;
+    return { app, observers };
+  }
+
+  const container = () => activeDocument.createDiv();
+
+  it('namespaces the watch key with the owner id', () => {
+    const { app, observers } = appWithSl();
+
+    hookSuperchargedLinks(app, { ownerId: 'hybrid-search', id: 'panel' }, container(), 'a', 'row');
+
+    expect(observers.map(([, key]) => key)).toEqual(['hybrid-search:panel']);
+  });
+
+  it('falls back to the bare id when no owner is known', () => {
+    const { app, observers } = appWithSl();
+
+    hookSuperchargedLinks(app, { ownerId: undefined, id: 'panel' }, container(), 'a', 'row');
+
+    expect(observers.map(([, key]) => key)).toEqual(['panel']);
+  });
+
+  it('unhooking one copy leaves another copy of the same container watching', () => {
+    const { app, observers } = appWithSl();
+    hookSuperchargedLinks(app, { ownerId: 'hybrid-search', id: 'panel' }, container(), 'a', 'row');
+    hookSuperchargedLinks(
+      app,
+      { ownerId: 'hybrid-search-beta', id: 'panel' },
+      container(),
+      'a',
+      'row',
+    );
+
+    unhookSuperchargedLinks(app, { ownerId: 'hybrid-search', id: 'panel' });
+
+    expect(observers.map(([, key]) => key)).toEqual(['hybrid-search-beta:panel']);
+  });
+
+  it('unhooks several watches in one call', () => {
+    const { app, observers } = appWithSl();
+    const own = { ownerId: 'hybrid-search', id: 'panel' };
+    const meta = { ownerId: 'hybrid-search', id: 'meta' };
+    hookSuperchargedLinks(app, own, container(), 'a', 'row');
+    hookSuperchargedLinks(app, meta, container(), 'a', 'row');
+
+    unhookSuperchargedLinks(app, own, meta);
+
+    expect(observers).toEqual([]);
+  });
+
+  it('disconnects the observer it removes', () => {
+    const { app, observers } = appWithSl();
+    const watch = { ownerId: 'hybrid-search', id: 'panel' };
+    hookSuperchargedLinks(app, watch, container(), 'a', 'row');
+    const disconnect = observers[0]![0].disconnect;
+
+    unhookSuperchargedLinks(app, watch);
+
+    expect(disconnect).toHaveBeenCalled();
   });
 });

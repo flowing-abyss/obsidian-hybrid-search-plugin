@@ -38,7 +38,11 @@ describe('InlineSearchSuggest @similar', () => {
       metadataCache: { getCache: () => null, getFirstLinkpathDest: () => null },
       vault: { getAbstractFileByPath: () => null },
     };
-    const plugin = { settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const plugin = {
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search },
+    };
     const suggest = new InlineSearchSuggest(app as never, plugin as never);
     return suggest as unknown as {
       runSearch: (query: string, requestId: number) => Promise<unknown[]>;

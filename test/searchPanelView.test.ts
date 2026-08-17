@@ -30,6 +30,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockReturnValue(searchPromise) },
@@ -62,6 +63,7 @@ describe('SearchPanelView', () => {
     };
     Object.assign(panelLeaf, { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn() },
@@ -88,6 +90,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -114,6 +117,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, defaultMode: 'hybrid' as const },
       client: { search },
@@ -149,6 +153,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, defaultMode: 'hybrid' as const },
       client: { search },
@@ -182,7 +187,12 @@ describe('SearchPanelView', () => {
       metadataCache: { getCache: () => null },
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
-    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search },
+    };
     const view = new SearchPanelView(leaf, plugin as never);
     await view.onOpen();
 
@@ -208,7 +218,12 @@ describe('SearchPanelView', () => {
       metadataCache: { getCache: () => null },
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
-    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search },
+    };
     const view = new SearchPanelView(leaf, plugin as never);
     await view.onOpen();
 
@@ -236,7 +251,12 @@ describe('SearchPanelView', () => {
       metadataCache: { getCache: () => null },
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
-    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search },
+    };
     const view = new SearchPanelView(leaf, plugin as never);
     await view.onOpen();
     const inputEl = view.containerEl.querySelector<HTMLInputElement>('.hybrid-search-panel-input')!;
@@ -269,7 +289,12 @@ describe('SearchPanelView', () => {
       metadataCache: { getCache: () => null },
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
-    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search },
+    };
     const view = new SearchPanelView(leaf, plugin as never);
     await view.onOpen();
     const runSearch = (view as unknown as { search: (query: string) => Promise<void> }).search;
@@ -296,7 +321,12 @@ describe('SearchPanelView', () => {
       metadataCache: { getCache: () => null },
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
-    const plugin = { app, settings: { ...DEFAULT_SETTINGS }, client: { search } };
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search },
+    };
     const view = new SearchPanelView(leaf, plugin as never);
     await view.onOpen();
 
@@ -322,6 +352,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -371,6 +402,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockResolvedValue([result, secondResult]) },
@@ -415,6 +447,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockResolvedValue([result, secondResult]) },
@@ -467,6 +500,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -516,6 +550,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockResolvedValue([anchoredResult]) },
@@ -575,6 +610,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockResolvedValue([anchoredResult]) },
@@ -631,6 +667,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search: vi.fn().mockResolvedValue([anchoredResult]) },
@@ -675,6 +712,7 @@ describe('SearchPanelView', () => {
     };
     const leaf = Object.assign(new WorkspaceLeaf(), { app });
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS },
       client: { search },

@@ -24,6 +24,7 @@ import {
   offsetToEditorPosition,
   openResult,
   unhookSuperchargedLinks,
+  type SuperchargedWatch,
 } from './noteUtils';
 
 export const GRAPH_WORKBENCH_VIEW_TYPE = 'hybrid-search-graph-workbench';
@@ -225,7 +226,7 @@ export class GraphWorkbenchView extends ItemView {
     this.registerCleanup(this.hookWorkbenchLinks(this.detailsEl));
     hookSuperchargedLinks(
       this.app,
-      this.detailsWatchId,
+      this.detailsWatch,
       this.detailsEl,
       '.ohs-workbench-link',
       'ohs-workbench-row',
@@ -238,8 +239,7 @@ export class GraphWorkbenchView extends ItemView {
     await Promise.resolve();
     this.closed = true;
     this.requestId++;
-    unhookSuperchargedLinks(this.app, this.graphWatchId);
-    unhookSuperchargedLinks(this.app, this.detailsWatchId);
+    unhookSuperchargedLinks(this.app, this.graphWatch, this.detailsWatch);
     for (const cleanup of this.cleanupCallbacks.splice(0)) cleanup();
   }
 
@@ -285,12 +285,12 @@ export class GraphWorkbenchView extends ItemView {
     return Math.max(5, Math.min(50, this.plugin.settings.similarNotesBottomLimit || 12));
   }
 
-  private get graphWatchId(): string {
-    return `${this.watchIdPrefix}-graph`;
+  private get graphWatch(): SuperchargedWatch {
+    return { ownerId: this.plugin.manifest.id, id: `${this.watchIdPrefix}-graph` };
   }
 
-  private get detailsWatchId(): string {
-    return `${this.watchIdPrefix}-details`;
+  private get detailsWatch(): SuperchargedWatch {
+    return { ownerId: this.plugin.manifest.id, id: `${this.watchIdPrefix}-details` };
   }
 
   private registerCleanup(cleanup: () => void): void {
@@ -427,7 +427,7 @@ export class GraphWorkbenchView extends ItemView {
     if (!this.centerPath) return;
     this.graphEl.empty();
     this.graphEl.removeClass('ohs-workbench-graph-links');
-    unhookSuperchargedLinks(this.app, this.graphWatchId);
+    unhookSuperchargedLinks(this.app, this.graphWatch);
     if (this.getEffectiveGraphMode() === 'links') {
       this.graphEl.addClass('ohs-workbench-graph-links');
       this.renderExpandableLinksGraph();
@@ -474,7 +474,7 @@ export class GraphWorkbenchView extends ItemView {
     this.hookWorkbenchLinks(nodesEl);
     hookSuperchargedLinks(
       this.app,
-      this.graphWatchId,
+      this.graphWatch,
       nodesEl,
       'a.ohs-workbench-node-link',
       'ohs-workbench-node-item',
@@ -724,7 +724,7 @@ export class GraphWorkbenchView extends ItemView {
     this.hookWorkbenchLinks(layersEl);
     hookSuperchargedLinks(
       this.app,
-      this.graphWatchId,
+      this.graphWatch,
       layersEl,
       'a.ohs-graph-node-link',
       'ohs-graph-node-item',

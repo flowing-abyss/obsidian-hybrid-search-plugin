@@ -42,6 +42,7 @@ function makeView(app: App, client: { search: ReturnType<typeof vi.fn> }) {
   const plugin = {
     app,
     client,
+    manifest: { id: 'hybrid-search' },
     settings: { ...DEFAULT_SETTINGS, similarNotesBottomLimit: 8 },
     saveSettings: vi.fn(),
   };

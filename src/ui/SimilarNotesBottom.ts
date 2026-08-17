@@ -18,6 +18,7 @@ import {
   getResultTitle,
   hookSuperchargedLinks,
   unhookSuperchargedLinks,
+  type SuperchargedWatch,
 } from './noteUtils';
 
 const WATCH_ID_PREFIX = 'hybrid-search-similar-bottom';
@@ -279,7 +280,7 @@ class SimilarNotesBottomView extends Component {
     });
     hookSuperchargedLinks(
       this.app,
-      this.watchId,
+      this.slWatch,
       this.containerEl,
       '.hybrid-search-similar-note-link',
       'search-result-file-title',
@@ -301,13 +302,13 @@ class SimilarNotesBottomView extends Component {
   }
 
   override unload(): void {
-    unhookSuperchargedLinks(this.app, this.watchId);
+    unhookSuperchargedLinks(this.app, this.slWatch);
     super.unload();
     this.containerEl.remove();
   }
 
-  private get watchId(): string {
-    return `${WATCH_ID_PREFIX}-${this.viewId}`;
+  private get slWatch(): SuperchargedWatch {
+    return { ownerId: this.plugin.manifest.id, id: `${WATCH_ID_PREFIX}-${this.viewId}` };
   }
 
   private async loadResults(file: TFile, silent: boolean): Promise<void> {

@@ -2,7 +2,11 @@ import type { App } from 'obsidian';
 import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../graph/buildGraph';
 import { createBodyPanel } from './bodyPanels';
 import { hookInternalLinks } from './linkHandler';
-import { type AppWithSuperchargedLinks } from './noteUtils';
+import {
+  hookSuperchargedLinks,
+  unhookSuperchargedLinks,
+  type SuperchargedWatch,
+} from './noteUtils';
 
 export class GraphPanel {
   private el: HTMLDivElement;
@@ -15,7 +19,7 @@ export class GraphPanel {
   private graphData: GraphData | null = null;
   private expandedPaths = new Set<string>();
   private onCloseModal: () => void;
-  private static readonly SL_WATCH_ID = 'hybrid-search-graph-panel';
+  private readonly slWatch: SuperchargedWatch;
 
   constructor(
     private app: App,
@@ -24,6 +28,7 @@ export class GraphPanel {
     options: { onCloseModal: () => void; ownerId: string | undefined },
   ) {
     this.onCloseModal = options.onCloseModal;
+    this.slWatch = { ownerId: options.ownerId, id: 'hybrid-search-graph-panel' };
     this.el = createBodyPanel('ohs-graph-panel', options.ownerId);
     this.el.hide();
 
@@ -357,29 +362,16 @@ export class GraphPanel {
   }
 
   private watchSuperchargedLinks(): void {
-    this.unwatchSuperchargedLinks();
-    const sl = (this.app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
-      'supercharged-links-obsidian'
-    ];
-    if (!sl || typeof sl._watchContainerDynamic !== 'function') return;
-    sl._watchContainerDynamic(
-      GraphPanel.SL_WATCH_ID,
+    hookSuperchargedLinks(
+      this.app,
+      this.slWatch,
       this.layersEl,
-      sl,
       'a.ohs-graph-node-link',
       'ohs-graph-node-item',
     );
   }
 
   private unwatchSuperchargedLinks(): void {
-    const sl = (this.app as unknown as AppWithSuperchargedLinks).plugins?.plugins?.[
-      'supercharged-links-obsidian'
-    ];
-    if (!sl || !Array.isArray(sl.observers)) return;
-    const idx = sl.observers.findIndex(([, id]) => id === GraphPanel.SL_WATCH_ID);
-    if (idx >= 0) {
-      sl.observers[idx]![0].disconnect();
-      sl.observers.splice(idx, 1);
-    }
+    unhookSuperchargedLinks(this.app, this.slWatch);
   }
 }

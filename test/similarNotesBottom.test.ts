@@ -42,6 +42,7 @@ describe('SimilarNotesBottomManager', () => {
       },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: {
         ...DEFAULT_SETTINGS,
@@ -92,6 +93,7 @@ describe('SimilarNotesBottomManager', () => {
       },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: {
         ...DEFAULT_SETTINGS,
@@ -145,6 +147,7 @@ describe('SimilarNotesBottomManager', () => {
       },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: {
         ...DEFAULT_SETTINGS,
@@ -190,6 +193,7 @@ describe('SimilarNotesBottomManager', () => {
       metadataCache: { getCache: () => ({ frontmatter: { type: 'daily' } }) },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -225,6 +229,7 @@ describe('SimilarNotesBottomManager', () => {
       metadataCache: { getCache: () => ({ frontmatter: { type: 'daily' } }) },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -269,6 +274,7 @@ describe('SimilarNotesBottomManager', () => {
       metadataCache: { getCache: () => null },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -310,6 +316,7 @@ describe('SimilarNotesBottomManager', () => {
       metadataCache: { getCache: () => ({ frontmatter: { type: 'daily' } }) },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -362,6 +369,7 @@ describe('SimilarNotesBottomManager', () => {
       metadataCache: { getCache: () => null },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search },
@@ -405,6 +413,7 @@ describe('SimilarNotesBottomManager', () => {
       metadataCache: { getCache: () => null },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -446,6 +455,7 @@ describe('SimilarNotesBottomManager', () => {
       metadataCache: { getCache: () => null },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -499,6 +509,7 @@ describe('SimilarNotesBottomManager', () => {
       },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search: vi.fn().mockResolvedValue([result]) },
@@ -552,6 +563,7 @@ describe('SimilarNotesBottomManager', () => {
       },
     };
     const plugin = {
+      manifest: { id: 'hybrid-search' },
       app,
       settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
       client: { search: vi.fn().mockResolvedValue([result]) },
