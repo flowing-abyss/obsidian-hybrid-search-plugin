@@ -1,5 +1,6 @@
 import { App, MarkdownRenderChild, MarkdownRenderer, TFile } from 'obsidian';
 import type { MatchAnchor } from '../ipc';
+import { runAllCleanupSteps } from './cleanup';
 import { hookInternalLinks } from './linkHandler';
 
 export interface SearchPreviewRendererOptions {
@@ -20,13 +21,17 @@ export class SearchPreviewRenderer {
 
   unload(): void {
     this.requestId++;
-    this.cleanupInternalLinks?.();
+    const cleanupInternalLinks = this.cleanupInternalLinks;
+    const previewChild = this.previewChild;
     this.cleanupInternalLinks = undefined;
-    this.previewChild?.unload();
     this.previewChild = undefined;
     this.currentPath = undefined;
     this.currentAnchorKey = undefined;
-    this.options.containerEl.empty();
+    runAllCleanupSteps(
+      () => cleanupInternalLinks?.(),
+      () => previewChild?.unload(),
+      () => this.options.containerEl.empty(),
+    );
   }
 
   async render(
@@ -48,9 +53,17 @@ export class SearchPreviewRenderer {
     }
 
     const requestId = ++this.requestId;
-    this.previewChild?.unload();
+    const cleanupInternalLinks = this.cleanupInternalLinks;
+    const previousChild = this.previewChild;
+    this.cleanupInternalLinks = undefined;
     this.previewChild = undefined;
-    this.options.containerEl.empty();
+    this.currentPath = undefined;
+    this.currentAnchorKey = undefined;
+    runAllCleanupSteps(
+      () => cleanupInternalLinks?.(),
+      () => previousChild?.unload(),
+      () => this.options.containerEl.empty(),
+    );
 
     const file = this.options.app.vault.getAbstractFileByPath(nfcPath);
     if (!(file instanceof TFile)) return;
@@ -74,7 +87,6 @@ export class SearchPreviewRenderer {
     );
     if (requestId !== this.requestId) return;
 
-    this.cleanupInternalLinks?.();
     this.cleanupInternalLinks = hookInternalLinks(
       this.options.containerEl,
       this.options.app,
