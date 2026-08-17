@@ -335,6 +335,23 @@ describe('HybridSearchPlugin', () => {
     expect(plugin.client!.dispose).toHaveBeenCalled();
   });
 
+  it('onunload still disposes the client when Similar Notes cleanup fails', async () => {
+    const failure = new Error('similar notes unload failed');
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(SimilarNotesBottomManager.prototype, 'unload').mockImplementation(() => {
+      throw failure;
+    });
+    await plugin.onload();
+
+    expect(() => plugin.onunload()).not.toThrow();
+
+    expect(plugin.client!.dispose).toHaveBeenCalledOnce();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Hybrid search: plugin cleanup failed during unload.',
+      failure,
+    );
+  });
+
   it('onload removes stale body-level panels left by a previous plugin instance', async () => {
     for (const className of BODY_PANEL_CLASSES) {
       createBodyPanel(className, mockManifest.id);

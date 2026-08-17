@@ -727,4 +727,20 @@ describe('GraphWorkbenchView', () => {
     expect(view.containerEl.querySelector('[data-path="Fresh.md"]')).not.toBeNull();
     expect(view.containerEl.querySelector('[data-path="Stale.md"]')).toBeNull();
   });
+
+  it('onClose runs every registered cleanup when an earlier callback fails', async () => {
+    const app = makeApp();
+    const view = makeView(app, { search: vi.fn().mockResolvedValue([]) });
+    const failure = new Error('first cleanup failed');
+    const laterCleanup = vi.fn();
+    const internals = view as unknown as { cleanupCallbacks: Array<() => void> };
+    internals.cleanupCallbacks.push(() => {
+      throw failure;
+    }, laterCleanup);
+
+    await expect(view.onClose()).rejects.toBe(failure);
+
+    expect(laterCleanup).toHaveBeenCalledOnce();
+    expect(internals.cleanupCallbacks).toHaveLength(0);
+  });
 });
