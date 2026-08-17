@@ -15,13 +15,22 @@ import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
+export const BODY_PANEL_SELECTOR = [
+  '.hybrid-search-preview',
+  '.hybrid-search-preview-meta-panel',
+  '.hybrid-search-inline-preview',
+  '.ohs-graph-panel',
+].join(', ');
+
 export default class HybridSearchPlugin extends Plugin {
   settings!: HybridSearchSettings;
   client?: SearchClient | HttpSearchClient;
   private similarNotesBottom?: SimilarNotesBottomManager;
   private graphWorkbenchRefreshTimer?: number;
+  private activeSearchModals = new Set<SearchModal>();
 
   async onload(): Promise<void> {
+    this.removeOrphanedPanels();
     await this.loadSettings();
 
     this.restartClient();
@@ -64,50 +73,34 @@ export default class HybridSearchPlugin extends Plugin {
     this.similarNotesBottom = new SimilarNotesBottomManager(this.app, this);
     this.similarNotesBottom.load();
 
-    const openSearchModal = (forcedMode?: SearchMode) => {
-      if (!this.client) {
-        new Notice('Hybrid search: client not ready.');
-        return;
-      }
-      const activePath = this.app.workspace.getActiveFile()?.path;
-      new SearchModal(
-        this.app,
-        this.client,
-        this.settings,
-        () => this.saveSettings(),
-        activePath,
-        forcedMode,
-      ).open();
-    };
-
     this.addCommand({
       id: 'open-search',
       name: 'Open search',
-      callback: () => openSearchModal(),
+      callback: () => this.openSearchModal(),
     });
 
     this.addCommand({
       id: 'search-hybrid',
       name: 'Hybrid mode',
-      callback: () => openSearchModal('hybrid'),
+      callback: () => this.openSearchModal('hybrid'),
     });
 
     this.addCommand({
       id: 'search-fulltext',
       name: 'Fulltext mode',
-      callback: () => openSearchModal('fulltext'),
+      callback: () => this.openSearchModal('fulltext'),
     });
 
     this.addCommand({
       id: 'search-semantic',
       name: 'Semantic mode',
-      callback: () => openSearchModal('semantic'),
+      callback: () => this.openSearchModal('semantic'),
     });
 
     this.addCommand({
       id: 'search-title',
       name: 'Title mode',
-      callback: () => openSearchModal('title'),
+      callback: () => this.openSearchModal('title'),
     });
 
     this.addCommand({
@@ -159,30 +152,65 @@ export default class HybridSearchPlugin extends Plugin {
     });
 
     this.addRibbonIcon('search', 'Hybrid search', () => {
-      if (!this.client) {
-        new Notice('Hybrid search: client not ready.');
-        return;
-      }
-      const activePath = this.app.workspace.getActiveFile()?.path;
-      new SearchModal(
-        this.app,
-        this.client,
-        this.settings,
-        () => this.saveSettings(),
-        activePath,
-      ).open();
+      this.openSearchModal();
     });
 
     this.addSettingTab(new HybridSearchSettingTab(this.app, this));
   }
 
   onunload(): void {
+    this.closeActiveSearchModals();
+    this.removeOrphanedPanels();
     if (this.graphWorkbenchRefreshTimer !== undefined) {
       window.clearTimeout(this.graphWorkbenchRefreshTimer);
       this.graphWorkbenchRefreshTimer = undefined;
     }
     this.similarNotesBottom?.unload();
     this.client?.dispose();
+  }
+
+  private openSearchModal(forcedMode?: SearchMode): void {
+    const client = this.client;
+    if (!client) {
+      new Notice('Hybrid search: client not ready.');
+      return;
+    }
+    const activePath = this.app.workspace.getActiveFile()?.path;
+    const modal = new SearchModal(
+      this.app,
+      client,
+      this.settings,
+      () => this.saveSettings(),
+      activePath,
+      forcedMode,
+      (closedModal) => this.activeSearchModals.delete(closedModal),
+    );
+    this.activeSearchModals.add(modal);
+    modal.open();
+  }
+
+  private closeActiveSearchModals(): void {
+    const modals = [...this.activeSearchModals];
+    this.activeSearchModals.clear();
+    for (const modal of modals) {
+      try {
+        modal.close();
+      } catch (error) {
+        console.error('Hybrid search: failed to close search modal during plugin unload.', error);
+        // Keep unloading the remaining modals. The sweep below removes only body-level panels.
+      }
+    }
+  }
+
+  private removeOrphanedPanels(): void {
+    const documents = new Set<Document>([activeDocument]);
+    this.app.workspace.iterateAllLeaves?.((leaf) => {
+      const containerEl = (leaf.view as { containerEl?: HTMLElement }).containerEl;
+      if (containerEl?.ownerDocument) documents.add(containerEl.ownerDocument);
+    });
+    for (const ownerDocument of documents) {
+      ownerDocument.querySelectorAll(BODY_PANEL_SELECTOR).forEach((element) => element.remove());
+    }
   }
 
   restartClient(): void {
