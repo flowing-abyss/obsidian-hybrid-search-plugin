@@ -1,5 +1,6 @@
 import type { App } from 'obsidian';
 import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../graph/buildGraph';
+import { createBodyPanel } from './bodyPanels';
 import { hookInternalLinks } from './linkHandler';
 import { type AppWithSuperchargedLinks } from './noteUtils';
 
@@ -18,10 +19,12 @@ export class GraphPanel {
 
   constructor(
     private app: App,
-    options: { onCloseModal: () => void },
+    // ownerId is a required key with a nullable value on purpose: forgetting to wire it should be
+    // a compile error, not a silently unstamped panel that any installed copy may sweep.
+    options: { onCloseModal: () => void; ownerId: string | undefined },
   ) {
     this.onCloseModal = options.onCloseModal;
-    this.el = activeDocument.body.createDiv('ohs-graph-panel');
+    this.el = createBodyPanel('ohs-graph-panel', options.ownerId);
     this.el.hide();
 
     this.viewportEl = this.el.createDiv('ohs-graph-viewport');

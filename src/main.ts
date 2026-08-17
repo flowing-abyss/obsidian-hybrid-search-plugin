@@ -3,6 +3,7 @@ import type { HttpSearchClientStatusEvent } from './ipc';
 import { HttpSearchClient, SearchClient } from './ipc';
 import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from './settings';
+import { sweepBodyPanels } from './ui/bodyPanels';
 import {
   GRAPH_WORKBENCH_VIEW_TYPE,
   GraphWorkbenchView,
@@ -15,13 +16,6 @@ import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
-export const BODY_PANEL_SELECTOR = [
-  '.hybrid-search-preview',
-  '.hybrid-search-preview-meta-panel',
-  '.hybrid-search-inline-preview',
-  '.ohs-graph-panel',
-].join(', ');
-
 export default class HybridSearchPlugin extends Plugin {
   settings!: HybridSearchSettings;
   client?: SearchClient | HttpSearchClient;
@@ -30,7 +24,7 @@ export default class HybridSearchPlugin extends Plugin {
   private activeSearchModals = new Set<SearchModal>();
 
   async onload(): Promise<void> {
-    this.removeOrphanedPanels();
+    this.removeOrphanedPanels({ includeUnstamped: true });
     await this.loadSettings();
 
     this.restartClient();
@@ -160,7 +154,8 @@ export default class HybridSearchPlugin extends Plugin {
 
   onunload(): void {
     this.closeActiveSearchModals();
-    this.removeOrphanedPanels();
+    // Unstamped panels are excluded here: by now they can only belong to a live foreign copy.
+    this.removeOrphanedPanels({ includeUnstamped: false });
     if (this.graphWorkbenchRefreshTimer !== undefined) {
       window.clearTimeout(this.graphWorkbenchRefreshTimer);
       this.graphWorkbenchRefreshTimer = undefined;
@@ -175,16 +170,12 @@ export default class HybridSearchPlugin extends Plugin {
       new Notice('Hybrid search: client not ready.');
       return;
     }
-    const activePath = this.app.workspace.getActiveFile()?.path;
-    const modal = new SearchModal(
-      this.app,
-      client,
-      this.settings,
-      () => this.saveSettings(),
-      activePath,
+    const modal = new SearchModal(this.app, client, this.settings, () => this.saveSettings(), {
+      activePath: this.app.workspace.getActiveFile()?.path,
       forcedMode,
-      (closedModal) => this.activeSearchModals.delete(closedModal),
-    );
+      onDidClose: (closedModal) => this.activeSearchModals.delete(closedModal),
+      ownerId: this.manifest.id,
+    });
     this.activeSearchModals.add(modal);
     modal.open();
   }
@@ -202,15 +193,13 @@ export default class HybridSearchPlugin extends Plugin {
     }
   }
 
-  private removeOrphanedPanels(): void {
+  private removeOrphanedPanels({ includeUnstamped }: { includeUnstamped: boolean }): void {
     const documents = new Set<Document>([activeDocument]);
     this.app.workspace.iterateAllLeaves?.((leaf) => {
       const containerEl = (leaf.view as { containerEl?: HTMLElement }).containerEl;
       if (containerEl?.ownerDocument) documents.add(containerEl.ownerDocument);
     });
-    for (const ownerDocument of documents) {
-      ownerDocument.querySelectorAll(BODY_PANEL_SELECTOR).forEach((element) => element.remove());
-    }
+    sweepBodyPanels(documents, { ownerId: this.manifest.id, includeUnstamped });
   }
 
   restartClient(): void {

@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings';
+import { BODY_PANEL_OWNER_ATTR } from '../src/ui/bodyPanels';
 import { findInlineSearchTrigger, InlineSearchSuggest } from '../src/ui/InlineSearchSuggest';
 
 describe('findInlineSearchTrigger', () => {
@@ -64,5 +65,32 @@ describe('InlineSearchSuggest @similar', () => {
 
     expect(search).not.toHaveBeenCalled();
     expect(suggestions).toEqual([{ kind: 'status', message: 'Open a note to use @similar.' }]);
+  });
+});
+
+describe('InlineSearchSuggest preview panel', () => {
+  afterEach(() => {
+    activeDocument.querySelectorAll('.hybrid-search-inline-preview').forEach((el) => el.remove());
+  });
+
+  it('stamps its body-level preview with the plugin id so the sweep can scope by instance', () => {
+    const app = {
+      workspace: { getActiveFile: () => null },
+      metadataCache: { getCache: () => null, getFirstLinkpathDest: () => null },
+      vault: { getAbstractFileByPath: () => null },
+    };
+    const plugin = {
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search: vi.fn() },
+      manifest: { id: 'hybrid-search-beta' },
+    };
+    const suggest = new InlineSearchSuggest(app as never, plugin as never) as unknown as {
+      ensurePreview: () => void;
+      previewWrapEl?: HTMLElement;
+    };
+
+    suggest.ensurePreview();
+
+    expect(suggest.previewWrapEl?.getAttribute(BODY_PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
   });
 });

@@ -20,7 +20,10 @@ describe('GraphPanel', () => {
   }
 
   it('renders center, outgoing, incoming nodes and footer stats', () => {
-    const panel = new GraphPanel(appWithLinks(), { onCloseModal: vi.fn() });
+    const panel = new GraphPanel(appWithLinks(), {
+      onCloseModal: vi.fn(),
+      ownerId: 'hybrid-search',
+    });
     panel.show('A.md');
     const el = panel.getElement();
     expect(el.isShown()).toBe(true);
@@ -31,7 +34,10 @@ describe('GraphPanel', () => {
   });
 
   it('adds Supercharged Links fallback classes and frontmatter attributes', () => {
-    const panel = new GraphPanel(appWithLinks(), { onCloseModal: vi.fn() });
+    const panel = new GraphPanel(appWithLinks(), {
+      onCloseModal: vi.fn(),
+      ownerId: 'hybrid-search',
+    });
     panel.show('A.md');
     const link = panel.getElement().querySelector<HTMLAnchorElement>('[data-path="B.md"]')!;
     expect(link.classList.contains('internal-link')).toBe(true);
@@ -75,7 +81,7 @@ describe('GraphPanel', () => {
       },
     };
 
-    const panel = new GraphPanel(app, { onCloseModal: vi.fn() });
+    const panel = new GraphPanel(app, { onCloseModal: vi.fn(), ownerId: 'hybrid-search' });
     panel.show('A.md');
     expect(watch).toHaveBeenCalledWith(
       'hybrid-search-graph-panel',
@@ -91,7 +97,7 @@ describe('GraphPanel', () => {
   it('updates depth from footer controls', () => {
     const app = appWithLinks();
     app.metadataCache.resolvedLinks['B.md'] = { 'D.md': 1 };
-    const panel = new GraphPanel(app, { onCloseModal: vi.fn() });
+    const panel = new GraphPanel(app, { onCloseModal: vi.fn(), ownerId: 'hybrid-search' });
     panel.show('A.md');
     const plus = panel.getElement().querySelectorAll<HTMLButtonElement>('.ohs-graph-btn')[1]!;
     plus.click();
@@ -105,7 +111,7 @@ describe('GraphPanel', () => {
   it('expands and collapses one-hop links relative to a node', () => {
     const app = appWithLinks();
     app.metadataCache.resolvedLinks['B.md'] = { 'D.md': 1 };
-    const panel = new GraphPanel(app, { onCloseModal: vi.fn() });
+    const panel = new GraphPanel(app, { onCloseModal: vi.fn(), ownerId: 'hybrid-search' });
     panel.show('A.md');
 
     expect(panel.getElement().querySelector('[data-path="D.md"]')).toBeNull();
@@ -137,7 +143,7 @@ describe('GraphPanel', () => {
     const app = appWithLinks();
     app.metadataCache.resolvedLinks['B.md'] = { 'D.md': 1 };
     app.metadataCache.resolvedLinks['Backlink.md'] = { 'B.md': 1 };
-    const panel = new GraphPanel(app, { onCloseModal: vi.fn() });
+    const panel = new GraphPanel(app, { onCloseModal: vi.fn(), ownerId: 'hybrid-search' });
     panel.show('A.md');
 
     panel
@@ -153,7 +159,10 @@ describe('GraphPanel', () => {
   });
 
   it('unloads its element', () => {
-    const panel = new GraphPanel(appWithLinks(), { onCloseModal: vi.fn() });
+    const panel = new GraphPanel(appWithLinks(), {
+      onCloseModal: vi.fn(),
+      ownerId: 'hybrid-search',
+    });
     panel.show('A.md');
     const el = panel.getElement();
     expect(activeDocument.body.contains(el)).toBe(true);

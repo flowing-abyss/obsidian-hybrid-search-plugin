@@ -9,6 +9,7 @@ import {
 } from 'obsidian';
 import type { MatchAnchor, SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
+import { createBodyPanel } from './bodyPanels';
 import { GraphPanel } from './GraphPanel';
 import { hookInternalLinks } from './linkHandler';
 import { registerModalKeymap } from './modalKeymap';
@@ -28,6 +29,17 @@ import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryPa
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
 const RECENT_FILES_LIMIT = 20; // local cap for recent-files list only
+
+export interface SearchModalOptions {
+  /** Path of the note that was active when the modal opened, used by the "~" scope. */
+  activePath?: string;
+  /** Pins the modal to one mode instead of following `settings.defaultMode`. */
+  forcedMode?: SearchMode;
+  /** Called once the modal has closed, so the owner can stop tracking it. */
+  onDidClose?: (modal: SearchModal) => void;
+  /** Plugin instance id stamped onto body-level panels, see `bodyPanels.ts`. */
+  ownerId?: string;
+}
 
 export class SearchModal extends SuggestModal<SearchResult> {
   private debounce?: number;
@@ -53,16 +65,23 @@ export class SearchModal extends SuggestModal<SearchResult> {
     true, // resetTimer: true — resets on each call, fires after the last one
   );
 
+  private readonly activePath?: string;
+  private readonly forcedMode?: SearchMode;
+  private readonly onDidClose?: (modal: SearchModal) => void;
+  private readonly ownerId?: string;
+
   constructor(
     app: App,
     private client: Pick<SearchClient, 'search'>,
     private settings: HybridSearchSettings,
     private readonly saveSettings: () => Promise<void>,
-    private readonly activePath?: string,
-    private readonly forcedMode?: SearchMode,
-    private readonly onDidClose?: (modal: SearchModal) => void,
+    options: SearchModalOptions = {},
   ) {
     super(app);
+    this.activePath = options.activePath;
+    this.forcedMode = options.forcedMode;
+    this.onDidClose = options.onDidClose;
+    this.ownerId = options.ownerId;
     this.setPlaceholder('Hybrid search: type to search your vault...');
   }
 
@@ -74,6 +93,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.graphPanel?.unload();
     this.graphPanel = new GraphPanel(this.app, {
       onCloseModal: () => this.close(),
+      ownerId: this.ownerId,
     });
     if (!this.settings.showGraphPanel) this.graphPanel.hide();
     if (this.settings.rememberLastQuery && this.settings.lastQuery) {
@@ -500,7 +520,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     // Synchronous DOM setup — must happen before any await
     if (!this.previewEl) {
-      this.previewEl = activeDocument.body.createDiv('hybrid-search-preview');
+      this.previewEl = createBodyPanel('hybrid-search-preview', this.ownerId);
       this.hookPreviewLinks();
     }
     this.previewEl.show();
@@ -719,7 +739,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (!this.settings.showPreviewMeta || !this.previewEl) return;
 
     if (!this.previewMetaEl) {
-      this.previewMetaEl = activeDocument.body.createDiv('hybrid-search-preview-meta-panel');
+      this.previewMetaEl = createBodyPanel('hybrid-search-preview-meta-panel', this.ownerId);
       this.hookMetaLinks();
     }
     this.previewMetaEl.empty();

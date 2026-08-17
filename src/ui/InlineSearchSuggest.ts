@@ -8,6 +8,7 @@ import {
 } from 'obsidian';
 import type { SearchResult } from '../ipc';
 import type HybridSearchPlugin from '../main';
+import { createBodyPanel } from './bodyPanels';
 import {
   createInternalLink,
   fileToDragWikiLink,
@@ -75,7 +76,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
 
   constructor(
     app: App,
-    private readonly plugin: Pick<HybridSearchPlugin, 'client' | 'settings'>,
+    private readonly plugin: Pick<HybridSearchPlugin, 'client' | 'settings' | 'manifest'>,
   ) {
     super(app);
     this.currentMode = plugin.settings.defaultMode;
@@ -314,7 +315,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
 
   private ensurePreview(): void {
     if (this.previewWrapEl && this.previewRenderer) return;
-    this.previewWrapEl = activeDocument.body.createDiv({ cls: 'hybrid-search-inline-preview' });
+    this.previewWrapEl = createBodyPanel('hybrid-search-inline-preview', this.plugin.manifest.id);
     this.previewEl = this.previewWrapEl.createDiv({
       cls: 'markdown-preview-view markdown-rendered',
     });

@@ -31,8 +31,9 @@ vi.mock('../src/ipc', () => {
   };
 });
 
-import { App, Notice } from 'obsidian';
-import HybridSearchPlugin, { BODY_PANEL_SELECTOR } from '../src/main';
+import { App, Notice, type PluginManifest } from 'obsidian';
+import HybridSearchPlugin from '../src/main';
+import { BODY_PANEL_CLASSES, createBodyPanel } from '../src/ui/bodyPanels';
 import { GraphWorkbenchView } from '../src/ui/GraphWorkbenchView';
 import { SearchModal } from '../src/ui/SearchModal';
 import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
@@ -49,7 +50,17 @@ const mockApp = {
   },
 };
 
-const mockManifest = { id: 'hybrid-search', name: 'Hybrid Search', version: '0.1.0' };
+const mockManifest: PluginManifest = {
+  id: 'hybrid-search',
+  name: 'Hybrid Search',
+  version: '0.1.0',
+  minAppVersion: '1.0.0',
+  author: 'flowing-abyss',
+  description: 'Fast hybrid search over your vault.',
+};
+
+// Unscoped: assertions want every panel in the document, not just this instance's.
+const ALL_BODY_PANELS = BODY_PANEL_CLASSES.map((cls) => `.${cls}`).join(', ');
 
 async function flushPromises() {
   await Promise.resolve();
@@ -59,12 +70,21 @@ describe('HybridSearchPlugin', () => {
   let plugin: HybridSearchPlugin;
   const NoticeMock = Notice as unknown as ReturnType<typeof vi.fn>;
 
+  /** Triggers a registered command the way Obsidian would, failing loudly if the id is wrong. */
+  function invokeCommand(id: string): void {
+    const command = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls
+      .map((call: unknown[]) => call[0] as { id: string; callback?: () => void })
+      .find((registered) => registered.id === id);
+    if (!command?.callback) throw new Error(`No command registered with id "${id}"`);
+    command.callback();
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
-    activeDocument.querySelectorAll(BODY_PANEL_SELECTOR).forEach((el) => el.remove());
+    activeDocument.querySelectorAll(ALL_BODY_PANELS).forEach((el) => el.remove());
     NoticeMock.mockClear();
     delete (mockApp.workspace as { getLeavesOfType?: unknown }).getLeavesOfType;
-    plugin = new HybridSearchPlugin(mockApp as unknown as App, mockManifest as never);
+    plugin = new HybridSearchPlugin(mockApp as unknown as App, mockManifest);
     plugin.loadData = vi.fn().mockResolvedValue({});
     plugin.saveData = vi.fn().mockResolvedValue(undefined);
     plugin.addCommand = vi.fn();
@@ -77,7 +97,7 @@ describe('HybridSearchPlugin', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    activeDocument.querySelectorAll(BODY_PANEL_SELECTOR).forEach((el) => el.remove());
+    activeDocument.querySelectorAll(ALL_BODY_PANELS).forEach((el) => el.remove());
   });
 
   it('loads settings on onload', async () => {
@@ -305,43 +325,87 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('onload removes stale body-level panels left by a previous plugin instance', async () => {
-    for (const className of [
-      'hybrid-search-preview',
-      'hybrid-search-preview-meta-panel',
-      'hybrid-search-inline-preview',
-      'ohs-graph-panel',
-    ]) {
-      activeDocument.body.createDiv(className);
+    for (const className of BODY_PANEL_CLASSES) {
+      createBodyPanel(className, mockManifest.id);
     }
-    expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(4);
+    expect(activeDocument.querySelectorAll(ALL_BODY_PANELS)).toHaveLength(
+      BODY_PANEL_CLASSES.length,
+    );
 
     await plugin.onload();
 
-    expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(0);
+    expect(activeDocument.querySelectorAll(ALL_BODY_PANELS)).toHaveLength(0);
+  });
+
+  it('onload removes unstamped panels left by a version that predates the owner attribute', async () => {
+    for (const className of BODY_PANEL_CLASSES) {
+      createBodyPanel(className, undefined);
+    }
+
+    await plugin.onload();
+
+    expect(activeDocument.querySelectorAll(ALL_BODY_PANELS)).toHaveLength(0);
+  });
+
+  it('onload leaves panels owned by a second copy of the plugin alone', async () => {
+    for (const className of BODY_PANEL_CLASSES) {
+      createBodyPanel(className, 'hybrid-search-beta');
+    }
+
+    await plugin.onload();
+
+    expect(activeDocument.querySelectorAll(ALL_BODY_PANELS)).toHaveLength(
+      BODY_PANEL_CLASSES.length,
+    );
+  });
+
+  it('onunload leaves panels owned by a second copy of the plugin alone', async () => {
+    vi.spyOn(SearchModal.prototype, 'open').mockImplementation(() => {
+      createBodyPanel('ohs-graph-panel', mockManifest.id);
+    });
+    await plugin.onload();
+    const foreign = createBodyPanel('hybrid-search-preview', 'hybrid-search-beta');
+    const legacy = createBodyPanel('hybrid-search-preview', undefined);
+    invokeCommand('open-search');
+    expect(activeDocument.querySelectorAll('.ohs-graph-panel')).toHaveLength(1);
+
+    plugin.onunload();
+
+    expect(activeDocument.querySelectorAll('.ohs-graph-panel')).toHaveLength(0);
+    expect(activeDocument.body.contains(foreign)).toBe(true);
+    // Unstamped panels survive the unload sweep: at this point they can only be a live foreign one.
+    expect(activeDocument.body.contains(legacy)).toBe(true);
+  });
+
+  it('passes its manifest id to the search modal so panels are stamped', async () => {
+    const openSpy = vi.spyOn(SearchModal.prototype, 'open').mockImplementation(() => undefined);
+    await plugin.onload();
+
+    invokeCommand('open-search');
+
+    const modal = openSpy.mock.instances[0] as unknown as { ownerId?: string };
+    expect(modal.ownerId).toBe(mockManifest.id);
   });
 
   it('onunload closes every active search modal and removes their body-level panels', async () => {
     vi.spyOn(SearchModal.prototype, 'open').mockImplementation(() => {
-      activeDocument.body.createDiv('ohs-graph-panel');
+      createBodyPanel('ohs-graph-panel', mockManifest.id);
     });
     const closeSpy = vi.spyOn(SearchModal.prototype, 'close');
     await plugin.onload();
-    const commands = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls.map(
-      (call: unknown[]) => call[0] as { id: string; callback?: () => void },
-    );
-    commands.find((command) => command.id === 'open-search')?.callback?.();
-    commands.find((command) => command.id === 'search-semantic')?.callback?.();
+    invokeCommand('open-search');
+    invokeCommand('search-semantic');
     expect(activeDocument.querySelectorAll('.ohs-graph-panel')).toHaveLength(2);
 
     plugin.onunload();
 
     expect(closeSpy).toHaveBeenCalledTimes(2);
-    expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(0);
+    expect(activeDocument.querySelectorAll(ALL_BODY_PANELS)).toHaveLength(0);
   });
 
   it('onunload continues closing modals and sweeping panels after one close fails', async () => {
     vi.spyOn(SearchModal.prototype, 'open').mockImplementation(() => {
-      activeDocument.body.createDiv('ohs-graph-panel');
+      createBodyPanel('ohs-graph-panel', mockManifest.id);
     });
     let closeCount = 0;
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -350,11 +414,8 @@ describe('HybridSearchPlugin', () => {
       if (closeCount === 1) throw new Error('modal close failed');
     });
     await plugin.onload();
-    const commands = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls.map(
-      (call: unknown[]) => call[0] as { id: string; callback?: () => void },
-    );
-    commands.find((command) => command.id === 'open-search')?.callback?.();
-    commands.find((command) => command.id === 'search-semantic')?.callback?.();
+    invokeCommand('open-search');
+    invokeCommand('search-semantic');
 
     expect(() => plugin.onunload()).not.toThrow();
 
@@ -363,7 +424,7 @@ describe('HybridSearchPlugin', () => {
       'Hybrid search: failed to close search modal during plugin unload.',
       expect.objectContaining({ message: 'modal close failed' }),
     );
-    expect(activeDocument.querySelectorAll(BODY_PANEL_SELECTOR)).toHaveLength(0);
+    expect(activeDocument.querySelectorAll(ALL_BODY_PANELS)).toHaveLength(0);
     expect(plugin.client!.dispose).toHaveBeenCalled();
   });
 

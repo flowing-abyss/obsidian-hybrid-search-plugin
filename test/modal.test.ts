@@ -1,7 +1,8 @@
 import { MarkdownRenderer, TFile } from 'obsidian';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MatchAnchor, SearchResult } from '../src/ipc';
 import { DEFAULT_SETTINGS } from '../src/settings';
+import { BODY_PANEL_CLASSES, BODY_PANEL_OWNER_ATTR } from '../src/ui/bodyPanels';
 import { SearchModal } from '../src/ui/SearchModal';
 
 const mockSearch = vi.fn();
@@ -121,13 +122,9 @@ describe('SearchModal', () => {
 
   it('getSuggestions sends notePath when the query uses @sim', async () => {
     mockSearch.mockResolvedValue([]);
-    const simModal = new SearchModal(
-      mockApp as never,
-      mockClient,
-      DEFAULT_SETTINGS,
-      vi.fn(),
-      'Now/Today.md',
-    );
+    const simModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
+      activePath: 'Now/Today.md',
+    });
     vi.useFakeTimers();
     const promise = simModal.getSuggestions('@sim #system/meta');
     vi.runAllTimers();
@@ -176,13 +173,9 @@ describe('SearchModal', () => {
 
   it('getSuggestions resets the @similar message when falling back to similar-to-active', async () => {
     mockSearch.mockResolvedValue([]);
-    const simModal = new SearchModal(
-      mockApp as never,
-      mockClient,
-      DEFAULT_SETTINGS,
-      vi.fn(),
-      'Now/Today.md',
-    );
+    const simModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
+      activePath: 'Now/Today.md',
+    });
     vi.useFakeTimers();
     // Force the "no target" branch even though a snapshot exists: an unresolvable note ref.
     (simModal as unknown as { emptyStateText: string }).emptyStateText =
@@ -196,13 +189,9 @@ describe('SearchModal', () => {
 
   it('getSuggestions does not highlight leftover query words when @sim is active', async () => {
     mockSearch.mockResolvedValue([]);
-    const simModal = new SearchModal(
-      mockApp as never,
-      mockClient,
-      DEFAULT_SETTINGS,
-      vi.fn(),
-      'Now/Today.md',
-    );
+    const simModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
+      activePath: 'Now/Today.md',
+    });
     vi.useFakeTimers();
     const promise = simModal.getSuggestions('@sim leftover words');
     vi.runAllTimers();
@@ -375,6 +364,7 @@ type ModalInternals = {
   ) => Promise<void>;
   onSelectedChange: (result: SearchResult | null) => void;
   previewEl: HTMLElement | undefined;
+  previewMetaEl: HTMLElement | undefined;
   previewChild: { unload: () => void } | undefined;
   currentPreviewPath: string | undefined;
   hidePreviewPanel(): void;
@@ -382,6 +372,13 @@ type ModalInternals = {
 
 describe('SearchModal — hover preview', () => {
   let modal: SearchModal;
+
+  // Body-level panels outlive their modal, so sweep them even when an assertion fails midway.
+  afterEach(() => {
+    activeDocument
+      .querySelectorAll(BODY_PANEL_CLASSES.map((cls) => `.${cls}`).join(', '))
+      .forEach((el) => el.remove());
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -445,15 +442,9 @@ describe('SearchModal — hover preview', () => {
 
   it('onClose notifies its owner after removing the body-level preview', async () => {
     const onDidClose = vi.fn();
-    const ownedModal = new SearchModal(
-      mockApp as never,
-      mockClient,
-      DEFAULT_SETTINGS,
-      vi.fn(),
-      undefined,
-      undefined,
+    const ownedModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
       onDidClose,
-    );
+    });
     const internals = ownedModal as unknown as ModalInternals;
     await internals.updatePreview(sampleResult.path);
     const previewEl = internals.previewEl!;
@@ -463,6 +454,27 @@ describe('SearchModal — hover preview', () => {
     expect(activeDocument.body.contains(previewEl)).toBe(false);
     expect(onDidClose).toHaveBeenCalledOnce();
     expect(onDidClose).toHaveBeenCalledWith(ownedModal);
+  });
+
+  it('stamps its body-level panels with the owner id so the sweep can scope by instance', async () => {
+    const ownedModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
+      ownerId: 'hybrid-search-beta',
+    });
+    const internals = ownedModal as unknown as ModalInternals;
+
+    await internals.updatePreview(sampleResult.path);
+
+    expect(internals.previewEl!.getAttribute(BODY_PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
+    expect(internals.previewMetaEl?.getAttribute(BODY_PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
+  });
+
+  it('leaves its body-level panels unstamped when it has no owner', async () => {
+    const orphanModal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
+    const internals = orphanModal as unknown as ModalInternals;
+
+    await internals.updatePreview(sampleResult.path);
+
+    expect(internals.previewEl!.hasAttribute(BODY_PANEL_OWNER_ATTR)).toBe(false);
   });
 
   it('onSelectedChange calls updatePreview for the selected result', () => {
@@ -584,13 +596,9 @@ describe('SearchModal — default behavior (S-102)', () => {
 
   it('getSuggestions with empty query and activePath calls search in semantic similarity mode', async () => {
     vi.useFakeTimers();
-    const modal = new SearchModal(
-      mockApp as never,
-      mockClient,
-      DEFAULT_SETTINGS,
-      vi.fn(),
-      activeFilePath,
-    );
+    const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
+      activePath: activeFilePath,
+    });
     const promise = modal.getSuggestions('');
     vi.runAllTimers();
     await promise;
@@ -604,13 +612,9 @@ describe('SearchModal — default behavior (S-102)', () => {
   it('getSuggestions with empty query and activePath excludes the source note from results', async () => {
     mockSearch.mockResolvedValue([sourceResult, relatedResult]);
     vi.useFakeTimers();
-    const modal = new SearchModal(
-      mockApp as never,
-      mockClient,
-      DEFAULT_SETTINGS,
-      vi.fn(),
-      activeFilePath,
-    );
+    const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
+      activePath: activeFilePath,
+    });
     const promise = modal.getSuggestions('');
     vi.runAllTimers();
     const results = await promise;
@@ -623,13 +627,9 @@ describe('SearchModal — default behavior (S-102)', () => {
     // First call (notePath/semantic) returns [], second call (related/BFS) returns result
     mockSearch.mockResolvedValueOnce([]).mockResolvedValueOnce([relatedResult]);
     vi.useFakeTimers();
-    const modal = new SearchModal(
-      mockApp as never,
-      mockClient,
-      DEFAULT_SETTINGS,
-      vi.fn(),
-      activeFilePath,
-    );
+    const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn(), {
+      activePath: activeFilePath,
+    });
     const promise = modal.getSuggestions('');
     vi.runAllTimers();
     const results = await promise;

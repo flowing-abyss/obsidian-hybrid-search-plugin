@@ -56,10 +56,20 @@ export class Component {
   }
 }
 
+interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+}
+
 export class Plugin {
   app: App;
-  constructor(app?: App) {
-    this.app = app ?? new App();
+  manifest: PluginManifest;
+  // Required, mirroring the real signature. A default would hand every caller a plausible id and
+  // hide the case where a manifest never reached the plugin at all.
+  constructor(app: App, manifest: PluginManifest) {
+    this.app = app;
+    this.manifest = manifest;
   }
   addRibbonIcon(_icon: string, _title: string, _cb: (evt: MouseEvent) => void) {}
   addCommand(_cmd: {
