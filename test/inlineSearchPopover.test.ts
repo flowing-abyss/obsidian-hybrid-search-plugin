@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings';
-import { BODY_PANEL_OWNER_ATTR } from '../src/ui/bodyPanels';
 import { findInlineSearchTrigger, InlineSearchSuggest } from '../src/ui/InlineSearchSuggest';
+import { PANEL_OWNER_ATTR } from '../src/ui/strayPanels';
 
 describe('findInlineSearchTrigger', () => {
   it('finds the last trigger before the cursor', () => {
@@ -95,6 +95,6 @@ describe('InlineSearchSuggest preview panel', () => {
 
     suggest.ensurePreview();
 
-    expect(suggest.previewWrapEl?.getAttribute(BODY_PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
+    expect(suggest.previewWrapEl?.getAttribute(PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
   });
 });

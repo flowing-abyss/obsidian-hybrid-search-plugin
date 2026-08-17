@@ -20,6 +20,7 @@ import {
   unhookSuperchargedLinks,
   type SuperchargedWatch,
 } from './noteUtils';
+import { stampPanelOwner } from './strayPanels';
 
 const WATCH_ID_PREFIX = 'hybrid-search-similar-bottom';
 const REFRESH_INTERVAL_MS = 10_000;
@@ -183,9 +184,10 @@ class SimilarNotesBottomView extends Component {
     parentEl: HTMLElement,
   ) {
     super();
-    this.containerEl = parentEl.createDiv({
-      cls: 'embedded-similar-notes hybrid-search-similar-bottom',
-    });
+    this.containerEl = stampPanelOwner(
+      parentEl.createDiv({ cls: 'embedded-similar-notes hybrid-search-similar-bottom' }),
+      plugin.manifest.id,
+    );
 
     const pane = this.containerEl.createDiv({ cls: 'similar-notes-pane' });
     const heading = pane.createDiv({ cls: 'hybrid-search-similar-heading' });

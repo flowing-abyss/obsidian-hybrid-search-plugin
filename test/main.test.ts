@@ -33,10 +33,10 @@ vi.mock('../src/ipc', () => {
 
 import { App, Notice, type PluginManifest } from 'obsidian';
 import HybridSearchPlugin from '../src/main';
-import { BODY_PANEL_CLASSES, createBodyPanel } from '../src/ui/bodyPanels';
 import { GraphWorkbenchView } from '../src/ui/GraphWorkbenchView';
 import { SearchModal } from '../src/ui/SearchModal';
 import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
+import { BODY_PANEL_CLASSES, createBodyPanel } from '../src/ui/strayPanels';
 
 const mockGetBasePath = vi.fn().mockReturnValue('/vault');
 const mockGetActiveFile = vi.fn().mockReturnValue({ path: 'active.md' });

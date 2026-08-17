@@ -4,6 +4,7 @@ import type { SearchResult } from '../src/ipc';
 import { DEFAULT_SETTINGS } from '../src/settings';
 import { fetchSimilarNotesDetailed } from '../src/ui/noteUtils';
 import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
+import { PANEL_OWNER_ATTR } from '../src/ui/strayPanels';
 
 const result: SearchResult = {
   path: 'related.md',
@@ -597,5 +598,43 @@ describe('SimilarNotesBottomManager', () => {
     expect(options.tag).toBeUndefined();
     expect(options.scope).toBeUndefined();
     expect(options.frontmatter).toBeUndefined();
+  });
+
+  it('stamps the bottom panel with the plugin id so a stranded one can be swept', async () => {
+    vi.useFakeTimers();
+    const leaf = new WorkspaceLeaf();
+    const markdownView = new MarkdownView(leaf);
+    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
+    const sizer = activeDocument.createDiv();
+    sizer.className = 'markdown-preview-sizer';
+    markdownView.containerEl.appendChild(sizer);
+    leaf.view = markdownView;
+
+    const app = {
+      workspace: {
+        on: vi.fn().mockReturnValue({}),
+        offref: vi.fn(),
+        getLeavesOfType: vi.fn().mockReturnValue([leaf]),
+        trigger: vi.fn(),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null, getFirstLinkpathDest: () => null },
+    };
+    const plugin = {
+      manifest: { id: 'hybrid-search-beta' },
+      app,
+      settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
+      client: { search: vi.fn().mockResolvedValue([]) },
+    };
+    const manager = new SimilarNotesBottomManager(app as never, plugin as never);
+
+    manager.load();
+    vi.advanceTimersByTime(150);
+    await Promise.resolve();
+
+    const panel = markdownView.containerEl.querySelector('.hybrid-search-similar-bottom');
+    expect(panel?.getAttribute(PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
+    manager.unload();
+    vi.useRealTimers();
   });
 });

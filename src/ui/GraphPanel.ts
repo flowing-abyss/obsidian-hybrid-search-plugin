@@ -1,12 +1,12 @@
 import type { App } from 'obsidian';
 import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../graph/buildGraph';
-import { createBodyPanel } from './bodyPanels';
 import { hookInternalLinks } from './linkHandler';
 import {
   hookSuperchargedLinks,
   unhookSuperchargedLinks,
   type SuperchargedWatch,
 } from './noteUtils';
+import { createBodyPanel } from './strayPanels';
 
 export class GraphPanel {
   private el: HTMLDivElement;

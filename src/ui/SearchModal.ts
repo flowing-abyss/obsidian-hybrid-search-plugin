@@ -9,7 +9,6 @@ import {
 } from 'obsidian';
 import type { MatchAnchor, SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
-import { createBodyPanel } from './bodyPanels';
 import { GraphPanel } from './GraphPanel';
 import { hookInternalLinks } from './linkHandler';
 import { registerModalKeymap } from './modalKeymap';
@@ -27,6 +26,7 @@ import {
   type SuperchargedWatch,
 } from './noteUtils';
 import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
+import { createBodyPanel } from './strayPanels';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
@@ -39,7 +39,7 @@ export interface SearchModalOptions {
   forcedMode?: SearchMode;
   /** Called once the modal has closed, so the owner can stop tracking it. */
   onDidClose?: (modal: SearchModal) => void;
-  /** Plugin instance id stamped onto body-level panels, see `bodyPanels.ts`. */
+  /** Plugin instance id stamped onto panels outside the component tree, see `strayPanels.ts`. */
   ownerId?: string;
 }
 

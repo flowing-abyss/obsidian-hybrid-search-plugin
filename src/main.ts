@@ -3,7 +3,6 @@ import type { HttpSearchClientStatusEvent } from './ipc';
 import { HttpSearchClient, SearchClient } from './ipc';
 import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from './settings';
-import { sweepBodyPanels } from './ui/bodyPanels';
 import {
   GRAPH_WORKBENCH_VIEW_TYPE,
   GraphWorkbenchView,
@@ -13,6 +12,7 @@ import { InlineSearchSuggest } from './ui/InlineSearchSuggest';
 import { SearchModal } from './ui/SearchModal';
 import { revealSearchPanel, SEARCH_PANEL_VIEW_TYPE, SearchPanelView } from './ui/SearchPanelView';
 import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
+import { sweepStrayPanels } from './ui/strayPanels';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
@@ -199,7 +199,7 @@ export default class HybridSearchPlugin extends Plugin {
       const containerEl = (leaf.view as { containerEl?: HTMLElement }).containerEl;
       if (containerEl?.ownerDocument) documents.add(containerEl.ownerDocument);
     });
-    sweepBodyPanels(documents, { ownerId: this.manifest.id, includeUnstamped });
+    sweepStrayPanels(documents, { ownerId: this.manifest.id, includeUnstamped });
   }
 
   restartClient(): void {

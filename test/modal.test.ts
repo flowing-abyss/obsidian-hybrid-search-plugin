@@ -2,8 +2,8 @@ import { MarkdownRenderer, TFile } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MatchAnchor, SearchResult } from '../src/ipc';
 import { DEFAULT_SETTINGS } from '../src/settings';
-import { BODY_PANEL_CLASSES, BODY_PANEL_OWNER_ATTR } from '../src/ui/bodyPanels';
 import { SearchModal } from '../src/ui/SearchModal';
+import { BODY_PANEL_CLASSES, PANEL_OWNER_ATTR } from '../src/ui/strayPanels';
 
 const mockSearch = vi.fn();
 const mockClient = { search: mockSearch };
@@ -464,8 +464,8 @@ describe('SearchModal — hover preview', () => {
 
     await internals.updatePreview(sampleResult.path);
 
-    expect(internals.previewEl!.getAttribute(BODY_PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
-    expect(internals.previewMetaEl?.getAttribute(BODY_PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
+    expect(internals.previewEl!.getAttribute(PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
+    expect(internals.previewMetaEl?.getAttribute(PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
   });
 
   it('leaves its body-level panels unstamped when it has no owner', async () => {
@@ -474,7 +474,7 @@ describe('SearchModal — hover preview', () => {
 
     await internals.updatePreview(sampleResult.path);
 
-    expect(internals.previewEl!.hasAttribute(BODY_PANEL_OWNER_ATTR)).toBe(false);
+    expect(internals.previewEl!.hasAttribute(PANEL_OWNER_ATTR)).toBe(false);
   });
 
   it('onSelectedChange calls updatePreview for the selected result', () => {

@@ -8,7 +8,6 @@ import {
 } from 'obsidian';
 import type { SearchResult } from '../ipc';
 import type HybridSearchPlugin from '../main';
-import { createBodyPanel } from './bodyPanels';
 import {
   createInternalLink,
   fileToDragWikiLink,
@@ -21,6 +20,7 @@ import {
 } from './noteUtils';
 import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
 import { SearchPreviewRenderer } from './SearchPreviewRenderer';
+import { createBodyPanel } from './strayPanels';
 
 const INLINE_SEARCH_SNIPPET_LENGTH = 400;
 const INLINE_SEARCH_DEBOUNCE_MS = 150;
