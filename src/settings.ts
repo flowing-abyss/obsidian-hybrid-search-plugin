@@ -364,6 +364,16 @@ export class HybridSearchSettingTab extends PluginSettingTab {
       );
 
     new Setting(searchEl)
+      .setName('Remember last search query')
+      .setDesc('Restore the previous search query when reopening the search modal.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.rememberLastQuery).onChange(async (value) => {
+          this.plugin.settings.rememberLastQuery = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(searchEl)
       .setName('Custom search postfixes')
       .setDesc(
         'Define your own @name shortcuts that expand to a filter string when typed in search, e.g. @work expands to -tag:personal folder:work.',
@@ -385,16 +395,6 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         renderPostfixList();
       }),
     );
-
-    new Setting(searchEl)
-      .setName('Remember last search query')
-      .setDesc('Restore the previous search query when reopening the search modal.')
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.rememberLastQuery).onChange(async (value) => {
-          this.plugin.settings.rememberLastQuery = value;
-          await this.plugin.saveSettings();
-        }),
-      );
 
     const displayEl = this.addSection(containerEl, 'Display', 'layout-list');
 
