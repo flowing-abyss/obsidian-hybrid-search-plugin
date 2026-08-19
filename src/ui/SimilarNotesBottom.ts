@@ -77,7 +77,6 @@ export class SimilarNotesBottomManager {
     if (typeof this.app.workspace.offref === 'function') {
       cleanupSteps.push(...eventRefs.map((ref) => () => this.app.workspace.offref(ref)));
     }
-    this.eventRefs.length = 0;
     cleanupSteps.push(...views.map((view) => () => view.unload()));
     runAllCleanupSteps(...cleanupSteps);
   }
