@@ -673,9 +673,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     });
     appliedHint.hidden = true;
 
-    // eslint-disable-next-line obsidianmd/no-unsupported-api -- guarded by isSecretStorageAvailable
     const secret = new SecretComponent(this.app, setting.controlEl);
-    // eslint-disable-next-line obsidianmd/no-unsupported-api -- guarded by isSecretStorageAvailable
     secret.setValue(getApiKey(this.app)).onChange((value) => {
       // onChange fires per keystroke, and applying the key restarts the server
       // process. Without this delay, pasting a key would restart it once per character.
