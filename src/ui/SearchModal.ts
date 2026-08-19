@@ -9,6 +9,7 @@ import {
 } from 'obsidian';
 import type { MatchAnchor, SearchClient, SearchResult } from '../ipc';
 import type { HybridSearchSettings } from '../settings';
+import { runAllCleanupSteps } from './cleanup';
 import { GraphPanel } from './GraphPanel';
 import { hookInternalLinks } from './linkHandler';
 import { registerModalKeymap } from './modalKeymap';
@@ -45,6 +46,7 @@ export interface SearchModalOptions {
 
 export class SearchModal extends SuggestModal<SearchResult> {
   private debounce?: number;
+  private pendingSuggestionResolve?: (results: SearchResult[]) => void;
   private previewEl?: HTMLDivElement;
   private previewMetaEl?: HTMLDivElement;
   private previewChild?: MarkdownRenderChild;
@@ -133,15 +135,20 @@ export class SearchModal extends SuggestModal<SearchResult> {
   hidePreviewPanel(): void {
     this.debouncedPreview.cancel();
     this.previewCallId++;
-    this.previewChild?.unload();
+    const previewChild = this.previewChild;
+    const previewEl = this.previewEl;
+    const previewMetaEl = this.previewMetaEl;
     this.previewChild = undefined;
-    this.previewEl?.remove();
     this.previewEl = undefined;
-    this.previewMetaEl?.remove();
     this.previewMetaEl = undefined;
     this.currentPreviewPath = undefined;
     this.currentPreviewContent = undefined;
     this.currentAnchorKey = undefined;
+    runAllCleanupSteps(
+      () => previewChild?.unload(),
+      () => previewEl?.remove(),
+      () => previewMetaEl?.remove(),
+    );
   }
 
   private clearHighlights(): void {
@@ -275,27 +282,30 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   onClose(): void {
-    try {
-      if (this.settings.rememberLastQuery && this.inputEl) {
-        this.settings.lastQuery = this.inputEl.value.trim();
-        void this.saveSettings();
-      }
-      this.unhookSuperchargedLinks();
-    } finally {
-      try {
-        this.hidePreviewPanel();
-        this.graphPanel?.unload();
-        this.graphPanel = undefined;
+    const graphPanel = this.graphPanel;
+    this.graphPanel = undefined;
+    runAllCleanupSteps(
+      () => this.cancelPendingSuggestions(),
+      () => {
+        if (this.settings.rememberLastQuery && this.inputEl) {
+          this.settings.lastQuery = this.inputEl.value.trim();
+          void this.saveSettings();
+        }
+      },
+      () => this.unhookSuperchargedLinks(),
+      () => this.hidePreviewPanel(),
+      () => graphPanel?.unload(),
+      () => {
         // Restore modal's default centering (in case positionPreview shifted it)
         this.modalEl.style.left = ``;
         this.modalEl.style.transform = ``;
-      } finally {
-        this.onDidClose?.(this);
-      }
-    }
+      },
+      () => this.onDidClose?.(this),
+    );
   }
 
   async getSuggestions(query: string): Promise<SearchResult[]> {
+    this.cancelPendingSuggestions();
     // Reset up front so the "@similar" message set below cannot survive into an unrelated
     // query — including the empty-query paths (similar-to-active, recent files), which
     // return before any later reset would run.
@@ -305,12 +315,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
         // Active note open: show semantically similar notes
         this.isRecentMode = false;
         this.updateModeBadge('~');
-        return new Promise((resolve) => {
-          window.clearTimeout(this.debounce);
-          this.debounce = window.setTimeout(() => {
-            this.fetchSimilar(resolve);
-          }, 150);
-        });
+        return this.scheduleSuggestions(() => this.doFetchSimilar());
       }
       // No active note: show recently opened files
       this.isRecentMode = true;
@@ -356,34 +361,53 @@ export class SearchModal extends SuggestModal<SearchResult> {
           ),
     );
 
+    return this.scheduleSuggestions(() =>
+      this.client
+        // The backend ignores the query string during a path lookup, so send '' rather
+        // than the leftover free text — it would only look like it had been searched for.
+        .search(notePath ? '' : parsedQuery, {
+          mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
+          ...(notePath && { notePath }),
+          ...(overrides.limit !== undefined && { limit: overrides.limit }),
+          snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
+          anchors: this.settings.showPreview && this.settings.scrollToSnippet,
+          ...(overrides.tag !== undefined && { tag: overrides.tag }),
+          ...(overrides.scope !== undefined && { scope: overrides.scope }),
+          ...(overrides.frontmatter !== undefined && { frontmatter: overrides.frontmatter }),
+          ...(overrides.rerank !== undefined && { rerank: overrides.rerank }),
+          ...(overrides.threshold !== undefined && { threshold: overrides.threshold }),
+        })
+        .then((results) => [...results].sort(byScoreDesc)),
+    );
+  }
+
+  private scheduleSuggestions(load: () => Promise<SearchResult[]>): Promise<SearchResult[]> {
     return new Promise((resolve) => {
-      window.clearTimeout(this.debounce);
+      let settled = false;
+      const settle = (results: SearchResult[]) => {
+        if (settled) return;
+        settled = true;
+        if (this.pendingSuggestionResolve === settle) this.pendingSuggestionResolve = undefined;
+        resolve(results);
+      };
+      this.pendingSuggestionResolve = settle;
       this.debounce = window.setTimeout(() => {
-        this.client
-          // The backend ignores the query string during a path lookup, so send '' rather
-          // than the leftover free text — it would only look like it had been searched for.
-          .search(notePath ? '' : parsedQuery, {
-            mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
-            ...(notePath && { notePath }),
-            ...(overrides.limit !== undefined && { limit: overrides.limit }),
-            snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
-            anchors: this.settings.showPreview && this.settings.scrollToSnippet,
-            ...(overrides.tag !== undefined && { tag: overrides.tag }),
-            ...(overrides.scope !== undefined && { scope: overrides.scope }),
-            ...(overrides.frontmatter !== undefined && { frontmatter: overrides.frontmatter }),
-            ...(overrides.rerank !== undefined && { rerank: overrides.rerank }),
-            ...(overrides.threshold !== undefined && { threshold: overrides.threshold }),
-          })
-          .then((results) => resolve([...results].sort(byScoreDesc)))
-          .catch(() => resolve([]));
+        this.debounce = undefined;
+        void load()
+          .then(settle)
+          .catch(() => settle([]));
       }, 150);
     });
   }
 
-  private fetchSimilar(resolve: (r: SearchResult[]) => void): void {
-    void this.doFetchSimilar()
-      .then(resolve)
-      .catch(() => resolve([]));
+  private cancelPendingSuggestions(): void {
+    if (this.debounce !== undefined) {
+      window.clearTimeout(this.debounce);
+      this.debounce = undefined;
+    }
+    const settle = this.pendingSuggestionResolve;
+    this.pendingSuggestionResolve = undefined;
+    settle?.([]);
   }
 
   private async doFetchSimilar(): Promise<SearchResult[]> {
@@ -526,9 +550,16 @@ export class SearchModal extends SuggestModal<SearchResult> {
       this.hookPreviewLinks();
     }
     this.previewEl.show();
-    this.previewChild?.unload();
+    const previousChild = this.previewChild;
     this.previewChild = undefined;
-    this.previewEl.empty();
+    this.currentPreviewPath = undefined;
+    this.currentPreviewContent = undefined;
+    this.currentAnchorKey = undefined;
+    try {
+      previousChild?.unload();
+    } finally {
+      this.previewEl.empty();
+    }
 
     const abstract = this.app.vault.getAbstractFileByPath(nfcPath);
     if (!abstract || !(abstract instanceof TFile)) return;

@@ -8,6 +8,7 @@ import {
 } from 'obsidian';
 import type { SearchResult } from '../ipc';
 import type HybridSearchPlugin from '../main';
+import { runAllCleanupSteps } from './cleanup';
 import {
   createInternalLink,
   fileToDragWikiLink,
@@ -69,6 +70,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
   private previewEl?: HTMLElement;
   private previewRenderer?: SearchPreviewRenderer;
   private searchTimer?: number;
+  private pendingSearchResolve?: (results: InlineSearchSuggestion[]) => void;
   private requestId = 0;
   private renderedContainer?: HTMLElement;
   private selectedObserver?: MutationObserver;
@@ -137,6 +139,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
 
   getSuggestions(context: EditorSuggestContext): Promise<InlineSearchSuggestion[]> {
     const query = context.query.trim();
+    this.cancelPendingSearch();
     if (!query || !this.plugin.client) {
       this.requestId++;
       this.hidePreview();
@@ -145,15 +148,32 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
       ]);
     }
 
-    if (this.searchTimer !== undefined) window.clearTimeout(this.searchTimer);
     const requestId = ++this.requestId;
 
     return new Promise((resolve) => {
+      let settled = false;
+      const settle = (results: InlineSearchSuggestion[]) => {
+        if (settled) return;
+        settled = true;
+        if (this.pendingSearchResolve === settle) this.pendingSearchResolve = undefined;
+        resolve(results);
+      };
+      this.pendingSearchResolve = settle;
       this.searchTimer = window.setTimeout(() => {
         this.searchTimer = undefined;
-        void this.runSearch(query, requestId).then(resolve);
+        void this.runSearch(query, requestId).then(settle);
       }, INLINE_SEARCH_DEBOUNCE_MS);
     });
+  }
+
+  private cancelPendingSearch(): void {
+    if (this.searchTimer !== undefined) {
+      window.clearTimeout(this.searchTimer);
+      this.searchTimer = undefined;
+    }
+    const settle = this.pendingSearchResolve;
+    this.pendingSearchResolve = undefined;
+    settle?.([]);
   }
 
   private async runSearch(query: string, requestId: number): Promise<InlineSearchSuggestion[]> {
@@ -286,16 +306,16 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
 
   close(): void {
     this.requestId++;
-    if (this.searchTimer !== undefined) {
-      window.clearTimeout(this.searchTimer);
-      this.searchTimer = undefined;
-    }
-    super.close();
-    this.hidePreview();
-    this.selectedObserver?.disconnect();
+    this.cancelPendingSearch();
+    const selectedObserver = this.selectedObserver;
     this.selectedObserver = undefined;
     this.renderedContainer = undefined;
-    unhookSuperchargedLinks(this.app, this.slWatch);
+    runAllCleanupSteps(
+      () => super.close(),
+      () => this.hidePreview(),
+      () => selectedObserver?.disconnect(),
+      () => unhookSuperchargedLinks(this.app, this.slWatch),
+    );
   }
 
   private openResult(result: SearchResult, newLeaf: boolean): void {
@@ -333,11 +353,15 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
   }
 
   private hidePreview(): void {
-    this.previewRenderer?.unload();
+    const previewRenderer = this.previewRenderer;
+    const previewWrapEl = this.previewWrapEl;
     this.previewRenderer = undefined;
-    this.previewWrapEl?.remove();
     this.previewWrapEl = undefined;
     this.previewEl = undefined;
+    runAllCleanupSteps(
+      () => previewRenderer?.unload(),
+      () => previewWrapEl?.remove(),
+    );
   }
 
   private positionPreview(): void {

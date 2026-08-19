@@ -265,13 +265,24 @@ export function unhookSuperchargedLinks(app: App, ...watches: SuperchargedWatch[
   ];
   if (!sl || !Array.isArray(sl.observers)) return;
   const keys = new Set(watches.map(watchKey));
+  let failed = false;
+  let firstError: unknown;
   for (let idx = sl.observers.length - 1; idx >= 0; idx--) {
-    const id = sl.observers[idx]?.[1];
+    const observerEntry = sl.observers[idx];
+    const id = observerEntry?.[1];
     if (id !== undefined && keys.has(id)) {
-      sl.observers[idx]![0].disconnect();
       sl.observers.splice(idx, 1);
+      try {
+        observerEntry![0].disconnect();
+      } catch (error) {
+        if (!failed) {
+          failed = true;
+          firstError = error;
+        }
+      }
     }
   }
+  if (failed) throw firstError;
 }
 
 export function getSimilarNotesOptions(settings: HybridSearchSettings): SimilarNotesOptions {

@@ -10,6 +10,7 @@ import {
 } from 'obsidian';
 import type { SearchResult } from '../ipc';
 import type HybridSearchPlugin from '../main';
+import { runAllCleanupSteps } from './cleanup';
 import { hookInternalLinks } from './linkHandler';
 import {
   createTreeItemLink,
@@ -69,18 +70,23 @@ export class SimilarNotesBottomManager {
       window.clearInterval(this.refreshInterval);
       this.refreshInterval = undefined;
     }
+    const eventRefs = this.eventRefs.splice(0);
+    const views = [...this.views.values()];
+    this.views.clear();
+    const cleanupSteps: Array<() => void> = [];
     if (typeof this.app.workspace.offref === 'function') {
-      for (const ref of this.eventRefs) this.app.workspace.offref(ref);
+      cleanupSteps.push(...eventRefs.map((ref) => () => this.app.workspace.offref(ref)));
     }
     this.eventRefs.length = 0;
-    for (const view of this.views.values()) view.unload();
-    this.views.clear();
+    cleanupSteps.push(...views.map((view) => () => view.unload()));
+    runAllCleanupSteps(...cleanupSteps);
   }
 
   settingsChanged(): void {
     if (!this.plugin.settings.showSimilarNotesAtBottom) {
-      for (const view of this.views.values()) view.unload();
+      const views = [...this.views.values()];
       this.views.clear();
+      runAllCleanupSteps(...views.map((view) => () => view.unload()));
       return;
     }
     this.refresh(true);
@@ -124,12 +130,14 @@ export class SimilarNotesBottomManager {
       attached = this.ensureView(leaf.view, force, silent) || attached;
     }
 
+    const staleViews: SimilarNotesBottomView[] = [];
     for (const [markdownView, view] of this.views) {
       if (!liveViews.has(markdownView)) {
-        view.unload();
         this.views.delete(markdownView);
+        staleViews.push(view);
       }
     }
+    runAllCleanupSteps(...staleViews.map((view) => () => view.unload()));
     return attached;
   }
 
@@ -304,9 +312,12 @@ class SimilarNotesBottomView extends Component {
   }
 
   override unload(): void {
-    unhookSuperchargedLinks(this.app, this.slWatch);
-    super.unload();
-    this.containerEl.remove();
+    this.requestId++;
+    runAllCleanupSteps(
+      () => unhookSuperchargedLinks(this.app, this.slWatch),
+      () => super.unload(),
+      () => this.containerEl.remove(),
+    );
   }
 
   private get slWatch(): SuperchargedWatch {

@@ -169,4 +169,35 @@ describe('GraphPanel', () => {
     panel.unload();
     expect(activeDocument.body.contains(el)).toBe(false);
   });
+
+  it('removes its element even when a Supercharged Links observer fails to disconnect', () => {
+    const app = appWithLinks();
+    const failure = new Error('observer disconnect failed');
+    const observer = {
+      disconnect: vi.fn(() => {
+        throw failure;
+      }),
+    };
+    const observers: Array<[typeof observer, string]> = [];
+    const watch = vi.fn((id: string) => observers.push([observer, id]));
+    Object.assign(app, {
+      plugins: {
+        plugins: {
+          'supercharged-links-obsidian': {
+            observers,
+            _watchContainerDynamic: watch,
+          },
+        },
+      },
+    });
+    const panel = new GraphPanel(app, { onCloseModal: vi.fn(), ownerId: 'hybrid-search' });
+    panel.show('A.md');
+    const el = panel.getElement();
+
+    expect(() => panel.unload()).toThrow(failure);
+
+    expect(observer.disconnect).toHaveBeenCalledOnce();
+    expect(observers).toHaveLength(0);
+    expect(activeDocument.body.contains(el)).toBe(false);
+  });
 });

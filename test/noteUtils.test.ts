@@ -258,4 +258,27 @@ describe('supercharged-links watch scoping', () => {
 
     expect(disconnect).toHaveBeenCalled();
   });
+
+  it('continues removing owned observers when one disconnect throws', () => {
+    const { app, observers } = appWithSl();
+    const own = { ownerId: 'hybrid-search', id: 'panel' };
+    const foreign = { ownerId: 'hybrid-search-beta', id: 'panel' };
+    hookSuperchargedLinks(app, own, container(), 'a', 'row');
+    const failure = new Error('disconnect failed');
+    observers.push([
+      {
+        disconnect: vi.fn(() => {
+          throw failure;
+        }),
+      },
+      'hybrid-search:panel',
+    ]);
+    hookSuperchargedLinks(app, foreign, container(), 'a', 'row');
+    const firstOwnDisconnect = observers[0]![0].disconnect;
+
+    expect(() => unhookSuperchargedLinks(app, own)).toThrow(failure);
+
+    expect(firstOwnDisconnect).toHaveBeenCalledOnce();
+    expect(observers.map(([, key]) => key)).toEqual(['hybrid-search-beta:panel']);
+  });
 });

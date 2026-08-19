@@ -13,6 +13,7 @@ import { InlineSearchSuggest } from './ui/InlineSearchSuggest';
 import { SearchModal } from './ui/SearchModal';
 import { revealSearchPanel, SEARCH_PANEL_VIEW_TYPE, SearchPanelView } from './ui/SearchPanelView';
 import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
+import { runAllCleanupSteps } from './ui/cleanup';
 import { sweepStrayPanels } from './ui/strayPanels';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
@@ -154,15 +155,23 @@ export default class HybridSearchPlugin extends Plugin {
   }
 
   onunload(): void {
-    this.closeActiveSearchModals();
-    // Unstamped panels are excluded here: by now they can only belong to a live foreign copy.
-    this.removeOrphanedPanels({ includeUnstamped: false });
-    if (this.graphWorkbenchRefreshTimer !== undefined) {
-      window.clearTimeout(this.graphWorkbenchRefreshTimer);
-      this.graphWorkbenchRefreshTimer = undefined;
+    try {
+      runAllCleanupSteps(
+        () => this.closeActiveSearchModals(),
+        // Unstamped panels are excluded here: by now they can only belong to a live foreign copy.
+        () => this.removeOrphanedPanels({ includeUnstamped: false }),
+        () => {
+          if (this.graphWorkbenchRefreshTimer !== undefined) {
+            window.clearTimeout(this.graphWorkbenchRefreshTimer);
+            this.graphWorkbenchRefreshTimer = undefined;
+          }
+        },
+        () => this.similarNotesBottom?.unload(),
+        () => this.client?.dispose(),
+      );
+    } catch (error) {
+      console.error('Hybrid search: plugin cleanup failed during unload.', error);
     }
-    this.similarNotesBottom?.unload();
-    this.client?.dispose();
   }
 
   private openSearchModal(forcedMode?: SearchMode): void {

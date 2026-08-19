@@ -16,6 +16,78 @@ const result: SearchResult = {
 };
 
 describe('SimilarNotesBottomManager', () => {
+  it('unloads every registered view and clears the registry when one view fails', () => {
+    const app = { workspace: { offref: vi.fn() } };
+    const plugin = {
+      settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
+      manifest: { id: 'hybrid-search' },
+    };
+    const manager = new SimilarNotesBottomManager(app as never, plugin as never);
+    const internals = manager as unknown as {
+      views: Map<MarkdownView, { unload: () => void }>;
+    };
+    const failure = new Error('first view unload failed');
+    const secondUnload = vi.fn();
+    internals.views.set(new MarkdownView(new WorkspaceLeaf()), {
+      unload: vi.fn(() => {
+        throw failure;
+      }),
+    });
+    internals.views.set(new MarkdownView(new WorkspaceLeaf()), { unload: secondUnload });
+
+    expect(() => manager.unload()).toThrow(failure);
+
+    expect(secondUnload).toHaveBeenCalledOnce();
+    expect(internals.views).toHaveLength(0);
+  });
+
+  it('invalidates an in-flight result before removing its view', async () => {
+    vi.useFakeTimers();
+    const leaf = new WorkspaceLeaf();
+    const markdownView = new MarkdownView(leaf);
+    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
+    const sizer = activeDocument.createDiv();
+    sizer.className = 'markdown-preview-sizer';
+    markdownView.containerEl.appendChild(sizer);
+    leaf.view = markdownView;
+    let resolveSearch!: (results: SearchResult[]) => void;
+    const searchPromise = new Promise<SearchResult[]>((resolve) => {
+      resolveSearch = resolve;
+    });
+    const app = {
+      workspace: {
+        on: vi.fn().mockReturnValue({}),
+        offref: vi.fn(),
+        getLeavesOfType: vi.fn().mockReturnValue([leaf]),
+        trigger: vi.fn(),
+      },
+      vault: { getAbstractFileByPath: () => null },
+      metadataCache: { getCache: () => null, getFirstLinkpathDest: () => null },
+    };
+    const plugin = {
+      manifest: { id: 'hybrid-search' },
+      app,
+      settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
+      client: { search: vi.fn().mockReturnValue(searchPromise) },
+    };
+    const manager = new SimilarNotesBottomManager(app as never, plugin as never);
+
+    manager.load();
+    vi.advanceTimersByTime(150);
+    await Promise.resolve();
+    const detachedPanel = markdownView.containerEl.querySelector<HTMLElement>(
+      '.hybrid-search-similar-bottom',
+    )!;
+    manager.unload();
+    resolveSearch([result]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(detachedPanel.isConnected).toBe(false);
+    expect(detachedPanel.textContent).not.toContain('Related');
+    vi.useRealTimers();
+  });
+
   it('settingsChanged forces reload for the same note', async () => {
     vi.useFakeTimers();
     const leaf = new WorkspaceLeaf();

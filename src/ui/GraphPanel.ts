@@ -1,5 +1,6 @@
 import type { App } from 'obsidian';
 import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../graph/buildGraph';
+import { runAllCleanupSteps } from './cleanup';
 import { hookInternalLinks } from './linkHandler';
 import {
   hookSuperchargedLinks,
@@ -58,8 +59,10 @@ export class GraphPanel {
   }
 
   unload(): void {
-    this.unwatchSuperchargedLinks();
-    this.el.remove();
+    runAllCleanupSteps(
+      () => this.unwatchSuperchargedLinks(),
+      () => this.el.remove(),
+    );
   }
 
   getElement(): HTMLDivElement {

@@ -13,6 +13,7 @@ import {
 import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../graph/buildGraph';
 import type { MatchAnchor, SearchResult } from '../ipc';
 import type HybridSearchPlugin from '../main';
+import { runAllCleanupSteps } from './cleanup';
 import { hookInternalLinks } from './linkHandler';
 import {
   createInternalLink,
@@ -239,8 +240,11 @@ export class GraphWorkbenchView extends ItemView {
     await Promise.resolve();
     this.closed = true;
     this.requestId++;
-    unhookSuperchargedLinks(this.app, this.graphWatch, this.detailsWatch);
-    for (const cleanup of this.cleanupCallbacks.splice(0)) cleanup();
+    const cleanupCallbacks = this.cleanupCallbacks.splice(0);
+    runAllCleanupSteps(
+      () => unhookSuperchargedLinks(this.app, this.graphWatch, this.detailsWatch),
+      ...cleanupCallbacks,
+    );
   }
 
   async refreshFromActiveFile(force = false): Promise<void> {
