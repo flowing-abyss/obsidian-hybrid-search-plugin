@@ -78,15 +78,15 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
-  font-size: 0.78em;
+  font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   user-select: text;
   -webkit-user-select: text;
 }
 
 .hybrid-search-preview-meta-icon svg {
-  width: 12px;
-  height: 12px;
+  width: var(--icon-xs);
+  height: var(--icon-xs);
   flex-shrink: 0;
   opacity: 0.5;
   color: var(--text-muted);
@@ -104,11 +104,15 @@
 
 .hybrid-search-preview-meta-alias {
   font-style: italic;
-  font-size: 11px;
+  font-size: var(--font-ui-smallest);
   background: var(--background-modifier-hover);
   color: var(--text-muted);
   padding: 0 5px;
   border-radius: 4px;
+}
+
+.hybrid-search-preview-meta-row .hybrid-search-tag {
+  font-size: var(--font-ui-smallest);
 }
 
 .hybrid-search-preview-meta-link {
