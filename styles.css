@@ -383,6 +383,7 @@ li.hybrid-search-semantic-match {
 .hybrid-search-similar-bottom {
   border-top: 1px solid var(--background-modifier-border);
   margin-block-start: var(--size-4-4);
+  padding-block-end: var(--size-4-3);
   padding-inline-start: 0;
   padding-inline-end: 0;
 }
