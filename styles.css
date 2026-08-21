@@ -471,6 +471,10 @@ li.hybrid-search-semantic-match {
   margin-bottom: 12px;
 }
 
+.hybrid-search-similar-bottom + .embedded-backlinks {
+  margin-top: 0;
+}
+
 .hybrid-search-similar-bottom .search-result-container {
   padding: var(--size-4-1) 1px var(--size-4-1);
   margin-inline-start: 0;
