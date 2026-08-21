@@ -14,8 +14,9 @@
 }
 
 .hybrid-search-score {
-  font-size: 0.8em;
-  font-family: monospace;
+  font-size: 0.75em;
+  line-height: 1;
+  font-family: var(--font-monospace);
   margin-left: 8px;
   flex-shrink: 0;
 }
