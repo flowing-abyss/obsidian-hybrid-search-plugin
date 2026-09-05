@@ -602,6 +602,7 @@ li.hybrid-search-semantic-match {
 }
 
 .hybrid-search-page-preview-similar .tree-item-icon.collapse-icon {
+  position: static;
   flex: 0 0 auto;
   margin-left: 0;
   margin-right: var(--size-2-2);

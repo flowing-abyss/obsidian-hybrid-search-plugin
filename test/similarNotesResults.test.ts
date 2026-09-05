@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { App, type HoverParent } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { SearchResult } from '../src/ipc';
@@ -70,6 +71,28 @@ describe('SimilarNotesResults', () => {
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     expect(onToggle).toHaveBeenCalledWith('related.md');
+  });
+
+  it('keeps the expansion arrow in the compact page preview row layout', () => {
+    const obsidianStyles = activeDocument.head.createEl('style', {
+      text: '.tree-item-icon.collapse-icon { position: absolute; }',
+    });
+    const pluginStyles = activeDocument.head.createEl('style', {
+      text: readFileSync('styles.css', 'utf8'),
+    });
+    const { containerEl, view } = createView();
+    containerEl.addClass('hybrid-search-page-preview-similar');
+
+    try {
+      view.render([related], 'similarity', new Set());
+      const collapseIcon = containerEl.querySelector<HTMLElement>('.collapse-icon')!;
+
+      expect(getComputedStyle(collapseIcon).position).toBe('static');
+    } finally {
+      view.unload();
+      obsidianStyles.remove();
+      pluginStyles.remove();
+    }
   });
 
   it('uses one stable hover parent for repeated nested page previews', () => {
