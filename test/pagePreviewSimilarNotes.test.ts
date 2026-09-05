@@ -515,6 +515,7 @@ describe('PagePreviewSimilarNotesManager', () => {
   it('restores companion DOM when Supercharged Links cleanup throws', async () => {
     const harness = createHarness();
     const failure = new Error('observer disconnect failed');
+    const removeEventListener = vi.spyOn(activeWindow, 'removeEventListener');
     const observer = { disconnect: vi.fn(() => void 0) };
     const supercharged = {
       observers: [] as Array<[typeof observer, string, string]>,
@@ -541,6 +542,7 @@ describe('PagePreviewSimilarNotesManager', () => {
     expect(popover.hoverEl.classList.contains('hybrid-search-page-preview-with-similar')).toBe(
       false,
     );
+    expect(removeEventListener).toHaveBeenCalledWith('resize', expect.any(Function));
     expect(harness.app.workspace.offref).toHaveBeenCalled();
     targetEl.remove();
   });

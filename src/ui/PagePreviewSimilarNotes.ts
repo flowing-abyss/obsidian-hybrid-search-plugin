@@ -183,8 +183,10 @@ class PagePreviewSimilarNotesView extends Component {
   private readonly expandedPaths = new Set<string>();
   private result?: SimilarNotesFetchResult;
   private resizeObserver?: ResizeObserver;
+  private ownerWindow?: Window;
   private requestId = 0;
   private ownerCleaned = false;
+  private readonly onOwnerWindowResize = () => this.position();
 
   constructor(private readonly options: PagePreviewSimilarNotesViewOptions) {
     super();
@@ -220,7 +222,8 @@ class PagePreviewSimilarNotesView extends Component {
     }
     const ownerWindow = this.containerEl.ownerDocument.defaultView;
     if (ownerWindow) {
-      this.registerDomEvent(ownerWindow, 'resize', () => this.position());
+      this.ownerWindow = ownerWindow;
+      ownerWindow.addEventListener('resize', this.onOwnerWindowResize);
     }
     const requestId = ++this.requestId;
     void this.options
@@ -274,7 +277,10 @@ class PagePreviewSimilarNotesView extends Component {
     this.requestId++;
     const resizeObserver = this.resizeObserver;
     this.resizeObserver = undefined;
+    const ownerWindow = this.ownerWindow;
+    this.ownerWindow = undefined;
     runAllCleanupSteps(
+      () => ownerWindow?.removeEventListener('resize', this.onOwnerWindowResize),
       () => resizeObserver?.disconnect(),
       () => this.options.popover.hoverEl.removeClass('hybrid-search-page-preview-with-similar'),
       () => this.containerEl.remove(),
