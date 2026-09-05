@@ -27,6 +27,8 @@ export interface HybridSearchSettings {
   lastQuery: string;
   showSimilarNotesAtBottom: boolean;
   similarNotesBottomLimit: number;
+  showSimilarNotesInPagePreview: boolean;
+  similarNotesPagePreviewLimit: number;
   similarNotesThreshold: number;
   searchPanelLimit: number;
   searchPanelThreshold: number;
@@ -59,6 +61,8 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   lastQuery: '',
   showSimilarNotesAtBottom: false,
   similarNotesBottomLimit: 5,
+  showSimilarNotesInPagePreview: false,
+  similarNotesPagePreviewLimit: 5,
   similarNotesThreshold: 0,
   searchPanelLimit: 20,
   searchPanelThreshold: 0,
@@ -103,6 +107,16 @@ export function normalizeSettings(settings: HybridSearchSettings): HybridSearchS
         ? settings.defaultSearchFilters
         : DEFAULT_SETTINGS.defaultSearchFilters,
     customPostfixes: normalizeCustomPostfixes(settings.customPostfixes),
+    showSimilarNotesInPagePreview:
+      typeof settings.showSimilarNotesInPagePreview === 'boolean'
+        ? settings.showSimilarNotesInPagePreview
+        : DEFAULT_SETTINGS.showSimilarNotesInPagePreview,
+    similarNotesPagePreviewLimit: clampInteger(
+      settings.similarNotesPagePreviewLimit,
+      1,
+      20,
+      DEFAULT_SETTINGS.similarNotesPagePreviewLimit,
+    ),
     inlineSearchEnabled:
       typeof settings.inlineSearchEnabled === 'boolean'
         ? settings.inlineSearchEnabled
@@ -544,6 +558,13 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     inlineSearchSettingsEl.hidden = !this.plugin.settings.inlineSearchEnabled;
 
     const similarEl = this.addSection(containerEl, 'Similar notes', 'git-compare');
+    const updateSimilarSettingsVisibility = () => {
+      bottomSimilarSettingsEl.hidden = !this.plugin.settings.showSimilarNotesAtBottom;
+      pagePreviewSimilarSettingsEl.hidden = !this.plugin.settings.showSimilarNotesInPagePreview;
+      sharedSimilarSettingsEl.hidden =
+        !this.plugin.settings.showSimilarNotesAtBottom &&
+        !this.plugin.settings.showSimilarNotesInPagePreview;
+    };
 
     new Setting(similarEl)
       .setName('Show similar notes at bottom')
@@ -553,13 +574,13 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           this.plugin.settings.showSimilarNotesAtBottom = value;
           await this.plugin.saveSettings();
           this.plugin.onSimilarNotesSettingsChanged?.();
-          similarNotesSettingsEl.hidden = !value;
+          updateSimilarSettingsVisibility();
         }),
       );
 
-    const similarNotesSettingsEl = similarEl.createDiv();
+    const bottomSimilarSettingsEl = similarEl.createDiv();
 
-    new Setting(similarNotesSettingsEl)
+    new Setting(bottomSimilarSettingsEl)
       .setName('Similar notes limit')
       .setDesc('Maximum number of similar notes shown at the bottom of a note.')
       .addText((text) =>
@@ -576,7 +597,42 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(similarNotesSettingsEl)
+    new Setting(similarEl)
+      .setName('Show similar notes in page preview')
+      .setDesc('Display a compact list of similar notes beside page preview.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showSimilarNotesInPagePreview)
+          .onChange(async (value) => {
+            this.plugin.settings.showSimilarNotesInPagePreview = value;
+            await this.plugin.saveSettings();
+            this.plugin.onSimilarNotesSettingsChanged?.();
+            updateSimilarSettingsVisibility();
+          }),
+      );
+
+    const pagePreviewSimilarSettingsEl = similarEl.createDiv();
+
+    new Setting(pagePreviewSimilarSettingsEl)
+      .setName('Page preview limit')
+      .setDesc('Maximum number of similar notes shown beside page preview.')
+      .addText((text) =>
+        text
+          .setPlaceholder('5')
+          .setValue(String(this.plugin.settings.similarNotesPagePreviewLimit))
+          .onChange(async (value) => {
+            const limit = Number(value);
+            if (Number.isInteger(limit) && limit >= 1 && limit <= 20) {
+              this.plugin.settings.similarNotesPagePreviewLimit = limit;
+              await this.plugin.saveSettings();
+              this.plugin.onSimilarNotesSettingsChanged?.();
+            }
+          }),
+      );
+
+    const sharedSimilarSettingsEl = similarEl.createDiv();
+
+    new Setting(sharedSimilarSettingsEl)
       .setName('Minimum similarity')
       .setDesc('Hide semantic results below this score. Use 0 to keep every result.')
       .addText((text) =>
@@ -593,7 +649,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           }),
       );
 
-    similarNotesSettingsEl.hidden = !this.plugin.settings.showSimilarNotesAtBottom;
+    updateSimilarSettingsVisibility();
 
     statusSection.renderDiagnostics(this.addSection(containerEl, 'Diagnostics', 'stethoscope'));
     void statusSection.refresh();

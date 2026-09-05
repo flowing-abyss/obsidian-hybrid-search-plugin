@@ -5,6 +5,14 @@
  */
 import { vi } from 'vitest';
 
+export function parseLinktext(linktext: string): { path: string; subpath: string } {
+  const subpathIndex = linktext.search(/[#^]/);
+  return {
+    path: subpathIndex === -1 ? linktext : linktext.slice(0, subpathIndex),
+    subpath: subpathIndex === -1 ? '' : linktext.slice(subpathIndex),
+  };
+}
+
 export class Workspace {
   trigger = vi.fn();
   getLeaf = vi.fn().mockReturnValue({ openFile: vi.fn().mockResolvedValue(undefined) });
@@ -50,10 +58,63 @@ export class App {
 }
 
 export class Component {
-  load(): void {}
-  unload(): void {}
+  private children: Component[] = [];
+  private cleanup: Array<() => void> = [];
+  private loaded = false;
+
+  load(): void {
+    if (this.loaded) return;
+    this.loaded = true;
+    this.onload();
+    for (const child of this.children) child.load();
+  }
+
+  unload(): void {
+    const children = this.children.splice(0);
+    const cleanup = this.cleanup.splice(0);
+    for (const child of children) child.unload();
+    for (const callback of cleanup) callback();
+    if (this.loaded) this.onunload();
+    this.loaded = false;
+  }
+
+  onload(): void {}
+  onunload(): void {}
+
+  addChild<T extends Component>(child: T): T {
+    this.children.push(child);
+    if (this.loaded) child.load();
+    return child;
+  }
+
+  removeChild<T extends Component>(child: T): T {
+    this.children = this.children.filter((entry) => entry !== child);
+    child.unload();
+    return child;
+  }
+
+  register(callback: () => void): void {
+    this.cleanup.push(callback);
+  }
+
   registerDomEvent(el: EventTarget, type: string, listener: EventListenerOrEventListenerObject) {
     el.addEventListener(type, listener);
+    this.register(() => el.removeEventListener(type, listener));
+  }
+}
+
+export class HoverPopover extends Component {
+  hoverEl = activeDocument.createDiv({ cls: 'popover hover-popover' });
+  state = {};
+
+  constructor(
+    parent: { hoverPopover: HoverPopover | null },
+    _targetEl: HTMLElement | null,
+    _waitTime?: number,
+    _staticPos?: { x: number; y: number } | null,
+  ) {
+    super();
+    parent.hoverPopover = this;
   }
 }
 

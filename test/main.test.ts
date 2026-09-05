@@ -34,6 +34,7 @@ vi.mock('../src/ipc', () => {
 import { App, Notice, SecretStorage, type PluginManifest } from 'obsidian';
 import HybridSearchPlugin from '../src/main';
 import { GraphWorkbenchView } from '../src/ui/GraphWorkbenchView';
+import { PagePreviewSimilarNotesManager } from '../src/ui/PagePreviewSimilarNotes';
 import { SearchModal } from '../src/ui/SearchModal';
 import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
 import { BODY_PANEL_CLASSES, createBodyPanel } from '../src/ui/strayPanels';
@@ -109,6 +110,36 @@ describe('HybridSearchPlugin', () => {
     expect(plugin.loadData).toHaveBeenCalled();
     expect(plugin.settings).toBeDefined();
     expect(plugin.settings.defaultMode).toBe('hybrid');
+  });
+
+  it('loads and unloads the page preview similar notes manager', async () => {
+    const load = vi.spyOn(PagePreviewSimilarNotesManager.prototype, 'load');
+    const unload = vi.spyOn(PagePreviewSimilarNotesManager.prototype, 'unload');
+
+    await plugin.onload();
+    plugin.onunload();
+
+    expect(load).toHaveBeenCalledOnce();
+    expect(unload).toHaveBeenCalledOnce();
+  });
+
+  it('forwards similar-note setting changes to the page preview manager', async () => {
+    const settingsChanged = vi.spyOn(PagePreviewSimilarNotesManager.prototype, 'settingsChanged');
+    await plugin.onload();
+
+    plugin.onSimilarNotesSettingsChanged();
+
+    expect(settingsChanged).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates page preview results after replacing the search client', async () => {
+    const clientChanged = vi.spyOn(PagePreviewSimilarNotesManager.prototype, 'clientChanged');
+    await plugin.onload();
+    clientChanged.mockClear();
+
+    plugin.restartClient();
+
+    expect(clientChanged).toHaveBeenCalledOnce();
   });
 
   it('initialises SearchClient with binary, vault path and api key', async () => {

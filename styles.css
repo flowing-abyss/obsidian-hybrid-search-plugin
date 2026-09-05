@@ -533,6 +533,116 @@ li.hybrid-search-semantic-match {
   flex: 0 0 auto;
 }
 
+/* Compact Similar notes companion attached to Obsidian's native Page Preview. */
+.popover.hover-popover.hybrid-search-page-preview-with-similar {
+  overflow: visible;
+}
+
+.popover.hover-popover.hybrid-search-page-preview-with-similar > .markdown-embed {
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.hybrid-search-page-preview-similar {
+  position: absolute;
+  left: var(--hybrid-search-page-preview-similar-left);
+  top: var(--hybrid-search-page-preview-similar-top);
+  z-index: 1;
+  box-sizing: border-box;
+  width: var(--hybrid-search-page-preview-similar-width);
+  max-height: var(--hybrid-search-page-preview-similar-max-height);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--text-normal);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-l2);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.hybrid-search-page-preview-similar-heading {
+  padding: var(--size-4-2) var(--size-4-4) var(--size-4-1);
+  color: var(--nav-heading-color);
+  font-size: var(--font-ui-small);
+  font-weight: var(--nav-heading-weight);
+}
+
+.hybrid-search-page-preview-similar .search-result-container {
+  margin: 0;
+  padding: 0 var(--size-4-2) var(--size-4-1);
+}
+
+.hybrid-search-page-preview-similar .search-results-children,
+.hybrid-search-page-preview-similar .hybrid-search-similar-result {
+  margin: 0;
+  padding: 0;
+}
+
+.hybrid-search-page-preview-similar .search-result-file-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: var(--size-2-3) var(--size-4-2);
+  border: 0;
+  border-radius: var(--radius-s);
+  box-shadow: none;
+  background: transparent;
+}
+
+.hybrid-search-page-preview-similar .search-result-file-title:hover {
+  background: var(--background-modifier-hover);
+}
+
+.hybrid-search-page-preview-similar .search-result-file-title::after,
+.hybrid-search-page-preview-similar .hybrid-search-similar-result::after {
+  display: none;
+}
+
+.hybrid-search-page-preview-similar .tree-item-icon.collapse-icon {
+  position: static;
+  flex: 0 0 auto;
+  margin-left: 0;
+  margin-right: var(--size-2-2);
+  color: var(--text-faint);
+}
+
+.hybrid-search-page-preview-similar .hybrid-search-similar-note-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hybrid-search-page-preview-similar .tree-item-flair-outer {
+  flex: 0 0 auto;
+  margin-left: var(--size-4-2);
+}
+
+.hybrid-search-page-preview-similar .tree-item-flair {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: 0.75em;
+  line-height: 1;
+}
+
+.hybrid-search-page-preview-similar .search-result-file-matches {
+  margin: 0 var(--size-4-2) var(--size-4-1) calc(var(--size-4-5) + var(--size-2-2));
+  padding: 0;
+}
+
+.hybrid-search-page-preview-similar .search-result-file-match {
+  padding: var(--size-4-1) var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+  white-space: normal;
+}
+
 /* Docked search panel */
 .hybrid-search-panel {
   display: flex;
