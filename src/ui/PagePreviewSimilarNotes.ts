@@ -315,6 +315,7 @@ class PagePreviewSimilarNotesView extends Component {
       '--hybrid-search-page-preview-similar-top': `${placement.top}px`,
       '--hybrid-search-page-preview-similar-width': `${placement.width}px`,
       '--hybrid-search-page-preview-similar-max-height': `${placement.maxHeight}px`,
+      width: `${placement.width}px`,
     });
     this.containerEl.dataset.placement = placement.side;
     this.options.popover.hoverEl.addClass('hybrid-search-page-preview-with-similar');

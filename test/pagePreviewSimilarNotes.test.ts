@@ -387,6 +387,7 @@ describe('PagePreviewSimilarNotesManager', () => {
     expect(companion.style.getPropertyValue('--hybrid-search-page-preview-similar-width')).toBe(
       '600px',
     );
+    expect(companion.style.width).toBe('600px');
     expect(
       companion.style.getPropertyValue('--hybrid-search-page-preview-similar-max-height'),
     ).toBe('182px');
