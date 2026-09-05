@@ -442,6 +442,50 @@ describe('PagePreviewSimilarNotesManager', () => {
     targetEl.remove();
   });
 
+  it('keeps a below companion in place when expanding a result needs scrolling', async () => {
+    let resolveSearch!: (results: SearchResult[]) => void;
+    const searchPromise = new Promise<SearchResult[]>((resolve) => {
+      resolveSearch = resolve;
+    });
+    const harness = createHarness(vi.fn().mockReturnValue(searchPromise));
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+    vi.spyOn(popover.hoverEl, 'getBoundingClientRect').mockReturnValue({
+      left: 600,
+      top: 300,
+      right: 1200,
+      bottom: 700,
+      width: 600,
+      height: 400,
+    } as DOMRect);
+    Object.defineProperty(activeWindow, 'innerWidth', { value: 1900, configurable: true });
+    Object.defineProperty(activeWindow, 'innerHeight', { value: 900, configurable: true });
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+    const companion = popover.hoverEl.querySelector<HTMLElement>(
+      '.hybrid-search-page-preview-similar',
+    )!;
+    Object.defineProperty(companion, 'scrollHeight', {
+      get: () => (companion.querySelector('.search-result-file-match') ? 360 : 180),
+      configurable: true,
+    });
+    resolveSearch([related]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(companion.dataset.placement).toBe('below');
+
+    companion.querySelector<HTMLElement>('.collapse-icon')?.click();
+
+    expect(companion.dataset.placement).toBe('below');
+    expect(
+      companion.style.getPropertyValue('--hybrid-search-page-preview-similar-max-height'),
+    ).toBe('192px');
+    expect(companion.querySelector('.search-result-file-match')).not.toBeNull();
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
   it('keeps a no-space companion hidden across repeated callbacks and restores it on resize', async () => {
     let resolveSearch!: (results: SearchResult[]) => void;
     const searchPromise = new Promise<SearchResult[]>((resolve) => {
@@ -541,7 +585,18 @@ describe('PagePreviewSimilarNotesManager', () => {
     expect(companion.dataset.placement).toBe('right');
 
     Object.defineProperty(activeWindow, 'innerHeight', { value: 1200, configurable: true });
-    resizeCallback?.([], {} as ResizeObserver);
+    resizeCallback?.(
+      [
+        {
+          target: popover.hoverEl,
+          borderBoxSize: [],
+          contentBoxSize: [],
+          contentRect: new DOMRectReadOnly(),
+          devicePixelContentBoxSize: [],
+        },
+      ],
+      {} as ResizeObserver,
+    );
     expect(companion.dataset.placement).toBe('below');
     expect(observe).toHaveBeenCalledWith(popover.hoverEl);
     expect(observe).toHaveBeenCalledWith(companion);

@@ -11,6 +11,7 @@ import type HybridSearchPlugin from '../main';
 import { runAllCleanupSteps } from './cleanup';
 import type { SimilarNotesFetchResult } from './noteUtils';
 import { fetchSimilarNotesDetailed } from './noteUtils';
+import type { PagePreviewPlacementSide } from './pagePreviewPlacement';
 import { calculatePagePreviewCompanionPlacement } from './pagePreviewPlacement';
 import { SimilarNotesResults } from './SimilarNotesResults';
 
@@ -189,9 +190,10 @@ class PagePreviewSimilarNotesView extends Component {
   private resizeObserver?: ResizeObserver;
   private ownerWindow?: Window;
   private lastContentHeight?: number;
+  private placementSide?: PagePreviewPlacementSide;
   private requestId = 0;
   private ownerCleaned = false;
-  private readonly onOwnerWindowResize = () => this.position();
+  private readonly onOwnerWindowResize = () => this.position(true);
 
   constructor(private readonly options: PagePreviewSimilarNotesViewOptions) {
     super();
@@ -221,7 +223,9 @@ class PagePreviewSimilarNotesView extends Component {
 
   override onload(): void {
     if (typeof ResizeObserver !== 'undefined') {
-      this.resizeObserver = new ResizeObserver(() => this.position());
+      this.resizeObserver = new ResizeObserver((entries) =>
+        this.position(entries.some((entry) => entry.target === this.options.popover.hoverEl)),
+      );
       this.resizeObserver.observe(this.options.popover.hoverEl);
       this.resizeObserver.observe(this.containerEl);
     }
@@ -293,7 +297,7 @@ class PagePreviewSimilarNotesView extends Component {
     );
   }
 
-  private position(): void {
+  private position(allowSideChange = false): void {
     if (!this.result || !this.containerEl.isConnected) return;
     const ownerWindow = this.containerEl.ownerDocument.defaultView;
     if (!ownerWindow) return;
@@ -310,13 +314,20 @@ class PagePreviewSimilarNotesView extends Component {
     const contentHeight = this.containerEl.hidden
       ? (this.lastContentHeight ?? measuredContentHeight)
       : measuredContentHeight;
-    const placement = calculatePagePreviewCompanionPlacement({
+    const placementInput = {
       previewRect: this.options.popover.hoverEl.getBoundingClientRect(),
       viewportWidth: ownerWindow.innerWidth,
       viewportHeight: ownerWindow.innerHeight,
       contentHeight,
       borderHeight,
+    };
+    let placement = calculatePagePreviewCompanionPlacement({
+      ...placementInput,
+      preferredSide: allowSideChange ? undefined : this.placementSide,
     });
+    if (!placement && !allowSideChange && this.placementSide) {
+      placement = calculatePagePreviewCompanionPlacement(placementInput);
+    }
     if (!placement) {
       this.containerEl.hidden = true;
       this.options.popover.hoverEl.removeClass('hybrid-search-page-preview-with-similar');
@@ -330,6 +341,7 @@ class PagePreviewSimilarNotesView extends Component {
       width: `${placement.width}px`,
     });
     this.containerEl.dataset.placement = placement.side;
+    this.placementSide = placement.side;
     this.options.popover.hoverEl.addClass('hybrid-search-page-preview-with-similar');
     this.containerEl.hidden = false;
   }
