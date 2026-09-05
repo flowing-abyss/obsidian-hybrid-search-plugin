@@ -244,6 +244,57 @@ describe('PagePreviewSimilarNotesManager', () => {
     targetEl.remove();
   });
 
+  it('waits through Obsidian native 300 ms page preview delay', async () => {
+    const harness = createHarness();
+    const targetEl = activeDocument.body.createDiv();
+    const hoverParent: HoverParent = { hoverPopover: null };
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(299);
+    const popover = new HoverPopover(hoverParent, targetEl);
+    activeDocument.body.appendChild(popover.hoverEl);
+    popover.load();
+    vi.advanceTimersByTime(1);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(popover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).not.toBeNull();
+    expect(harness.search).toHaveBeenCalled();
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('does not attach a result to a popover opened for another link', async () => {
+    const harness = createHarness();
+    const targetEl = activeDocument.body.createDiv();
+    const otherTargetEl = activeDocument.body.createDiv();
+    const hoverParent: HoverParent = { hoverPopover: null };
+
+    harness.emitHover(hoverParent, targetEl);
+    const unrelatedPopover = new HoverPopover(hoverParent, otherTargetEl);
+    activeDocument.body.appendChild(unrelatedPopover.hoverEl);
+    unrelatedPopover.load();
+    vi.advanceTimersByTime(150);
+
+    expect(
+      unrelatedPopover.hoverEl.querySelector('.hybrid-search-page-preview-similar'),
+    ).toBeNull();
+
+    const expectedPopover = new HoverPopover(hoverParent, targetEl);
+    activeDocument.body.appendChild(expectedPopover.hoverEl);
+    expectedPopover.load();
+    vi.advanceTimersByTime(150);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(expectedPopover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).not.toBe(
+      null,
+    );
+    harness.manager.unload();
+    targetEl.remove();
+    otherTargetEl.remove();
+  });
+
   it('deduplicates concurrent requests for the same previewed note', async () => {
     let resolveSearch!: (results: SearchResult[]) => void;
     const searchPromise = new Promise<SearchResult[]>((resolve) => {

@@ -101,7 +101,7 @@ export class HoverPopover extends Component {
 
   constructor(
     parent: { hoverPopover: HoverPopover | null },
-    _targetEl: HTMLElement | null,
+    readonly targetEl: HTMLElement | null,
     _waitTime?: number,
     _staticPos?: { x: number; y: number } | null,
   ) {

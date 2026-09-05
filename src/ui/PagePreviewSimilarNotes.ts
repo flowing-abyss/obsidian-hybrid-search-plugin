@@ -100,7 +100,7 @@ export class PagePreviewSimilarNotesManager {
         this.timers.delete(timer);
       }
     };
-    for (const delay of [0, 25, 75, 150]) {
+    for (const delay of [0, 25, 75, 150, 300, 350, 500, 750, 1_000]) {
       const timer = window.setTimeout(() => {
         this.timers.delete(timer);
         if (generation !== this.generation || !payload.targetEl.isConnected) {
@@ -109,6 +109,8 @@ export class PagePreviewSimilarNotesManager {
         }
         const popover = payload.hoverParent.hoverPopover;
         if (!popover) return;
+        const popoverTarget = (popover as HoverPopover & { targetEl?: HTMLElement }).targetEl;
+        if (popoverTarget && popoverTarget !== payload.targetEl) return;
         cancelAttempt();
         if (this.attachedPopovers.has(popover)) return;
         this.attach(popover, file);
