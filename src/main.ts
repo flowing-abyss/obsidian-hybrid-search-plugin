@@ -10,6 +10,7 @@ import {
   revealGraphWorkbench,
 } from './ui/GraphWorkbenchView';
 import { InlineSearchSuggest } from './ui/InlineSearchSuggest';
+import { PagePreviewSimilarNotesManager } from './ui/PagePreviewSimilarNotes';
 import { SearchModal } from './ui/SearchModal';
 import { revealSearchPanel, SEARCH_PANEL_VIEW_TYPE, SearchPanelView } from './ui/SearchPanelView';
 import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
@@ -22,6 +23,7 @@ export default class HybridSearchPlugin extends Plugin {
   settings!: HybridSearchSettings;
   client?: SearchClient | HttpSearchClient;
   private similarNotesBottom?: SimilarNotesBottomManager;
+  private pagePreviewSimilarNotes?: PagePreviewSimilarNotesManager;
   private graphWorkbenchRefreshTimer?: number;
   private activeSearchModals = new Set<SearchModal>();
 
@@ -68,6 +70,8 @@ export default class HybridSearchPlugin extends Plugin {
 
     this.similarNotesBottom = new SimilarNotesBottomManager(this.app, this);
     this.similarNotesBottom.load();
+    this.pagePreviewSimilarNotes = new PagePreviewSimilarNotesManager(this.app, this);
+    this.pagePreviewSimilarNotes.load();
 
     this.addCommand({
       id: 'open-search',
@@ -166,6 +170,7 @@ export default class HybridSearchPlugin extends Plugin {
             this.graphWorkbenchRefreshTimer = undefined;
           }
         },
+        () => this.pagePreviewSimilarNotes?.unload(),
         () => this.similarNotesBottom?.unload(),
         () => this.client?.dispose(),
       );
@@ -234,6 +239,7 @@ export default class HybridSearchPlugin extends Plugin {
             (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.() ?? '',
             getApiKey(this.app),
           );
+    this.pagePreviewSimilarNotes?.clientChanged();
 
     this.client.waitReady(30_000).catch((err: unknown) => {
       if (startupFailureCoveredByStatus) return;
@@ -272,6 +278,7 @@ export default class HybridSearchPlugin extends Plugin {
 
   onSimilarNotesSettingsChanged(): void {
     this.similarNotesBottom?.settingsChanged();
+    this.pagePreviewSimilarNotes?.settingsChanged();
   }
 
   private refreshEndpointSensitiveViews(): void {
