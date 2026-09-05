@@ -13,6 +13,7 @@ export interface PagePreviewPlacementInput {
   viewportWidth: number;
   viewportHeight: number;
   contentHeight: number;
+  borderHeight?: number;
   gap?: number;
   minimumHeight?: number;
 }
@@ -22,10 +23,11 @@ export function calculatePagePreviewCompanionPlacement({
   viewportWidth,
   viewportHeight,
   contentHeight,
+  borderHeight = 0,
   gap = 8,
   minimumHeight = 96,
 }: PagePreviewPlacementInput): PagePreviewCompanionPlacement | null {
-  const desiredHeight = Math.min(contentHeight, previewRect.height);
+  const desiredHeight = Math.min(contentHeight + borderHeight, previewRect.height);
   const availableBelow = Math.max(0, viewportHeight - previewRect.bottom - gap);
   const availableRight = Math.max(0, viewportWidth - previewRect.right - gap);
   const availableLeft = Math.max(0, previewRect.left - gap);

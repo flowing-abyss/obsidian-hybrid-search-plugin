@@ -61,6 +61,18 @@ describe('calculatePagePreviewCompanionPlacement', () => {
     ).toBe(400);
   });
 
+  it('includes companion borders in its border-box maximum height', () => {
+    expect(
+      calculatePagePreviewCompanionPlacement({
+        previewRect,
+        viewportWidth: 1900,
+        viewportHeight: 1200,
+        contentHeight: 180,
+        borderHeight: 2,
+      })?.maxHeight,
+    ).toBe(182);
+  });
+
   it('uses a constrained below placement when no side fits but 96 pixels remain', () => {
     const narrowRect = { ...previewRect, left: 305, right: 905 };
 

@@ -292,11 +292,18 @@ class PagePreviewSimilarNotesView extends Component {
     if (!this.result || !this.containerEl.isConnected) return;
     const ownerWindow = this.containerEl.ownerDocument.defaultView;
     if (!ownerWindow) return;
+    const style = ownerWindow.getComputedStyle(this.containerEl);
+    const borderTopWidth = Number.parseFloat(style.borderTopWidth);
+    const borderBottomWidth = Number.parseFloat(style.borderBottomWidth);
+    const borderHeight =
+      (Number.isFinite(borderTopWidth) ? borderTopWidth : 0) +
+      (Number.isFinite(borderBottomWidth) ? borderBottomWidth : 0);
     const placement = calculatePagePreviewCompanionPlacement({
       previewRect: this.options.popover.hoverEl.getBoundingClientRect(),
       viewportWidth: ownerWindow.innerWidth,
       viewportHeight: ownerWindow.innerHeight,
       contentHeight: this.containerEl.scrollHeight,
+      borderHeight,
     });
     if (!placement) {
       this.containerEl.hidden = true;

@@ -362,6 +362,10 @@ describe('PagePreviewSimilarNotesManager', () => {
     } as DOMRect);
     Object.defineProperty(activeWindow, 'innerWidth', { value: 1900, configurable: true });
     Object.defineProperty(activeWindow, 'innerHeight', { value: 792, configurable: true });
+    vi.spyOn(activeWindow, 'getComputedStyle').mockReturnValue({
+      borderTopWidth: '1px',
+      borderBottomWidth: '1px',
+    } as CSSStyleDeclaration);
 
     harness.emitHover(hoverParent, targetEl);
     vi.advanceTimersByTime(0);
@@ -385,7 +389,7 @@ describe('PagePreviewSimilarNotesManager', () => {
     );
     expect(
       companion.style.getPropertyValue('--hybrid-search-page-preview-similar-max-height'),
-    ).toBe('180px');
+    ).toBe('182px');
     harness.manager.unload();
     targetEl.remove();
   });
