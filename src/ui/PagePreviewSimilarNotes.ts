@@ -37,6 +37,7 @@ interface CacheEntry {
 export class PagePreviewSimilarNotesManager {
   private readonly eventRefs: EventRef[] = [];
   private readonly timers = new Set<number>();
+  private readonly hoverAttempts = new WeakMap<HoverParent, number>();
   private readonly attachedPopovers = new WeakSet<HoverPopover>();
   private readonly views = new Set<PagePreviewSimilarNotesView>();
   private readonly cache = new Map<string, CacheEntry>();
@@ -61,8 +62,7 @@ export class PagePreviewSimilarNotesManager {
   unload(): void {
     this.generation++;
     this.cache.clear();
-    for (const timer of this.timers) window.clearTimeout(timer);
-    this.timers.clear();
+    this.clearAttachmentTimers();
     const views = [...this.views];
     this.views.clear();
     const cleanupSteps = views.map((view) => () => view.detach());
@@ -77,6 +77,8 @@ export class PagePreviewSimilarNotesManager {
   settingsChanged(): void {
     this.cache.clear();
     if (this.plugin.settings.showSimilarNotesInPagePreview) return;
+    this.generation++;
+    this.clearAttachmentTimers();
     const views = [...this.views];
     this.views.clear();
     runAllCleanupSteps(...views.map((view) => () => view.detach()));
@@ -88,6 +90,8 @@ export class PagePreviewSimilarNotesManager {
   }
 
   private handleHoverLink(payload: HoverLinkEventPayload): void {
+    const attempt = (this.hoverAttempts.get(payload.hoverParent) ?? 0) + 1;
+    this.hoverAttempts.set(payload.hoverParent, attempt);
     if (!this.plugin.settings.showSimilarNotesInPagePreview || !payload.targetEl.isConnected)
       return;
     const file = this.app.metadataCache.getFirstLinkpathDest(payload.linktext, payload.sourcePath);
@@ -103,14 +107,17 @@ export class PagePreviewSimilarNotesManager {
     for (const delay of [0, 25, 75, 150, 300, 350, 500, 750, 1_000]) {
       const timer = window.setTimeout(() => {
         this.timers.delete(timer);
-        if (generation !== this.generation || !payload.targetEl.isConnected) {
+        if (
+          generation !== this.generation ||
+          this.hoverAttempts.get(payload.hoverParent) !== attempt ||
+          !this.plugin.settings.showSimilarNotesInPagePreview ||
+          !payload.targetEl.isConnected
+        ) {
           cancelAttempt();
           return;
         }
         const popover = payload.hoverParent.hoverPopover;
         if (!popover) return;
-        const popoverTarget = (popover as HoverPopover & { targetEl?: HTMLElement }).targetEl;
-        if (popoverTarget && popoverTarget !== payload.targetEl) return;
         cancelAttempt();
         if (this.attachedPopovers.has(popover)) return;
         this.attach(popover, file);
@@ -132,6 +139,11 @@ export class PagePreviewSimilarNotesManager {
     });
     this.views.add(view);
     popover.addChild(view);
+  }
+
+  private clearAttachmentTimers(): void {
+    for (const timer of this.timers) window.clearTimeout(timer);
+    this.timers.clear();
   }
 
   private loadResults(file: TFile): Promise<SimilarNotesFetchResult> {
@@ -172,6 +184,7 @@ class PagePreviewSimilarNotesView extends Component {
   private result?: SimilarNotesFetchResult;
   private resizeObserver?: ResizeObserver;
   private requestId = 0;
+  private ownerCleaned = false;
 
   constructor(private readonly options: PagePreviewSimilarNotesViewOptions) {
     super();
@@ -229,13 +242,15 @@ class PagePreviewSimilarNotesView extends Component {
       });
   }
 
+  override unload(): void {
+    runAllCleanupSteps(
+      () => super.unload(),
+      () => this.cleanupOwner(),
+    );
+  }
+
   override onunload(): void {
-    this.requestId++;
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = undefined;
-    this.options.popover.hoverEl.removeClass('hybrid-search-page-preview-with-similar');
-    this.containerEl.remove();
-    this.options.onDetach();
+    this.cleanupOwner();
   }
 
   detach(): void {
@@ -251,6 +266,20 @@ class PagePreviewSimilarNotesView extends Component {
   private render(): void {
     if (!this.result) return;
     this.resultsView.render(this.result.results, this.result.scoreMode, this.expandedPaths);
+  }
+
+  private cleanupOwner(): void {
+    if (this.ownerCleaned) return;
+    this.ownerCleaned = true;
+    this.requestId++;
+    const resizeObserver = this.resizeObserver;
+    this.resizeObserver = undefined;
+    runAllCleanupSteps(
+      () => resizeObserver?.disconnect(),
+      () => this.options.popover.hoverEl.removeClass('hybrid-search-page-preview-with-similar'),
+      () => this.containerEl.remove(),
+      () => this.options.onDetach(),
+    );
   }
 
   private position(): void {
