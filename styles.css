@@ -564,7 +564,7 @@ li.hybrid-search-semantic-match {
 }
 
 .hybrid-search-page-preview-similar-heading {
-  padding: var(--size-4-2) var(--size-4-3) var(--size-4-1);
+  padding: var(--size-4-2) var(--size-4-4) var(--size-4-1);
   color: var(--nav-heading-color);
   font-size: var(--font-ui-small);
   font-weight: var(--nav-heading-weight);
@@ -572,7 +572,7 @@ li.hybrid-search-semantic-match {
 
 .hybrid-search-page-preview-similar .search-result-container {
   margin: 0;
-  padding: 0 var(--size-4-1) var(--size-4-1);
+  padding: 0 var(--size-4-2) var(--size-4-1);
 }
 
 .hybrid-search-page-preview-similar .search-results-children,
@@ -603,6 +603,7 @@ li.hybrid-search-semantic-match {
 
 .hybrid-search-page-preview-similar .tree-item-icon.collapse-icon {
   flex: 0 0 auto;
+  margin-left: 0;
   margin-right: var(--size-2-2);
   color: var(--text-faint);
 }
