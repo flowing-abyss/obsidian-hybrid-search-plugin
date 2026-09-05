@@ -594,9 +594,9 @@ describe('SimilarNotesBottomManager', () => {
     vi.advanceTimersByTime(150);
     await Promise.resolve();
     await Promise.resolve();
-    sizer
-      .querySelector<HTMLElement>('.hybrid-search-similar-note-link')
-      ?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, ctrlKey: true }));
+    const link = sizer.querySelector<HTMLElement>('.hybrid-search-similar-note-link');
+    link?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, ctrlKey: true }));
+    link?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, metaKey: true }));
 
     expect(trigger).toHaveBeenCalledWith(
       'hover-link',
@@ -605,6 +605,7 @@ describe('SimilarNotesBottomManager', () => {
         sourcePath: 'source.md',
       }),
     );
+    expect(trigger.mock.calls[0]![1].hoverParent).toBe(trigger.mock.calls[1]![1].hoverParent);
     manager.unload();
     vi.useRealTimers();
   });

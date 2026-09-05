@@ -6,21 +6,14 @@ import {
   TFile,
   type App,
   type EventRef,
+  type HoverParent,
   type WorkspaceLeaf,
 } from 'obsidian';
 import type { SearchResult } from '../ipc';
 import type HybridSearchPlugin from '../main';
 import { runAllCleanupSteps } from './cleanup';
-import { hookInternalLinks } from './linkHandler';
-import {
-  createTreeItemLink,
-  fetchSimilarNotesDetailed,
-  fileToDragWikiLink,
-  getResultTitle,
-  hookSuperchargedLinks,
-  unhookSuperchargedLinks,
-  type SuperchargedWatch,
-} from './noteUtils';
+import { fetchSimilarNotesDetailed, fileToDragWikiLink, getResultTitle } from './noteUtils';
+import { SimilarNotesResults } from './SimilarNotesResults';
 import { stampPanelOwner } from './strayPanels';
 
 const WATCH_ID_PREFIX = 'hybrid-search-similar-bottom';
@@ -172,6 +165,8 @@ class SimilarNotesBottomView extends Component {
   private readonly thresholdInputEl: HTMLInputElement;
   private readonly titleWrapEl: HTMLElement;
   private readonly expandAllButtonEl: HTMLButtonElement;
+  private readonly hoverParent: HoverParent = { hoverPopover: null };
+  private readonly resultsView: SimilarNotesResults;
   private expandedPaths = new Set<string>();
   private results: SearchResult[] = [];
   private filterQuery = '';
@@ -271,8 +266,16 @@ class SimilarNotesBottomView extends Component {
     });
 
     this.resultsEl = pane.createDiv({ cls: 'search-result-container' });
-    this.hookLinks();
-    this.registerDomEvent(this.containerEl, 'click', (evt) => this.handleClick(evt));
+    this.resultsView = new SimilarNotesResults({
+      app: this.app,
+      containerEl: this.resultsEl,
+      ownerId: this.plugin.manifest.id,
+      watchId: `${WATCH_ID_PREFIX}-${this.viewId}`,
+      getSourcePath: (targetEl) => this.getSourcePathForLink(targetEl),
+      hoverParent: this.hoverParent,
+      onToggle: (path) => this.toggleResult(path),
+    });
+    this.resultsView.load();
     this.registerDomEvent(this.searchInputEl, 'input', () => {
       this.filterQuery = this.searchInputEl.value.trim().toLowerCase();
       this.renderResults(this.results);
@@ -287,13 +290,6 @@ class SimilarNotesBottomView extends Component {
       void this.plugin.saveSettings();
       this.refresh(true);
     });
-    hookSuperchargedLinks(
-      this.app,
-      this.slWatch,
-      this.containerEl,
-      '.hybrid-search-similar-note-link',
-      'search-result-file-title',
-    );
   }
 
   getContainerEl(): HTMLElement {
@@ -313,14 +309,10 @@ class SimilarNotesBottomView extends Component {
   override unload(): void {
     this.requestId++;
     runAllCleanupSteps(
-      () => unhookSuperchargedLinks(this.app, this.slWatch),
+      () => this.resultsView.unload(),
       () => super.unload(),
       () => this.containerEl.remove(),
     );
-  }
-
-  private get slWatch(): SuperchargedWatch {
-    return { ownerId: this.plugin.manifest.id, id: `${WATCH_ID_PREFIX}-${this.viewId}` };
   }
 
   private async loadResults(file: TFile, silent: boolean): Promise<void> {
@@ -386,81 +378,7 @@ class SimilarNotesBottomView extends Component {
       this.resultsEl.createDiv({ cls: 'search-empty-state', text: 'No similar notes found.' });
       return;
     }
-
-    const children = this.resultsEl.createDiv({ cls: 'search-results-children' });
-    for (const result of filtered) {
-      const nfcPath = result.path.normalize('NFC');
-      const isExpanded = this.expandedPaths.has(nfcPath);
-      const row = children.createDiv({
-        cls: `tree-item hybrid-search-similar-result${isExpanded ? '' : ' is-collapsed'}`,
-      });
-      const titleRow = row.createDiv({
-        cls: 'tree-item-self search-result-file-title is-clickable',
-      });
-      const collapseIcon = titleRow.createDiv({
-        cls: `tree-item-icon collapse-icon${isExpanded ? '' : ' is-collapsed'}`,
-      });
-      setIcon(collapseIcon, 'right-triangle');
-      collapseIcon.dataset.path = nfcPath;
-      collapseIcon.setAttribute('aria-label', isExpanded ? 'Collapse result' : 'Expand result');
-      const title = getResultTitle(this.app, result);
-      createTreeItemLink(this.app, titleRow, result.path, title, 'hybrid-search-similar-note-link');
-      const flairOuter = titleRow.createDiv({ cls: 'tree-item-flair-outer' });
-      flairOuter.createDiv({
-        cls: 'tree-item-flair',
-        text: this.scoreMode === 'similarity' && result.score > 0 ? result.score.toFixed(2) : '',
-      });
-      if (isExpanded && result.snippet) {
-        const matches = row.createDiv({
-          cls: 'search-result-file-matches',
-          attr: { 'data-source-path': nfcPath },
-        });
-        const match = matches.createDiv({
-          cls: 'search-result-file-match tappable',
-          attr: { 'data-source-path': nfcPath },
-        });
-        match.textContent = result.snippet;
-      }
-    }
-  }
-
-  private handleClick(evt: Event): void {
-    const mouseEvt = evt as MouseEvent;
-    const collapseIcon = (mouseEvt.target as HTMLElement).closest<HTMLElement>('.collapse-icon');
-    if (collapseIcon?.dataset.path) {
-      mouseEvt.preventDefault();
-      mouseEvt.stopPropagation();
-      this.toggleResult(collapseIcon.dataset.path);
-    }
-  }
-
-  private hookLinks(): void {
-    hookInternalLinks(
-      this.containerEl,
-      this.app,
-      (targetEl) => this.getSourcePathForLink(targetEl),
-      {
-        onHoverPreview: (evt, targetEl, href) => {
-          const sourcePath = this.getSourcePathForLink(targetEl);
-          // @ts-ignore - hover-link is not typed in the public Obsidian API.
-          this.app.workspace.trigger('hover-link', {
-            event: evt,
-            source: 'similar-notes',
-            hoverParent: { hoverPopover: null },
-            targetEl,
-            linktext: href,
-            sourcePath,
-          });
-        },
-        onOpenFile: (file, background) => {
-          if (background) {
-            void this.app.workspace.getLeaf('tab').openFile(file, { active: false });
-          } else {
-            void this.app.workspace.getLeaf(false).openFile(file);
-          }
-        },
-      },
-    );
+    this.resultsView.render(filtered, this.scoreMode, this.expandedPaths);
   }
 
   private getSourcePathForLink(targetEl?: HTMLElement): string {
