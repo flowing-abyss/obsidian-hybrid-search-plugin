@@ -22,6 +22,8 @@ data.json
 .DS_Store
 
 docs/
+# Agent design and planning documents are local-only. Never force-add them.
+docs/superpowers/
 coverage/
 
 # ai
@@ -31,3 +33,6 @@ coverage/
 .pi
 .zed
 .opencode
+
+# Local isolated development workspaces
+.worktrees/
