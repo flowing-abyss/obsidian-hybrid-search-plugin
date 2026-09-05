@@ -36,15 +36,20 @@ function createHarness(search = vi.fn().mockResolvedValue([related])) {
     manager,
     plugin,
     search,
-    emitHover(hoverParent: HoverParent, targetEl: HTMLElement, linktext = 'target') {
-      hoverCallback?.({
+    emitHover(
+      hoverParent: HoverParent,
+      targetEl: HTMLElement,
+      linktext = 'target',
+      sourcePath: string | null = 'source.md',
+    ) {
+      const payload = {
         event: new MouseEvent('mouseover', { ctrlKey: true }),
         source: 'markdown',
         hoverParent,
         targetEl,
         linktext,
-        sourcePath: 'source.md',
-      });
+      };
+      hoverCallback?.(sourcePath === null ? payload : { ...payload, sourcePath });
     },
   };
 }
@@ -86,6 +91,48 @@ describe('PagePreviewSimilarNotesManager', () => {
 
     expect(harness.search).not.toHaveBeenCalled();
     expect(activeDocument.querySelector('.hybrid-search-page-preview-similar')).toBeNull();
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('resolves heading and block hover links using their file path', () => {
+    const harness = createHarness();
+    const resolver = vi.fn((linktext: string, sourcePath: string) => {
+      if (linktext === 'Folder/Target.md' && sourcePath === 'source.md') {
+        return Object.assign(new TFile(), { path: 'Folder/Target.md', extension: 'md' });
+      }
+      return null;
+    });
+    harness.app.metadataCache.getFirstLinkpathDest = resolver;
+    const targetEl = activeDocument.body.createDiv();
+    const hoverParent: HoverParent = { hoverPopover: null };
+
+    harness.emitHover(hoverParent, targetEl, 'Folder/Target.md#Overview');
+    harness.emitHover(hoverParent, targetEl, 'Folder/Target.md^summary-block');
+
+    expect(resolver).toHaveBeenNthCalledWith(1, 'Folder/Target.md', 'source.md');
+    expect(resolver).toHaveBeenNthCalledWith(2, 'Folder/Target.md', 'source.md');
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('resolves a directory-qualified hover link without a source path', () => {
+    const harness = createHarness();
+    const resolver = vi.fn((linktext: string, sourcePath: string) => {
+      if (linktext === 'Folder/Target.md' && sourcePath === '') {
+        return Object.assign(new TFile(), { path: 'Folder/Target.md', extension: 'md' });
+      }
+      return null;
+    });
+    harness.app.metadataCache.getFirstLinkpathDest = resolver;
+    const targetEl = activeDocument.body.createDiv();
+    const hoverParent: HoverParent = { hoverPopover: null };
+
+    expect(() => {
+      harness.emitHover(hoverParent, targetEl, 'Folder/Target.md', null);
+    }).not.toThrow();
+
+    expect(resolver).toHaveBeenCalledWith('Folder/Target.md', '');
     harness.manager.unload();
     targetEl.remove();
   });
@@ -391,6 +438,63 @@ describe('PagePreviewSimilarNotesManager', () => {
     expect(
       companion.style.getPropertyValue('--hybrid-search-page-preview-similar-max-height'),
     ).toBe('182px');
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('keeps a no-space companion hidden across repeated callbacks and restores it on resize', async () => {
+    let resolveSearch!: (results: SearchResult[]) => void;
+    const searchPromise = new Promise<SearchResult[]>((resolve) => {
+      resolveSearch = resolve;
+    });
+    const harness = createHarness(vi.fn().mockReturnValue(searchPromise));
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+    vi.spyOn(popover.hoverEl, 'getBoundingClientRect').mockReturnValue({
+      left: 305,
+      top: 300,
+      right: 905,
+      bottom: 700,
+      width: 600,
+      height: 400,
+    } as DOMRect);
+    Object.defineProperty(activeWindow, 'innerWidth', { value: 1210, configurable: true });
+    Object.defineProperty(activeWindow, 'innerHeight', { value: 790, configurable: true });
+    vi.spyOn(activeWindow, 'getComputedStyle').mockReturnValue({
+      borderTopWidth: '1px',
+      borderBottomWidth: '1px',
+    } as CSSStyleDeclaration);
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+    const companion = popover.hoverEl.querySelector<HTMLElement>(
+      '.hybrid-search-page-preview-similar',
+    )!;
+    Object.defineProperty(companion, 'scrollHeight', {
+      get: () => (companion.hidden ? 0 : 217),
+      configurable: true,
+    });
+    resolveSearch([related]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(companion.hidden).toBe(true);
+    expect(popover.hoverEl.classList.contains('hybrid-search-page-preview-with-similar')).toBe(
+      false,
+    );
+
+    activeWindow.dispatchEvent(new Event('resize'));
+
+    expect(companion.hidden).toBe(true);
+    expect(popover.hoverEl.classList.contains('hybrid-search-page-preview-with-similar')).toBe(
+      false,
+    );
+
+    Object.defineProperty(activeWindow, 'innerHeight', { value: 930, configurable: true });
+    activeWindow.dispatchEvent(new Event('resize'));
+
+    expect(companion.hidden).toBe(false);
+    expect(companion.dataset.placement).toBe('below');
     harness.manager.unload();
     targetEl.remove();
   });

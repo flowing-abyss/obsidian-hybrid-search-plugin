@@ -1,6 +1,7 @@
 import {
   Component,
   HoverPopover,
+  parseLinktext,
   TFile,
   type App,
   type EventRef,
@@ -19,7 +20,7 @@ interface HoverLinkEventPayload {
   hoverParent: HoverParent;
   targetEl: HTMLElement;
   linktext: string;
-  sourcePath: string;
+  sourcePath?: string;
 }
 
 interface HoverLinkWorkspace {
@@ -94,7 +95,10 @@ export class PagePreviewSimilarNotesManager {
     this.hoverAttempts.set(payload.hoverParent, attempt);
     if (!this.plugin.settings.showSimilarNotesInPagePreview || !payload.targetEl.isConnected)
       return;
-    const file = this.app.metadataCache.getFirstLinkpathDest(payload.linktext, payload.sourcePath);
+    const file = this.app.metadataCache.getFirstLinkpathDest(
+      parseLinktext(payload.linktext).path,
+      payload.sourcePath ?? '',
+    );
     if (!(file instanceof TFile) || file.extension !== 'md') return;
     const generation = this.generation;
     const attemptTimers: number[] = [];
@@ -184,6 +188,7 @@ class PagePreviewSimilarNotesView extends Component {
   private result?: SimilarNotesFetchResult;
   private resizeObserver?: ResizeObserver;
   private ownerWindow?: Window;
+  private lastContentHeight?: number;
   private requestId = 0;
   private ownerCleaned = false;
   private readonly onOwnerWindowResize = () => this.position();
@@ -298,11 +303,18 @@ class PagePreviewSimilarNotesView extends Component {
     const borderHeight =
       (Number.isFinite(borderTopWidth) ? borderTopWidth : 0) +
       (Number.isFinite(borderBottomWidth) ? borderBottomWidth : 0);
+    const measuredContentHeight = this.containerEl.scrollHeight;
+    if (!this.containerEl.hidden && measuredContentHeight > 0) {
+      this.lastContentHeight = measuredContentHeight;
+    }
+    const contentHeight = this.containerEl.hidden
+      ? (this.lastContentHeight ?? measuredContentHeight)
+      : measuredContentHeight;
     const placement = calculatePagePreviewCompanionPlacement({
       previewRect: this.options.popover.hoverEl.getBoundingClientRect(),
       viewportWidth: ownerWindow.innerWidth,
       viewportHeight: ownerWindow.innerHeight,
-      contentHeight: this.containerEl.scrollHeight,
+      contentHeight,
       borderHeight,
     });
     if (!placement) {

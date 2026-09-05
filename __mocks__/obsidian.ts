@@ -5,6 +5,14 @@
  */
 import { vi } from 'vitest';
 
+export function parseLinktext(linktext: string): { path: string; subpath: string } {
+  const subpathIndex = linktext.search(/[#^]/);
+  return {
+    path: subpathIndex === -1 ? linktext : linktext.slice(0, subpathIndex),
+    subpath: subpathIndex === -1 ? '' : linktext.slice(subpathIndex),
+  };
+}
+
 export class Workspace {
   trigger = vi.fn();
   getLeaf = vi.fn().mockReturnValue({ openFile: vi.fn().mockResolvedValue(undefined) });
