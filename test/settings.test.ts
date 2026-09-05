@@ -47,6 +47,8 @@ describe('DEFAULT_SETTINGS', () => {
   it('has similar notes and search panel defaults', () => {
     expect(DEFAULT_SETTINGS.showSimilarNotesAtBottom).toBe(false);
     expect(DEFAULT_SETTINGS.similarNotesBottomLimit).toBe(5);
+    expect(DEFAULT_SETTINGS.showSimilarNotesInPagePreview).toBe(false);
+    expect(DEFAULT_SETTINGS.similarNotesPagePreviewLimit).toBe(5);
     expect(DEFAULT_SETTINGS.similarNotesThreshold).toBe(0);
     expect(DEFAULT_SETTINGS.searchPanelLimit).toBe(20);
     expect(DEFAULT_SETTINGS.searchPanelThreshold).toBe(0);
@@ -62,6 +64,16 @@ describe('DEFAULT_SETTINGS', () => {
 });
 
 describe('normalizeSettings', () => {
+  it('normalizes invalid page preview similar-note settings', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      showSimilarNotesInPagePreview: 'yes' as never,
+      similarNotesPagePreviewLimit: 99,
+    });
+    expect(normalized.showSimilarNotesInPagePreview).toBe(false);
+    expect(normalized.similarNotesPagePreviewLimit).toBe(20);
+  });
+
   it('normalizes invalid inline search settings', () => {
     const normalized = normalizeSettings({
       ...DEFAULT_SETTINGS,
@@ -200,7 +212,9 @@ describe('HybridSearchSettingTab', () => {
       .filter((el) => !el.closest('[hidden]'))
       .map((el) => el.textContent);
     expect(names).toContain('Show similar notes at bottom');
+    expect(names).toContain('Show similar notes in page preview');
     expect(names).not.toContain('Similar notes limit');
+    expect(names).not.toContain('Page preview limit');
     expect(names).not.toContain('Minimum similarity');
     expect(names).not.toContain('Search panel limit');
   });
@@ -216,6 +230,23 @@ describe('HybridSearchSettingTab', () => {
       .map((el) => el.textContent);
     expect(names).toContain('Similar notes limit');
     expect(names).toContain('Minimum similarity');
+  });
+
+  it('shows only page preview controls and the shared threshold when only page preview is enabled', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const tab = new HybridSearchSettingTab(app, mockPlugin);
+    mockPlugin.settings = {
+      ...DEFAULT_SETTINGS,
+      showSimilarNotesInPagePreview: true,
+    };
+    tab.display();
+    const names = Array.from(tab.containerEl.querySelectorAll('.setting-item-name'))
+      .filter((el) => !el.closest('[hidden]'))
+      .map((el) => el.textContent);
+    expect(names).toContain('Page preview limit');
+    expect(names).toContain('Minimum similarity');
+    expect(names).not.toContain('Similar notes limit');
   });
 
   it('renders STDIO connection settings by default', async () => {
@@ -391,6 +422,36 @@ describe('HybridSearchSettingTab', () => {
     expect(plugin.settings.showSimilarNotesAtBottom).toBe(true);
     expect(plugin.saveSettings).toHaveBeenCalled();
     expect(plugin.onSimilarNotesSettingsChanged).toHaveBeenCalled();
+  });
+
+  it('page preview similar notes controls save and refresh preview views', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    const plugin = {
+      manifest: { id: 'hybrid-search' },
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS },
+      onSimilarNotesSettingsChanged: vi.fn(),
+    };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const toggleSetting = Setting.instances.find(
+      (setting) => setting.getName() === 'Show similar notes in page preview',
+    );
+    const limitSetting = Setting.instances.find(
+      (setting) => setting.getName() === 'Page preview limit',
+    );
+
+    expect(toggleSetting).toBeDefined();
+    expect(limitSetting).toBeDefined();
+    toggleSetting!.toggleComponents[0]!.triggerChange(true);
+    limitSetting!.textComponents[0]!.triggerChange('7');
+    await Promise.resolve();
+
+    expect(plugin.settings.showSimilarNotesInPagePreview).toBe(true);
+    expect(plugin.settings.similarNotesPagePreviewLimit).toBe(7);
+    expect(plugin.saveSettings).toHaveBeenCalledTimes(2);
+    expect(plugin.onSimilarNotesSettingsChanged).toHaveBeenCalledTimes(2);
   });
 
   it('showGraphPanel toggle updates settings', async () => {
