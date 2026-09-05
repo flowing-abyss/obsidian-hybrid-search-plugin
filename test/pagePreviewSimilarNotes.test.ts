@@ -1,0 +1,443 @@
+import { App, HoverPopover, TFile, type HoverParent } from 'obsidian';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SearchResult } from '../src/ipc';
+import { DEFAULT_SETTINGS } from '../src/settings';
+import { PagePreviewSimilarNotesManager } from '../src/ui/PagePreviewSimilarNotes';
+
+const related: SearchResult = {
+  path: 'related.md',
+  title: 'Related',
+  score: 0.82,
+  snippet: 'Relevant context from the related note.',
+  tags: [],
+  aliases: [],
+};
+
+function createHarness(search = vi.fn().mockResolvedValue([related])) {
+  const app = new App();
+  let hoverCallback: ((payload: unknown) => void) | undefined;
+  const workspaceOn = app.workspace.on as unknown as ReturnType<typeof vi.fn>;
+  workspaceOn.mockImplementation((eventName: string, callback: (payload: unknown) => void) => {
+    if (eventName === 'hover-link') hoverCallback = callback;
+    return {};
+  });
+  app.metadataCache.getFirstLinkpathDest = vi
+    .fn()
+    .mockReturnValue(Object.assign(new TFile(), { path: 'target.md', extension: 'md' }));
+  const plugin = {
+    manifest: { id: 'hybrid-search' },
+    settings: { ...DEFAULT_SETTINGS, showSimilarNotesInPagePreview: true },
+    client: { search },
+  };
+  const manager = new PagePreviewSimilarNotesManager(app, plugin as never);
+  manager.load();
+  return {
+    app,
+    manager,
+    plugin,
+    search,
+    emitHover(hoverParent: HoverParent, targetEl: HTMLElement) {
+      hoverCallback?.({
+        event: new MouseEvent('mouseover', { ctrlKey: true }),
+        source: 'markdown',
+        hoverParent,
+        targetEl,
+        linktext: 'target',
+        sourcePath: 'source.md',
+      });
+    },
+  };
+}
+
+function createLivePopover(targetEl: HTMLElement): {
+  hoverParent: HoverParent;
+  popover: HoverPopover;
+} {
+  const hoverParent: HoverParent = { hoverPopover: null };
+  const popover = new HoverPopover(hoverParent, targetEl);
+  activeDocument.body.appendChild(popover.hoverEl);
+  popover.load();
+  return { hoverParent, popover };
+}
+
+describe('PagePreviewSimilarNotesManager', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Object.defineProperty(activeWindow, 'innerWidth', { value: 1024, configurable: true });
+    Object.defineProperty(activeWindow, 'innerHeight', { value: 768, configurable: true });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    activeDocument
+      .querySelectorAll('.popover.hover-popover')
+      .forEach((element) => element.remove());
+  });
+
+  it('does nothing while the feature is disabled', () => {
+    const harness = createHarness();
+    harness.plugin.settings.showSimilarNotesInPagePreview = false;
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent } = createLivePopover(targetEl);
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.runAllTimers();
+
+    expect(harness.search).not.toHaveBeenCalled();
+    expect(activeDocument.querySelector('.hybrid-search-page-preview-similar')).toBeNull();
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('attaches hidden content to the native popover and renders live results', async () => {
+    let resolveSearch!: (results: SearchResult[]) => void;
+    const searchPromise = new Promise<SearchResult[]>((resolve) => {
+      resolveSearch = resolve;
+    });
+    const harness = createHarness(vi.fn().mockReturnValue(searchPromise));
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+
+    const companion = popover.hoverEl.querySelector<HTMLElement>(
+      '.hybrid-search-page-preview-similar',
+    );
+    expect(companion).not.toBeNull();
+    expect(companion?.hidden).toBe(true);
+
+    resolveSearch([related]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(companion?.hidden).toBe(false);
+    expect(
+      companion?.querySelector('.hybrid-search-page-preview-similar-heading')?.textContent,
+    ).toBe('Similar notes');
+    expect(companion?.querySelector('.hybrid-search-similar-note-link')?.textContent).toBe(
+      'Related',
+    );
+    expect(companion?.querySelector('.tree-item-flair')?.textContent).toBe('0.82');
+    expect(popover.hoverEl.classList.contains('hybrid-search-page-preview-with-similar')).toBe(
+      true,
+    );
+
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('removes the hidden companion when no similar notes exist', async () => {
+    const harness = createHarness(vi.fn().mockResolvedValue([]));
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.runAllTimers();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(popover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).toBeNull();
+    expect(popover.hoverEl.classList.contains('hybrid-search-page-preview-with-similar')).toBe(
+      false,
+    );
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('removes the hidden companion when loading fails', async () => {
+    const harness = createHarness(vi.fn().mockRejectedValue(new Error('offline')));
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.runAllTimers();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(popover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).toBeNull();
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('attaches only one companion when a popover emits repeated hover events', async () => {
+    const harness = createHarness();
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+
+    harness.emitHover(hoverParent, targetEl);
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(popover.hoverEl.querySelectorAll('.hybrid-search-page-preview-similar')).toHaveLength(1);
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('removes a live companion when the feature is disabled', async () => {
+    const harness = createHarness();
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(popover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).not.toBeNull();
+
+    harness.plugin.settings.showSimilarNotesInPagePreview = false;
+    harness.manager.settingsChanged();
+
+    expect(popover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).toBeNull();
+    expect(popover.hoverEl.classList.contains('hybrid-search-page-preview-with-similar')).toBe(
+      false,
+    );
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('ignores a result that arrives after manager unload', async () => {
+    let resolveSearch!: (results: SearchResult[]) => void;
+    const searchPromise = new Promise<SearchResult[]>((resolve) => {
+      resolveSearch = resolve;
+    });
+    const harness = createHarness(vi.fn().mockReturnValue(searchPromise));
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+
+    harness.manager.unload();
+    resolveSearch([related]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(popover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).toBeNull();
+    expect(popover.hoverEl.classList.contains('hybrid-search-page-preview-with-similar')).toBe(
+      false,
+    );
+    targetEl.remove();
+  });
+
+  it('waits for Obsidian to assign the native popover', async () => {
+    const harness = createHarness();
+    const targetEl = activeDocument.body.createDiv();
+    const hoverParent: HoverParent = { hoverPopover: null };
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+    const popover = new HoverPopover(hoverParent, targetEl);
+    activeDocument.body.appendChild(popover.hoverEl);
+    popover.load();
+    vi.advanceTimersByTime(25);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(popover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).not.toBeNull();
+    expect(harness.search).toHaveBeenCalled();
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('deduplicates concurrent requests for the same previewed note', async () => {
+    let resolveSearch!: (results: SearchResult[]) => void;
+    const searchPromise = new Promise<SearchResult[]>((resolve) => {
+      resolveSearch = resolve;
+    });
+    const harness = createHarness(vi.fn().mockReturnValue(searchPromise));
+    const firstTarget = activeDocument.body.createDiv();
+    const secondTarget = activeDocument.body.createDiv();
+    const first = createLivePopover(firstTarget);
+    const second = createLivePopover(secondTarget);
+
+    harness.emitHover(first.hoverParent, firstTarget);
+    harness.emitHover(second.hoverParent, secondTarget);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+
+    expect(harness.search).toHaveBeenCalledTimes(1);
+
+    resolveSearch([related]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(first.popover.hoverEl.querySelector('.hybrid-search-similar-note-link')).not.toBeNull();
+    expect(second.popover.hoverEl.querySelector('.hybrid-search-similar-note-link')).not.toBeNull();
+
+    harness.manager.unload();
+    firstTarget.remove();
+    secondTarget.remove();
+  });
+
+  it('positions the rendered companion using native preview geometry', async () => {
+    let resolveSearch!: (results: SearchResult[]) => void;
+    const searchPromise = new Promise<SearchResult[]>((resolve) => {
+      resolveSearch = resolve;
+    });
+    const harness = createHarness(vi.fn().mockReturnValue(searchPromise));
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+    vi.spyOn(popover.hoverEl, 'getBoundingClientRect').mockReturnValue({
+      left: 600,
+      top: 300,
+      right: 1200,
+      bottom: 700,
+      width: 600,
+      height: 400,
+    } as DOMRect);
+    Object.defineProperty(activeWindow, 'innerWidth', { value: 1900, configurable: true });
+    Object.defineProperty(activeWindow, 'innerHeight', { value: 792, configurable: true });
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+    const companion = popover.hoverEl.querySelector<HTMLElement>(
+      '.hybrid-search-page-preview-similar',
+    )!;
+    Object.defineProperty(companion, 'scrollHeight', { value: 180, configurable: true });
+    resolveSearch([related]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(companion.dataset.placement).toBe('right');
+    expect(companion.style.getPropertyValue('--hybrid-search-page-preview-similar-left')).toBe(
+      '608px',
+    );
+    expect(companion.style.getPropertyValue('--hybrid-search-page-preview-similar-top')).toBe(
+      '0px',
+    );
+    expect(companion.style.getPropertyValue('--hybrid-search-page-preview-similar-width')).toBe(
+      '600px',
+    );
+    expect(
+      companion.style.getPropertyValue('--hybrid-search-page-preview-similar-max-height'),
+    ).toBe('180px');
+    harness.manager.unload();
+    targetEl.remove();
+  });
+
+  it('repositions on resize and disconnects its observer on unload', async () => {
+    let resizeCallback: ResizeObserverCallback | undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    class ResizeObserverStub {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe = observe;
+      disconnect = disconnect;
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+    let resolveSearch!: (results: SearchResult[]) => void;
+    const searchPromise = new Promise<SearchResult[]>((resolve) => {
+      resolveSearch = resolve;
+    });
+    const harness = createHarness(vi.fn().mockReturnValue(searchPromise));
+    const targetEl = activeDocument.body.createDiv();
+    const { hoverParent, popover } = createLivePopover(targetEl);
+    vi.spyOn(popover.hoverEl, 'getBoundingClientRect').mockReturnValue({
+      left: 600,
+      top: 300,
+      right: 1200,
+      bottom: 700,
+      width: 600,
+      height: 400,
+    } as DOMRect);
+    Object.defineProperty(activeWindow, 'innerWidth', { value: 1900, configurable: true });
+    Object.defineProperty(activeWindow, 'innerHeight', { value: 792, configurable: true });
+
+    harness.emitHover(hoverParent, targetEl);
+    vi.advanceTimersByTime(0);
+    const companion = popover.hoverEl.querySelector<HTMLElement>(
+      '.hybrid-search-page-preview-similar',
+    )!;
+    Object.defineProperty(companion, 'scrollHeight', { value: 180, configurable: true });
+    resolveSearch([related]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(companion.dataset.placement).toBe('right');
+
+    Object.defineProperty(activeWindow, 'innerHeight', { value: 1200, configurable: true });
+    resizeCallback?.([], {} as ResizeObserver);
+    expect(companion.dataset.placement).toBe('below');
+    expect(observe).toHaveBeenCalledWith(popover.hoverEl);
+    expect(observe).toHaveBeenCalledWith(companion);
+
+    harness.manager.unload();
+    expect(disconnect).toHaveBeenCalledOnce();
+    targetEl.remove();
+  });
+
+  it('refreshes cached results after 30 seconds', async () => {
+    const harness = createHarness();
+    const firstTarget = activeDocument.body.createDiv();
+    const first = createLivePopover(firstTarget);
+    harness.emitHover(first.hoverParent, firstTarget);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(harness.search).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(30_001);
+    const secondTarget = activeDocument.body.createDiv();
+    const second = createLivePopover(secondTarget);
+    harness.emitHover(second.hoverParent, secondTarget);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+
+    expect(harness.search).toHaveBeenCalledTimes(2);
+    harness.manager.unload();
+    firstTarget.remove();
+    secondTarget.remove();
+  });
+
+  it('invalidates cached results when the client changes', async () => {
+    const harness = createHarness();
+    const firstTarget = activeDocument.body.createDiv();
+    const first = createLivePopover(firstTarget);
+    harness.emitHover(first.hoverParent, firstTarget);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(harness.search).toHaveBeenCalledTimes(1);
+
+    harness.manager.clientChanged();
+    const secondTarget = activeDocument.body.createDiv();
+    const second = createLivePopover(secondTarget);
+    harness.emitHover(second.hoverParent, secondTarget);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+
+    expect(harness.search).toHaveBeenCalledTimes(2);
+    harness.manager.unload();
+    firstTarget.remove();
+    secondTarget.remove();
+  });
+
+  it('continues unloading remaining companions and listeners after one detach fails', async () => {
+    const harness = createHarness();
+    const firstTarget = activeDocument.body.createDiv();
+    const secondTarget = activeDocument.body.createDiv();
+    const first = createLivePopover(firstTarget);
+    const second = createLivePopover(secondTarget);
+    harness.emitHover(first.hoverParent, firstTarget);
+    harness.emitHover(second.hoverParent, secondTarget);
+    vi.advanceTimersByTime(0);
+    await Promise.resolve();
+    await Promise.resolve();
+    const failure = new Error('detach failed');
+    vi.spyOn(first.popover, 'removeChild').mockImplementation(() => {
+      throw failure;
+    });
+
+    expect(() => harness.manager.unload()).toThrow(failure);
+
+    expect(second.popover.hoverEl.querySelector('.hybrid-search-page-preview-similar')).toBeNull();
+    expect(harness.app.workspace.offref).toHaveBeenCalled();
+    firstTarget.remove();
+    secondTarget.remove();
+  });
+});
