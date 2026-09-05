@@ -1,12 +1,13 @@
 import { App, Notice, PluginSettingTab, SecretComponent, Setting, setIcon } from 'obsidian';
 import type { HttpSearchClient, SearchClient } from './ipc';
-import { getApiKey, isSecretStorageAvailable, setApiKey } from './secrets';
+import { getApiKey, isSecretStorageAvailable } from './secrets';
 import type { CustomPostfix } from './ui/queryParser';
 import { isReservedPostfixName, normalizePostfixName } from './ui/queryParser';
 import { StatusSection } from './ui/statusSection';
 
 export interface HybridSearchSettings {
   binaryPath: string;
+  apiKeySecretId: string;
   transport: 'stdio' | 'http';
   httpHost: string;
   httpPort: number;
@@ -38,6 +39,7 @@ export interface HybridSearchSettings {
 
 export const DEFAULT_SETTINGS: HybridSearchSettings = {
   binaryPath: '',
+  apiKeySecretId: '',
   transport: 'stdio',
   httpHost: '127.0.0.1',
   httpPort: 3939,
@@ -94,6 +96,8 @@ function normalizeCustomPostfixes(value: unknown): CustomPostfix[] {
 export function normalizeSettings(settings: HybridSearchSettings): HybridSearchSettings {
   return {
     ...settings,
+    apiKeySecretId:
+      typeof settings.apiKeySecretId === 'string' ? settings.apiKeySecretId.trim() : '',
     defaultSearchFilters:
       typeof settings.defaultSearchFilters === 'string'
         ? settings.defaultSearchFilters
@@ -141,20 +145,15 @@ interface PluginRef {
 }
 
 const API_KEY_DESC =
-  'Optional. Needed only if your embedding provider requires authentication. ' +
-  'Stored in the Obsidian keychain, never in the vault.';
+  'Optional. Select an Obsidian secret if your embedding provider requires authentication. ' +
+  'Only the secret identifier is saved in plugin settings.';
 
 const API_KEY_UNSUPPORTED_DESC =
   'Optional. Storing a key requires Obsidian 1.11.4 or newer. On older versions, set OPENAI_API_KEY ' +
   'in the environment and use the HTTP connection mode with a server you start yourself.';
 
-const API_KEY_APPLY_DELAY_MS = 600;
-
 export class HybridSearchSettingTab extends PluginSettingTab {
   private statusSection: StatusSection | null = null;
-  private apiKeyApplyTimer = 0;
-  /** Runs the pending key edit if the tab closes before the debounce lands. */
-  private pendingApiKey: (() => void) | null = null;
 
   constructor(
     app: App,
@@ -171,7 +170,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     this.statusSection?.dispose();
     const statusSection = new StatusSection({
       settings: this.plugin.settings,
-      getApiKey: () => getApiKey(this.app),
+      getApiKey: () => getApiKey(this.app, this.plugin.settings.apiKeySecretId),
       getClient: () => this.plugin.client,
       getEndpointLabel: () => this.endpointLabel(),
     });
@@ -603,14 +602,6 @@ export class HybridSearchSettingTab extends PluginSettingTab {
   /** Settings tabs are re-rendered on every open, so a pending status request from a
    *  previous open must not paint into the detached tree it captured. */
   hide(): void {
-    // Flush rather than clear: the key is only written inside applyApiKey, so
-    // cancelling a pending edit would silently discard what the user just typed.
-    if (this.apiKeyApplyTimer !== 0) {
-      window.clearTimeout(this.apiKeyApplyTimer);
-      this.apiKeyApplyTimer = 0;
-      this.pendingApiKey?.();
-      this.pendingApiKey = null;
-    }
     this.statusSection?.dispose();
     this.statusSection = null;
   }
@@ -655,7 +646,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     return `${settings.httpHost}:${String(settings.httpPort)}`;
   }
 
-  /** Key field backed by the Obsidian keychain. Nothing about it reaches `data.json`. */
+  /** Secret picker backed by Obsidian SecretStorage; only its identifier is persisted. */
   private renderApiKeySetting(container: HTMLElement): void {
     const setting = new Setting(container).setName('Embedding API key');
 
@@ -666,43 +657,22 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     setting.setDesc(API_KEY_DESC);
 
-    // Shown only once the key actually changes, so the row stays quiet until it matters.
+    // Shown only once the selected secret changes, so the row stays quiet until it matters.
     const appliedHint = setting.descEl.createDiv({
       cls: 'hybrid-search-setting-alert',
-      text: 'Search server restarted with the new key.',
+      text: 'Search server restarted with the selected secret.',
     });
     appliedHint.hidden = true;
 
     const secret = new SecretComponent(this.app, setting.controlEl);
-    secret.setValue(getApiKey(this.app)).onChange((value) => {
-      // onChange fires per keystroke, and applying the key restarts the server
-      // process. Without this delay, pasting a key would restart it once per character.
-      window.clearTimeout(this.apiKeyApplyTimer);
-      this.pendingApiKey = () => {
-        this.applyApiKey(value, appliedHint);
-      };
-      this.apiKeyApplyTimer = window.setTimeout(() => {
-        this.apiKeyApplyTimer = 0;
-        this.pendingApiKey = null;
-        this.applyApiKey(value, appliedHint);
-      }, API_KEY_APPLY_DELAY_MS);
-    });
-  }
+    secret.setValue(this.plugin.settings.apiKeySecretId).onChange(async (value) => {
+      this.plugin.settings.apiKeySecretId = value.trim();
+      await this.plugin.saveSettings();
+      await this.plugin.restartClient?.();
 
-  private applyApiKey(value: string, appliedHint: HTMLElement): void {
-    try {
-      setApiKey(this.app, value);
-    } catch (err) {
-      new Notice(`Could not save the API key: ${err instanceof Error ? err.message : String(err)}`);
-      return;
-    }
-    // The cli reads its environment once at spawn, so a running process would
-    // otherwise keep using the previous key.
-    void Promise.resolve(this.plugin.restartClient?.()).then(() => {
-      // The settings tab may already be gone when a flush on hide() lands here.
       if (!appliedHint.isConnected) return;
       appliedHint.hidden = false;
-      return this.statusSection?.refresh();
+      await this.statusSection?.refresh();
     });
   }
 }

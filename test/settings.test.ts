@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Setting } from '../__mocks__/obsidian';
+import { SecretComponent, Setting } from '../__mocks__/obsidian';
 import type { HybridSearchSettings } from '../src/settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from '../src/settings';
 
@@ -62,6 +62,15 @@ describe('DEFAULT_SETTINGS', () => {
 });
 
 describe('normalizeSettings', () => {
+  it('defaults a missing or invalid secret identifier to empty', () => {
+    const normalized = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      apiKeySecretId: 42,
+    } as never);
+
+    expect(normalized.apiKeySecretId).toBe('');
+  });
+
   it('normalizes invalid inline search settings', () => {
     const normalized = normalizeSettings({
       ...DEFAULT_SETTINGS,
@@ -146,6 +155,7 @@ describe('normalizeSettings', () => {
 describe('HybridSearchSettingTab', () => {
   beforeEach(() => {
     Setting.clearInstances();
+    SecretComponent.clearInstances();
     vi.clearAllMocks();
   });
 
@@ -231,6 +241,37 @@ describe('HybridSearchSettingTab', () => {
     expect(names).toContain('Binary path');
     expect(names).not.toContain('HTTP host');
     expect(names).not.toContain('HTTP port');
+  });
+
+  it('binds the secret picker to its identifier and applies a new selection once', async () => {
+    const { App } = await import('obsidian');
+    const app = new App();
+    let finishSaving!: () => void;
+    const saving = new Promise<void>((resolve) => {
+      finishSaving = resolve;
+    });
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS, apiKeySecretId: 'existing-secret' },
+      saveSettings: vi.fn().mockReturnValue(saving),
+      restartClient: vi.fn().mockResolvedValue(undefined),
+    };
+    const tab = new HybridSearchSettingTab(app, plugin as never);
+
+    tab.display();
+    const secret = SecretComponent.instances[0];
+    expect(secret?.value).toBe('existing-secret');
+
+    const applying = secret?.triggerChange('ohs') as Promise<void>;
+
+    expect(plugin.settings.apiKeySecretId).toBe('ohs');
+    expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
+    expect(plugin.restartClient).not.toHaveBeenCalled();
+
+    finishSaving();
+    await applying;
+
+    expect(plugin.restartClient).toHaveBeenCalledTimes(1);
   });
 
   it('renders HTTP host and port settings in HTTP mode', async () => {

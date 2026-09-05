@@ -1,7 +1,7 @@
 import type { App, SecretStorage } from 'obsidian';
 
-/** Keychain entry id. Must be lowercase alphanumeric with optional dashes. */
-const API_KEY_SECRET_ID = 'obsidian-hybrid-search-openai-api-key';
+/** Fixed SecretStorage entry used by the broken 0.9.0–0.9.1 implementation. */
+const LEGACY_API_KEY_SECRET_ID = 'obsidian-hybrid-search-openai-api-key';
 
 /** `app.secretStorage` exists from Obsidian 1.11.4 onwards, which is what `minAppVersion`
  *  now requires. The runtime check stays anyway: it costs nothing and keeps the accessor
@@ -15,15 +15,26 @@ export function isSecretStorageAvailable(app: App): boolean {
   return secretStorage(app) !== null;
 }
 
-/** Embedding provider API key, or an empty string when unset or unsupported. */
-export function getApiKey(app: App): string {
+/** Resolve an embedding provider secret, or return an empty string when unavailable. */
+export function getApiKey(app: App, secretId: string): string {
+  if (!secretId) return '';
   try {
-    return secretStorage(app)?.getSecret(API_KEY_SECRET_ID) ?? '';
+    return secretStorage(app)?.getSecret(secretId)?.trim() ?? '';
   } catch {
     return '';
   }
 }
 
-export function setApiKey(app: App, value: string): void {
-  secretStorage(app)?.setSecret(API_KEY_SECRET_ID, value.trim());
+export function getLegacyApiKeySecretId(app: App): string {
+  try {
+    const storage = secretStorage(app);
+    const secretId = storage?.getSecret(LEGACY_API_KEY_SECRET_ID)?.trim() ?? '';
+    return secretId &&
+      secretId !== LEGACY_API_KEY_SECRET_ID &&
+      storage?.listSecrets().includes(secretId)
+      ? secretId
+      : '';
+  } catch {
+    return '';
+  }
 }

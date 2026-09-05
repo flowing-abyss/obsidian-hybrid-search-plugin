@@ -117,12 +117,51 @@ describe('HybridSearchPlugin', () => {
     expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault', '');
   });
 
-  it('passes the stored api key to SearchClient', async () => {
+  it('resolves the selected secret before passing the api key to SearchClient', async () => {
     const { SearchClient } = await import('../src/ipc');
-    const { setApiKey } = await import('../src/secrets');
-    setApiKey(plugin.app, 'sk-test-key');
+    mockApp.secretStorage.setSecret('ohs', 'sk-test-key');
+    plugin.loadData = vi.fn().mockResolvedValue({ apiKeySecretId: 'ohs' });
+
     await plugin.onload();
+
     expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault', 'sk-test-key');
+  });
+
+  it('migrates a live 0.9.x secret reference and starts with its resolved key', async () => {
+    const { SearchClient } = await import('../src/ipc');
+    mockApp.secretStorage.setSecret('obsidian-hybrid-search-openai-api-key', 'ohs');
+    mockApp.secretStorage.setSecret('ohs', 'sk-test-key');
+
+    await plugin.onload();
+
+    expect(plugin.settings.apiKeySecretId).toBe('ohs');
+    expect(plugin.saveData).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKeySecretId: 'ohs' }),
+    );
+    expect(JSON.stringify(vi.mocked(plugin.saveData).mock.calls)).not.toContain('sk-test-key');
+    expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault', 'sk-test-key');
+  });
+
+  it('does not migrate a dangling 0.9.x secret reference', async () => {
+    mockApp.secretStorage.setSecret('obsidian-hybrid-search-openai-api-key', 'missing');
+
+    await plugin.onload();
+
+    expect(plugin.settings.apiKeySecretId).toBe('');
+    expect(plugin.saveData).not.toHaveBeenCalled();
+  });
+
+  it('does not restore a legacy reference after the saved selection was cleared', async () => {
+    const { SearchClient } = await import('../src/ipc');
+    mockApp.secretStorage.setSecret('obsidian-hybrid-search-openai-api-key', 'ohs');
+    mockApp.secretStorage.setSecret('ohs', 'sk-test-key');
+    plugin.loadData = vi.fn().mockResolvedValue({ apiKeySecretId: '' });
+
+    await plugin.onload();
+
+    expect(plugin.settings.apiKeySecretId).toBe('');
+    expect(plugin.saveData).not.toHaveBeenCalled();
+    expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault', '');
   });
 
   it('initialises HttpSearchClient when HTTP transport is selected', async () => {

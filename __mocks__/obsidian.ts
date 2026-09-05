@@ -401,6 +401,10 @@ export class SecretComponent {
     this.changeCallback = cb;
     return this;
   }
+  triggerChange(value: string): unknown {
+    this.value = value;
+    return this.changeCallback?.(value);
+  }
 }
 
 export class SecretStorage {

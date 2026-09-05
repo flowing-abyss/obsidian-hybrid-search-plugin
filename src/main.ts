@@ -1,7 +1,7 @@
 import { Notice, Plugin, type EventRef } from 'obsidian';
 import type { HttpSearchClientStatusEvent } from './ipc';
 import { HttpSearchClient, SearchClient } from './ipc';
-import { getApiKey } from './secrets';
+import { getApiKey, getLegacyApiKeySecretId } from './secrets';
 import type { HybridSearchSettings } from './settings';
 import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from './settings';
 import {
@@ -232,7 +232,7 @@ export default class HybridSearchPlugin extends Plugin {
         : new SearchClient(
             this.settings.binaryPath || 'obsidian-hybrid-search',
             (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.() ?? '',
-            getApiKey(this.app),
+            getApiKey(this.app, this.settings.apiKeySecretId),
           );
 
     this.client.waitReady(30_000).catch((err: unknown) => {
@@ -261,9 +261,23 @@ export default class HybridSearchPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = normalizeSettings(
-      Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<HybridSearchSettings>),
+    const loaded = (await this.loadData()) as unknown;
+    const savedSettings =
+      typeof loaded === 'object' && loaded !== null
+        ? (loaded as Partial<HybridSearchSettings>)
+        : {};
+    const hasSavedApiKeySecretId = Object.prototype.hasOwnProperty.call(
+      savedSettings,
+      'apiKeySecretId',
     );
+    this.settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, savedSettings));
+    if (!hasSavedApiKeySecretId && !this.settings.apiKeySecretId) {
+      const legacySecretId = getLegacyApiKeySecretId(this.app);
+      if (legacySecretId) {
+        this.settings.apiKeySecretId = legacySecretId;
+        await this.saveSettings();
+      }
+    }
   }
 
   async saveSettings(): Promise<void> {
