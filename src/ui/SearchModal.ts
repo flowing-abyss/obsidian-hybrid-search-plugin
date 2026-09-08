@@ -547,6 +547,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     // Synchronous DOM setup — must happen before any await
     if (!this.previewEl) {
       this.previewEl = createBodyPanel('hybrid-search-preview', this.ownerId);
+      this.previewEl.classList.add('markdown-preview-view', 'markdown-rendered');
       this.hookPreviewLinks();
     }
     this.previewEl.show();

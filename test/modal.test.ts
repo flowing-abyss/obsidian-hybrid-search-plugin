@@ -428,6 +428,9 @@ describe('SearchModal — hover preview', () => {
     await internals.updatePreview(sampleResult.path);
     expect(internals.previewEl).toBeDefined();
     expect(activeDocument.body.contains(internals.previewEl ?? null)).toBe(true);
+    expect(internals.previewEl?.classList.contains('hybrid-search-preview')).toBe(true);
+    expect(internals.previewEl?.classList.contains('markdown-preview-view')).toBe(true);
+    expect(internals.previewEl?.classList.contains('markdown-rendered')).toBe(true);
   });
 
   it('updatePreview calls MarkdownRenderer.render with correct arguments', async () => {

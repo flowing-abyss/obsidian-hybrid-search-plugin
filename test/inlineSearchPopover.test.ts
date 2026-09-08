@@ -91,11 +91,14 @@ describe('InlineSearchSuggest preview panel', () => {
     const suggest = new InlineSearchSuggest(app as never, plugin as never) as unknown as {
       ensurePreview: () => void;
       previewWrapEl?: HTMLElement;
+      previewEl?: HTMLElement;
     };
 
     suggest.ensurePreview();
 
     expect(suggest.previewWrapEl?.getAttribute(PANEL_OWNER_ATTR)).toBe('hybrid-search-beta');
+    expect(suggest.previewEl?.classList.contains('markdown-preview-view')).toBe(true);
+    expect(suggest.previewEl?.classList.contains('markdown-rendered')).toBe(true);
   });
 
   it('close settles a pending debounced search without contacting the backend', async () => {
