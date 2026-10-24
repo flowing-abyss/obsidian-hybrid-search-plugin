@@ -14,10 +14,12 @@ import { GraphPanel } from './GraphPanel';
 import { hookInternalLinks } from './linkHandler';
 import { registerModalKeymap } from './modalKeymap';
 import {
+  appendResultFilename,
   applySuperchargedLinkAttributes,
   createInternalLink,
   fetchSimilarNotesDetailed,
   getAnchorOffset,
+  getPrimaryAnchor,
   getResultTitle,
   hookSuperchargedLinks,
   modeLabel,
@@ -27,6 +29,7 @@ import {
   type SuperchargedWatch,
 } from './noteUtils';
 import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
+import { appendResultExcerpt, resultMatchPosition } from './resultExcerpt';
 import { createBodyPanel } from './strayPanels';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
@@ -57,6 +60,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private isRecentMode = false;
   private currentMode: 'hybrid' | 'semantic' | 'fulltext' | 'title' = 'hybrid';
   private currentQueryWords: string[] = [];
+  private excerptQueryWords: string[] = [];
+  private showResultExcerpts = false;
 
   private modeEl?: HTMLSpanElement;
   private graphPanel?: GraphPanel;
@@ -306,6 +311,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   async getSuggestions(query: string): Promise<SearchResult[]> {
     this.cancelPendingSuggestions();
+    this.showResultExcerpts = false;
+    this.excerptQueryWords = [];
     // Reset up front so the "@similar" message set below cannot survive into an unrelated
     // query — including the empty-query paths (similar-to-active, recent files), which
     // return before any later reset would run.
@@ -343,6 +350,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
       return [];
     }
 
+    this.showResultExcerpts = !notePath;
+    this.excerptQueryWords = notePath ? [] : parsedQuery.split(/\s+/).filter(Boolean);
     this.currentMode = overrides.mode ?? this.forcedMode ?? this.settings.defaultMode;
     // With a notePath the free text was never sent to the backend, so highlighting it in the
     // preview would mark words that had no influence on the results.
@@ -369,8 +378,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
           mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
           ...(notePath && { notePath }),
           ...(overrides.limit !== undefined && { limit: overrides.limit }),
-          snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
-          anchors: this.settings.showPreview && this.settings.scrollToSnippet,
+          snippetLength:
+            !notePath || (this.settings.showPreview && this.settings.scrollToSnippet) ? 400 : 0,
+          anchors: !notePath || (this.settings.showPreview && this.settings.scrollToSnippet),
           ...(overrides.tag !== undefined && { tag: overrides.tag }),
           ...(overrides.scope !== undefined && { scope: overrides.scope }),
           ...(overrides.frontmatter !== undefined && { frontmatter: overrides.frontmatter }),
@@ -446,13 +456,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const container = el.createDiv({ cls: 'hybrid-search-result' });
 
     const titleRow = container.createDiv({ cls: 'hybrid-search-title' });
-    createInternalLink(
-      this.app,
-      titleRow,
-      nfcPath,
-      result.title || result.path,
-      'hybrid-search-name',
-    );
+    const title = result.title || result.path;
+    createInternalLink(this.app, titleRow, nfcPath, title, 'hybrid-search-name');
 
     if (!this.isRecentMode) {
       titleRow.createSpan({
@@ -461,6 +466,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
         attr: { style: `color:${color}` },
       });
     }
+
+    appendResultFilename(container, nfcPath, title);
+    if (this.showResultExcerpts) appendResultExcerpt(container, result, this.excerptQueryWords);
 
     if (this.settings.showMeta) {
       const folder = result.path.includes('/') ? result.path.replace(/\/[^/]+$/, '') : '';
@@ -493,10 +501,27 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   onChooseSuggestion(result: SearchResult, _evt: MouseEvent | KeyboardEvent): void {
+    void this.openResultAtMatch(result);
+  }
+
+  private async openResultAtMatch(result: SearchResult): Promise<void> {
     const abstract = this.app.vault.getAbstractFileByPath(result.path.normalize('NFC'));
-    if (abstract instanceof TFile) {
-      void this.app.workspace.getLeaf(false).openFile(abstract);
+    if (!(abstract instanceof TFile)) return;
+    const leaf = this.app.workspace.getLeaf(false);
+    const anchor = getPrimaryAnchor(result);
+    let position: ReturnType<typeof resultMatchPosition>;
+    if (anchor) {
+      try {
+        position = resultMatchPosition(await this.app.vault.cachedRead(abstract), anchor);
+      } catch {
+        // A stale anchor or unreadable source must never prevent ordinary file access.
+      }
     }
+    if (position) {
+      await leaf.openFile(abstract, {
+        eState: { line: position.line, cursor: { from: position, to: position } },
+      });
+    } else await leaf.openFile(abstract);
   }
 
   // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
