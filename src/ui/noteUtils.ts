@@ -127,6 +127,13 @@ export function getResultTitle(app: App, result: Pick<SearchResult, 'path' | 'ti
   );
 }
 
+export function appendResultFilename(parent: HTMLElement, path: string, title: string): void {
+  const filename = path.normalize('NFC').replace(/^.*\//, '');
+  const normalizedTitle = title.normalize('NFC');
+  if (normalizedTitle === filename || normalizedTitle === filename.replace(/\.md$/, '')) return;
+  parent.createDiv({ cls: 'hybrid-search-result-filename', text: filename });
+}
+
 export function fileToWikiLink(path: string): string {
   return `[[${path.normalize('NFC').replace(/\.md$/, '')}]]`;
 }
