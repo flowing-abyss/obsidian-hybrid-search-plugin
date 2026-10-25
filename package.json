@@ -50,7 +50,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "obsidian": "^1.13.1"
+    "obsidian": "^1.14.4"
   },
   "overrides": {
     "fast-uri": "^3.1.4",

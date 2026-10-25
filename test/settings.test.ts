@@ -305,6 +305,26 @@ describe('HybridSearchSettingTab', () => {
     expect(plugin.restartClient).toHaveBeenCalledTimes(1);
   });
 
+  it('clears the selected identifier when the SDK secret picker emits null', async () => {
+    const { App } = await import('obsidian');
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS, apiKeySecretId: 'synthetic-selection' },
+      saveSettings: vi.fn().mockResolvedValue(undefined),
+      restartClient: vi.fn().mockResolvedValue(undefined),
+    };
+    new HybridSearchSettingTab(new App(), plugin as never).display();
+
+    await SecretComponent.instances[0]!.triggerChange(null);
+
+    expect(plugin.settings.apiKeySecretId).toBe('');
+    expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
+    expect(plugin.restartClient).toHaveBeenCalledTimes(1);
+    expect(plugin.saveSettings.mock.invocationCallOrder[0]).toBeLessThan(
+      plugin.restartClient.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it('renders HTTP host and port settings in HTTP mode', async () => {
     const { App } = await import('obsidian');
     const app = new App();

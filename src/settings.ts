@@ -722,7 +722,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     const secret = new SecretComponent(this.app, setting.controlEl);
     secret.setValue(this.plugin.settings.apiKeySecretId).onChange(async (value) => {
-      this.plugin.settings.apiKeySecretId = value.trim();
+      this.plugin.settings.apiKeySecretId = (value ?? '').trim();
       await this.plugin.saveSettings();
       await this.plugin.restartClient?.();
 

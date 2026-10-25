@@ -449,8 +449,8 @@ export class SecretComponent {
   static clearInstances(): void {
     SecretComponent.instances.length = 0;
   }
-  value = '';
-  changeCallback: ((value: string) => unknown) | null = null;
+  value: string | null = '';
+  changeCallback: ((value: string | null) => unknown) | null = null;
   constructor(_app: App, _containerEl: HTMLElement) {
     SecretComponent.instances.push(this);
   }
@@ -458,11 +458,11 @@ export class SecretComponent {
     this.value = value;
     return this;
   }
-  onChange(cb: (value: string) => unknown): this {
+  onChange(cb: (value: string | null) => unknown): this {
     this.changeCallback = cb;
     return this;
   }
-  triggerChange(value: string): unknown {
+  triggerChange(value: string | null): unknown {
     this.value = value;
     return this.changeCallback?.(value);
   }
