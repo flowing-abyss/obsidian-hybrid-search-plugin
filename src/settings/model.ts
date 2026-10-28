@@ -17,6 +17,8 @@ export interface HybridSearchSettings {
   defaultSearchFilters: string;
   customPostfixes: CustomPostfix[];
   showMeta: boolean;
+  showResultSnippets: boolean;
+  showMatchSources: boolean;
   showPreviewMeta: boolean;
   centerPanels: boolean;
   showPreview: boolean;
@@ -51,6 +53,8 @@ export const DEFAULT_SETTINGS: HybridSearchSettings = {
   defaultSearchFilters: '',
   customPostfixes: [],
   showMeta: false,
+  showResultSnippets: false,
+  showMatchSources: false,
   showPreviewMeta: true,
   centerPanels: false,
   showPreview: true,
@@ -106,6 +110,14 @@ export function normalizeSettings(settings: HybridSearchSettings): HybridSearchS
         ? settings.defaultSearchFilters
         : DEFAULT_SETTINGS.defaultSearchFilters,
     customPostfixes: normalizeCustomPostfixes(settings.customPostfixes),
+    showResultSnippets:
+      typeof settings.showResultSnippets === 'boolean'
+        ? settings.showResultSnippets
+        : DEFAULT_SETTINGS.showResultSnippets,
+    showMatchSources:
+      typeof settings.showMatchSources === 'boolean'
+        ? settings.showMatchSources
+        : DEFAULT_SETTINGS.showMatchSources,
     showSimilarNotesInPagePreview:
       typeof settings.showSimilarNotesInPagePreview === 'boolean'
         ? settings.showSimilarNotesInPagePreview

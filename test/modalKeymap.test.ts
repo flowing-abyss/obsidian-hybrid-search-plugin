@@ -150,7 +150,14 @@ describe('registerModalKeymap', () => {
       settings.showPreview = false;
       const handler = findHandler(['Mod'], 'p');
       handler(new KeyboardEvent('keydown'));
-      expect(mockTriggerPreview).toHaveBeenCalled();
+      const selected = mockChooser.values[mockChooser.selectedItem]!;
+      expect(mockTriggerPreview).toHaveBeenCalledWith(
+        selected.path,
+        selected.snippet,
+        selected.previewAnchors,
+        selected.primaryAnchorIndex,
+        selected,
+      );
     });
   });
 
@@ -160,6 +167,14 @@ describe('registerModalKeymap', () => {
       expect(settings.scrollToSnippet).toBe(true);
       handler(new KeyboardEvent('keydown'));
       expect(settings.scrollToSnippet).toBe(false);
+      const selected = mockChooser.values[mockChooser.selectedItem]!;
+      expect(mockTriggerPreview).toHaveBeenCalledWith(
+        selected.path,
+        selected.snippet,
+        selected.previewAnchors,
+        selected.primaryAnchorIndex,
+        selected,
+      );
       expect(mockSaveSettings).toHaveBeenCalled();
     });
 

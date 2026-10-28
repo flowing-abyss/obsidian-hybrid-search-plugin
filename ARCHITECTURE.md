@@ -29,6 +29,11 @@ HTTP failover without importing the HTTP client. `PluginContext` exposes only th
 app, manifest ID, settings, current search service, and settings persistence.
 Views cannot call plugin lifecycle methods through that interface.
 
+Modal excerpts are prepared as bounded plain text in `src/search/excerpts.ts`.
+`src/ui/search/resultPresentation.ts` renders their highlights and compact metadata
+without reading notes or changing navigation. Preview and excerpt consumers share
+the request policy; excerpt highlighting is compiled once per parsed query.
+
 `dependency-cruiser.config.cjs` checks inward imports, unresolved and undeclared
 dependencies, and cycles, including dependencies erased by TypeScript. Executable
 fixtures verify both allowed imports and rejected crossings. The `obsidian`

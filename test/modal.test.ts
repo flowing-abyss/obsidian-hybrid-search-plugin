@@ -494,6 +494,31 @@ describe('SearchModal — hover preview', () => {
     await expect(pending).resolves.toBeUndefined();
   });
 
+  it('unloads Markdown when the modal closes between publication and ownership', async () => {
+    const cleanup = vi.fn();
+    mockRender.mockImplementation(async (_app, text, el, _path, child) => {
+      child.register(cleanup);
+      el.createEl('p', { text });
+    });
+    const internals = modal as unknown as ModalInternals;
+    const pending = internals.updatePreview(sampleResult.path);
+    const preview = internals.previewEl!;
+    const observer = new MutationObserver(() => {
+      if (preview.childElementCount) modal.onClose();
+    });
+    observer.observe(preview, { childList: true });
+    try {
+      await pending;
+      expect(cleanup).toHaveBeenCalledOnce();
+      expect(internals.currentPreviewPath).toBeUndefined();
+      expect(internals.previewChild).toBeUndefined();
+      expect(preview.isConnected).toBe(false);
+    } finally {
+      observer.disconnect();
+      modal.onClose();
+    }
+  });
+
   it('does not hide a newer preview when an older read fails', async () => {
     let reject!: (error: Error) => void;
     mockCachedRead.mockReturnValueOnce(
@@ -612,6 +637,7 @@ describe('SearchModal — hover preview', () => {
       sampleResult.snippet,
       undefined,
       undefined,
+      sampleResult,
     );
   });
 

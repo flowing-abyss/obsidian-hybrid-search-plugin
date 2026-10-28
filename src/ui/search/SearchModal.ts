@@ -1,6 +1,13 @@
 import { App, debounce, MarkdownRenderChild, setIcon, SuggestModal, TFile } from 'obsidian';
-import { getAnchorOffset } from '../../search/anchors';
+import { getAnchorOffset, getPrimaryAnchor } from '../../search/anchors';
 import type { MatchAnchor, SearchResult, SearchService } from '../../search/contracts';
+import {
+  createExcerptHighlighter,
+  excerptPlainText,
+  getExcerptRequestOptions,
+  getQueryTerms,
+  prepareResultExcerpt,
+} from '../../search/excerpts';
 import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from '../../search/queryParser';
 import { fetchSimilarNotesDetailed } from '../../search/similarNotes';
 import type { HybridSearchSettings } from '../../settings/model';
@@ -8,6 +15,7 @@ import { GraphPanel } from '../graph/GraphPanel';
 import { renderMarkdownPreview } from '../preview/renderMarkdownPreview';
 import { runAllCleanupSteps } from '../shared/cleanup';
 import { hookInternalLinks, openLinkedFile } from '../shared/linkHandler';
+import { getMatchSourceDescription, updateMatchSourceBadge } from '../shared/matchSources';
 import {
   applySuperchargedLinkAttributes,
   createInternalLink,
@@ -21,6 +29,7 @@ import {
 } from '../shared/noteUtils';
 import { createBodyPanel } from '../shared/strayPanels';
 import { registerModalKeymap } from './modalKeymap';
+import { renderResultDetails } from './resultPresentation';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
@@ -40,23 +49,42 @@ export interface SearchModalOptions {
 export class SearchModal extends SuggestModal<SearchResult> {
   private debounce?: number;
   private pendingSuggestionResolve?: (results: SearchResult[]) => void;
+  private suggestionsGeneration = 0;
   private previewEl?: HTMLDivElement;
   private previewMetaEl?: HTMLDivElement;
+  private previewMetaPath?: string;
   private previewChild?: MarkdownRenderChild;
   private currentPreviewPath?: string;
+  private currentPreviewResult?: SearchResult;
   private currentPreviewContent?: string;
   private currentAnchorKey?: string;
+  private cancelSnippetScroll?: () => void;
   private previewCallId = 0;
   private isRecentMode = false;
   private currentMode: 'hybrid' | 'semantic' | 'fulltext' | 'title' = 'hybrid';
   private currentQueryWords: string[] = [];
+  private showQueryExcerpts = false;
+  private showMatchSourcesForQuery = false;
+  // The host retains old rows while the next query is pending.
+  private resultSourceEligibility = new WeakMap<SearchResult, boolean>();
+  private matchSourceResults = new WeakMap<
+    HTMLElement,
+    { result: SearchResult; hybrid: boolean }
+  >();
+  private excerptHighlighter = createExcerptHighlighter('');
 
   private modeEl?: HTMLSpanElement;
   private graphPanel?: GraphPanel;
 
   private readonly debouncedPreview = debounce(
-    (path: string, snippet?: string, anchors?: MatchAnchor[], primaryIdx?: number) => {
-      void this.updatePreview(path, snippet, anchors, primaryIdx);
+    (
+      path: string,
+      snippet?: string,
+      anchors?: MatchAnchor[],
+      primaryIdx?: number,
+      result?: SearchResult,
+    ) => {
+      void this.updatePreview(path, snippet, anchors, primaryIdx, result);
     },
     100,
     true, // resetTimer: true — resets on each call, fires after the last one
@@ -128,6 +156,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   hidePreviewPanel(): void {
     this.debouncedPreview.cancel();
+    this.cancelSnippetScroll?.();
     this.previewCallId++;
     const previewChild = this.previewChild;
     const previewEl = this.previewEl;
@@ -135,7 +164,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.previewChild = undefined;
     this.previewEl = undefined;
     this.previewMetaEl = undefined;
+    this.previewMetaPath = undefined;
     this.currentPreviewPath = undefined;
+    this.currentPreviewResult = undefined;
     this.currentPreviewContent = undefined;
     this.currentAnchorKey = undefined;
     runAllCleanupSteps(
@@ -146,14 +177,16 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   private clearHighlights(): void {
+    this.cancelSnippetScroll?.();
     if (!this.previewEl) return;
     for (const el of this.previewEl.querySelectorAll('.hybrid-search-semantic-match')) {
       el.classList.remove('hybrid-search-semantic-match');
     }
     // Unwrap word-match spans: replace each with a plain text node
     for (const span of Array.from(this.previewEl.querySelectorAll('.hybrid-search-word-match'))) {
-      span.replaceWith(activeDocument.createTextNode(span.textContent ?? ''));
+      span.replaceWith(span.ownerDocument.createTextNode(span.textContent ?? ''));
     }
+    this.previewEl.normalize();
   }
 
   private findHeadingElement(headingPath: string | null): HTMLElement | undefined {
@@ -197,34 +230,50 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     if (!anchor.matchText) return headingEl;
 
-    const needle = anchor.matchText.toLowerCase();
     const blockSel = 'p, li, h1, h2, h3, h4, h5, h6, blockquote';
-    const matches: HTMLElement[] = [];
-
-    for (const el of region) {
-      if (el.closest('.callout')) continue;
-      if (el.matches(blockSel) && (el.textContent ?? '').toLowerCase().includes(needle)) {
-        matches.push(el as HTMLElement);
-      }
-      // Check nested blocks inside container elements (e.g. div.callout excluded above)
-      for (const nested of el.querySelectorAll(blockSel)) {
-        if ((nested.textContent ?? '').toLowerCase().includes(needle)) {
-          matches.push(nested as HTMLElement);
+    for (const needle of this.anchorDisplayCandidates(anchor)) {
+      const matches = new Set<HTMLElement>();
+      for (const el of region) {
+        if (el.closest('.callout')) continue;
+        if (el.matches(blockSel) && normalizeDisplayText(el.textContent ?? '').includes(needle)) {
+          matches.add(el as HTMLElement);
+        }
+        for (const nested of el.querySelectorAll(blockSel)) {
+          if (
+            !nested.closest('.callout') &&
+            normalizeDisplayText(nested.textContent ?? '').includes(needle)
+          ) {
+            matches.add(nested as HTMLElement);
+          }
         }
       }
-    }
-    if (matches.length > 0) return this.pickClosestByOffset(matches, anchor);
+      if (matches.size > 0) return this.pickClosestByOffset([...matches], anchor);
 
-    // Fallback A: search inside callout titles and content (for notes whose content is entirely callout blocks)
-    for (const titleEl of this.previewEl.querySelectorAll('.callout-title-inner')) {
-      if ((titleEl.textContent ?? '').toLowerCase().includes(needle)) return titleEl as HTMLElement;
+      // Notes can consist entirely of callouts; try their visible title and body.
+      for (const el of this.previewEl.querySelectorAll(
+        '.callout-title-inner, .callout-content p',
+      )) {
+        if (normalizeDisplayText(el.textContent ?? '').includes(needle)) return el as HTMLElement;
+      }
     }
-    for (const contentEl of this.previewEl.querySelectorAll('.callout-content p')) {
-      if ((contentEl.textContent ?? '').toLowerCase().includes(needle))
-        return contentEl as HTMLElement;
-    }
-    // Fallback B: heading element itself
     return headingEl;
+  }
+
+  private anchorDisplayCandidates(anchor: MatchAnchor): string[] {
+    const candidates = [excerptPlainText(anchor.matchText)];
+    const content = this.currentPreviewContent;
+    if (content) {
+      const offset = getAnchorOffset(content, anchor);
+      if (offset >= 0) {
+        // Backend excerpts may start inside markup, e.g. the target of [[target|alias]].
+        // Recover the enclosing source line for display matching only, never navigation.
+        const start = offset === 0 ? 0 : content.lastIndexOf('\n', offset - 1) + 1;
+        const nextLine = content.indexOf('\n', offset + anchor.matchText.length);
+        const end = nextLine < 0 ? content.length : nextLine;
+        if (end - start <= 4096) candidates.push(excerptPlainText(content.slice(start, end)));
+      }
+    }
+    return [...new Set(candidates.map(normalizeDisplayText).filter(Boolean))];
   }
 
   /** Multiple rendered blocks can contain the same matchText (repeated phrasing across a note).
@@ -264,9 +313,10 @@ export class SearchModal extends SuggestModal<SearchResult> {
     snippet?: string,
     anchors?: MatchAnchor[],
     primaryIdx?: number,
+    result?: SearchResult,
   ): void {
     if (this.settings.showPreview) {
-      this.debouncedPreview(nfcPath, snippet, anchors, primaryIdx);
+      this.debouncedPreview(nfcPath, snippet, anchors, primaryIdx, result);
     }
     if (this.settings.showGraphPanel) {
       this.graphPanel?.show(nfcPath);
@@ -275,6 +325,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   onClose(): void {
+    this.suggestionsGeneration++;
     const graphPanel = this.graphPanel;
     this.graphPanel = undefined;
     runAllCleanupSteps(
@@ -298,12 +349,23 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   async getSuggestions(query: string): Promise<SearchResult[]> {
+    this.suggestionsGeneration++;
     this.cancelPendingSuggestions();
+    this.debouncedPreview.cancel();
+    this.cancelSnippetScroll?.();
+    this.previewCallId++;
+    this.showQueryExcerpts = false;
+    this.showMatchSourcesForQuery = false;
+    this.currentPreviewResult = undefined;
+    this.updatePreviewMatchSources();
+    this.excerptHighlighter = createExcerptHighlighter('');
+    this.currentQueryWords = [];
     // Reset up front so the "@similar" message set below cannot survive into an unrelated
     // query — including the empty-query paths (similar-to-active, recent files), which
     // return before any later reset would run.
     this.emptyStateText = 'No results found.';
     if (!query.trim()) {
+      this.refreshMatchSources();
       if (this.activePath) {
         // Active note open: show semantically similar notes
         this.isRecentMode = false;
@@ -313,7 +375,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
       // No active note: show recently opened files
       this.isRecentMode = true;
       this.updateModeBadge('R');
-      return this.buildRecentResults();
+      const results = this.buildRecentResults();
+      if (!results.length) this.onSelectedChange(null);
+      return results;
     }
     this.isRecentMode = false;
 
@@ -331,20 +395,21 @@ export class SearchModal extends SuggestModal<SearchResult> {
       : null;
 
     if (overrides.similar && !notePath) {
+      this.refreshMatchSources();
       this.emptyStateText = 'Open a note to use @similar.';
       this.updateModeBadge('~');
+      this.onSelectedChange(null);
       return [];
     }
 
     this.currentMode = overrides.mode ?? this.forcedMode ?? this.settings.defaultMode;
+    this.showQueryExcerpts = !notePath && Boolean(parsedQuery.trim());
+    this.showMatchSourcesForQuery = this.currentMode === 'hybrid' && this.showQueryExcerpts;
+    this.refreshMatchSources();
+    this.excerptHighlighter = createExcerptHighlighter(this.showQueryExcerpts ? parsedQuery : '');
     // With a notePath the free text was never sent to the backend, so highlighting it in the
     // preview would mark words that had no influence on the results.
-    this.currentQueryWords = notePath
-      ? []
-      : parsedQuery
-          .split(/\s+/)
-          .map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
-          .filter((w) => w.length >= 2);
+    this.currentQueryWords = notePath ? [] : getQueryTerms(parsedQuery.toLowerCase());
     this.updateModeBadge(
       notePath
         ? '~'
@@ -362,8 +427,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
           mode: overrides.mode ?? this.forcedMode ?? this.settings.defaultMode,
           ...(notePath && { notePath }),
           ...(overrides.limit !== undefined && { limit: overrides.limit }),
-          snippetLength: this.settings.showPreview && this.settings.scrollToSnippet ? 400 : 0,
-          anchors: this.settings.showPreview && this.settings.scrollToSnippet,
+          ...getExcerptRequestOptions(parsedQuery, Boolean(notePath), this.settings),
           ...(overrides.tag !== undefined && { tag: overrides.tag }),
           ...(overrides.scope !== undefined && { scope: overrides.scope }),
           ...(overrides.frontmatter !== undefined && { frontmatter: overrides.frontmatter }),
@@ -374,13 +438,67 @@ export class SearchModal extends SuggestModal<SearchResult> {
     );
   }
 
+  async refreshResultSnippets(): Promise<void> {
+    // Guard the same host chooser used by our keymap; older hosts can still
+    // pick up settings on the next query if this internal API is unavailable.
+    const chooser = (
+      this as unknown as {
+        chooser?: {
+          values?: SearchResult[];
+          selectedItem?: number;
+          setSuggestions?: (results: SearchResult[]) => void;
+          setSelectedItem?: (index: number, evt: KeyboardEvent) => void;
+        };
+      }
+    ).chooser;
+    if (!chooser?.setSuggestions || !chooser.setSelectedItem) return;
+    const path = chooser.values?.[chooser.selectedItem ?? 0]?.path;
+    const pending = this.getSuggestions(this.inputEl.value);
+    const generation = this.suggestionsGeneration;
+    const results = await pending;
+    if (generation !== this.suggestionsGeneration || !this.containerEl.isConnected) return;
+    chooser.setSuggestions(results);
+    if (results.length) {
+      chooser.setSelectedItem(
+        Math.max(
+          0,
+          results.findIndex((result) => result.path === path),
+        ),
+        new KeyboardEvent('keydown'),
+      );
+    }
+  }
+
+  refreshMatchSources(): void {
+    for (const score of this.containerEl.querySelectorAll<HTMLElement>('.hybrid-search-score')) {
+      const rendered = this.matchSourceResults.get(score);
+      if (rendered)
+        updateMatchSourceBadge(
+          score,
+          rendered.result,
+          this.settings.showMatchSources && this.showMatchSourcesForQuery && rendered.hybrid,
+        );
+    }
+    if (
+      this.settings.showPreviewMeta &&
+      this.currentPreviewPath &&
+      this.previewMetaPath !== this.currentPreviewPath
+    )
+      this.updatePreviewMeta(this.currentPreviewPath);
+    else this.updatePreviewMatchSources();
+  }
+
   private scheduleSuggestions(load: () => Promise<SearchResult[]>): Promise<SearchResult[]> {
+    const generation = this.suggestionsGeneration;
     return new Promise((resolve) => {
       let settled = false;
       const settle = (results: SearchResult[]) => {
         if (settled) return;
         settled = true;
         if (this.pendingSuggestionResolve === settle) this.pendingSuggestionResolve = undefined;
+        // The host does not notify selection changes when a result list becomes empty.
+        if (!results.length && generation === this.suggestionsGeneration)
+          this.onSelectedChange(null);
         resolve(results);
       };
       this.pendingSuggestionResolve = settle;
@@ -430,6 +548,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
   }
 
   renderSuggestion(result: SearchResult, el: HTMLElement): void {
+    this.resultSourceEligibility.set(result, this.showMatchSourcesForQuery);
     // DB paths are NFD-normalized; Obsidian's internal APIs (metadataCache, vault,
     // data-href resolution) require NFC — same fix as cli.ts line 50.
     const nfcPath = result.path.normalize('NFC');
@@ -448,25 +567,26 @@ export class SearchModal extends SuggestModal<SearchResult> {
     );
 
     if (!this.isRecentMode) {
-      titleRow.createSpan({
+      const ranking = titleRow.createSpan({ cls: 'hybrid-search-result-ranking' });
+      const scoreEl = ranking.createSpan({
         text: score.toFixed(2),
         cls: 'hybrid-search-score',
         attr: { style: `color:${color}` },
       });
+      this.matchSourceResults.set(scoreEl, { result, hybrid: this.showMatchSourcesForQuery });
+      updateMatchSourceBadge(
+        scoreEl,
+        result,
+        this.settings.showMatchSources && this.showMatchSourcesForQuery,
+      );
     }
 
-    if (this.settings.showMeta) {
-      const folder = result.path.includes('/') ? result.path.replace(/\/[^/]+$/, '') : '';
-      const metaRow = container.createDiv({ cls: 'hybrid-search-meta' });
-      if (folder) {
-        const pathSpan = metaRow.createSpan({ cls: 'hybrid-search-meta-path' });
-        setIcon(pathSpan, 'folder');
-        pathSpan.createSpan({ text: folder });
-      }
-      result.tags
-        .slice(0, 5)
-        .forEach((tag) => metaRow.createSpan({ text: `#${tag}`, cls: 'hybrid-search-tag' }));
-    }
+    const showSnippets = this.settings.showResultSnippets && this.showQueryExcerpts;
+    renderResultDetails(container, result, {
+      showMeta: this.settings.showMeta,
+      compact: showSnippets,
+      excerpt: showSnippets ? prepareResultExcerpt(result, this.excerptHighlighter) : undefined,
+    });
 
     el.addEventListener('mouseenter', () => {
       const nfcPath = result.path.normalize('NFC');
@@ -476,6 +596,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
           result.snippet,
           result.previewAnchors,
           result.primaryAnchorIndex,
+          result,
         );
       }
       if (this.settings.showGraphPanel) {
@@ -494,7 +615,11 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   // @ts-ignore — internal SuggestModal API not in type declarations; fires on arrow-key navigation
   onSelectedChange(result: SearchResult | null): void {
-    if (!result) return;
+    if (!result) {
+      this.hidePreviewPanel();
+      this.graphPanel?.hide();
+      return;
+    }
     const nfcPath = result.path.normalize('NFC');
     if (this.settings.showPreview) {
       this.debouncedPreview(
@@ -502,6 +627,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
         result.snippet,
         result.previewAnchors,
         result.primaryAnchorIndex,
+        result,
       );
     }
     if (this.settings.showGraphPanel) {
@@ -515,14 +641,24 @@ export class SearchModal extends SuggestModal<SearchResult> {
     snippet?: string,
     anchors?: MatchAnchor[],
     primaryIdx?: number,
+    result?: SearchResult,
   ): Promise<void> {
     if (!this.settings.showPreview) return;
     // Normalize to NFC: DB paths are NFD, Obsidian APIs require NFC (same as cli.ts)
     const nfcPath = path.normalize('NFC');
-    const key = anchorKey(anchors, primaryIdx);
+    const key = JSON.stringify([
+      anchors,
+      primaryIdx,
+      snippet,
+      this.currentMode,
+      this.currentQueryWords,
+      this.settings.scrollToSnippet,
+    ]);
 
     if (nfcPath === this.currentPreviewPath) {
-      // Same note — only re-highlight if anchor changed
+      this.currentPreviewResult = result;
+      this.updatePreviewMatchSources();
+      // Reuse rendered Markdown; only the query-dependent highlighting changes.
       if (key !== this.currentAnchorKey) {
         this.currentAnchorKey = key;
         this.clearHighlights();
@@ -536,6 +672,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     }
 
     const callId = ++this.previewCallId;
+    this.cancelSnippetScroll?.();
 
     // Synchronous DOM setup — must happen before any await
     if (!this.previewEl) {
@@ -552,6 +689,8 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const previousChild = this.previewChild;
     this.previewChild = undefined;
     this.currentPreviewPath = undefined;
+    this.currentPreviewResult = undefined;
+    this.previewMetaEl?.hide();
     this.currentPreviewContent = undefined;
     this.currentAnchorKey = undefined;
     try {
@@ -581,9 +720,14 @@ export class SearchModal extends SuggestModal<SearchResult> {
       () => callId === this.previewCallId && previewEl === this.previewEl,
     );
     if (!child) return;
+    if (callId !== this.previewCallId || previewEl !== this.previewEl) {
+      child.unload();
+      return;
+    }
     this.previewChild = child;
 
     this.currentPreviewPath = nfcPath;
+    this.currentPreviewResult = result;
     this.currentPreviewContent = content;
     this.currentAnchorKey = key;
 
@@ -656,50 +800,36 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   /** Defer scroll to let async plugins (Dataview, ToC) finish injecting content. */
   private scheduleSnippetScroll(scrollTarget: HTMLElement): void {
+    this.cancelSnippetScroll?.();
+    const preview = this.previewEl;
+    const ownerWindow = preview?.ownerDocument.defaultView;
+    if (!preview || !ownerWindow) return;
     const snapPath = this.currentPreviewPath;
-    const snapTarget = scrollTarget;
+    const generation = this.suggestionsGeneration;
     const doScroll = () => {
-      if (!this.previewEl || this.currentPreviewPath !== snapPath) return;
-      if (!snapTarget.isConnected) return;
-      const containerRect = this.previewEl.getBoundingClientRect();
-      const targetRect = snapTarget.getBoundingClientRect();
-      const absolutePos = targetRect.top - containerRect.top + this.previewEl.scrollTop;
+      if (
+        this.previewEl !== preview ||
+        this.currentPreviewPath !== snapPath ||
+        generation !== this.suggestionsGeneration ||
+        !this.settings.scrollToSnippet
+      )
+        return;
+      if (!preview.isConnected || !preview.contains(scrollTarget)) return;
+      const containerRect = preview.getBoundingClientRect();
+      const targetRect = scrollTarget.getBoundingClientRect();
+      const absolutePos = targetRect.top - containerRect.top + preview.scrollTop;
       const target = Math.max(0, absolutePos - 16);
-      if (Math.abs(this.previewEl.scrollTop - target) > 8) this.previewEl.scrollTop = target;
+      if (Math.abs(preview.scrollTop - target) > 8) preview.scrollTop = target;
     };
-    window.setTimeout(doScroll, 150);
-    window.setTimeout(doScroll, 400);
+    const timers = [ownerWindow.setTimeout(doScroll, 150), ownerWindow.setTimeout(doScroll, 400)];
+    this.cancelSnippetScroll = () => {
+      timers.forEach((timer) => ownerWindow.clearTimeout(timer));
+      this.cancelSnippetScroll = undefined;
+    };
   }
 
   private highlightQueryWords(): void {
-    if (!this.previewEl) return;
-    const words = this.currentQueryWords;
-    if (words.length === 0) return;
-    const pattern = new RegExp(`(${words.map(escapeRegExp).join('|')})`, 'gi');
-
-    const textNodes: Text[] = [];
-    const walker = activeDocument.createTreeWalker(this.previewEl, NodeFilter.SHOW_TEXT);
-    let node: Node | null;
-    while ((node = walker.nextNode())) textNodes.push(node as Text);
-
-    for (const textNode of textNodes) {
-      const text = textNode.textContent ?? '';
-      pattern.lastIndex = 0;
-      if (!pattern.test(text)) continue;
-      pattern.lastIndex = 0;
-      const frag = createFragment();
-      let last = 0;
-      let m: RegExpExecArray | null;
-      while ((m = pattern.exec(text)) !== null) {
-        if (m.index > last)
-          frag.appendChild(activeDocument.createTextNode(text.slice(last, m.index)));
-        const span = createSpan({ cls: 'hybrid-search-word-match', text: m[0] });
-        frag.appendChild(span);
-        last = m.index + m[0].length;
-      }
-      if (last < text.length) frag.appendChild(activeDocument.createTextNode(text.slice(last)));
-      textNode.parentNode?.replaceChild(frag, textNode);
-    }
+    if (this.previewEl) this.highlightQueryWordsInRegion([this.previewEl]);
   }
 
   private highlightQueryWordsInRegion(elements: Element[]): void {
@@ -707,11 +837,13 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (words.length === 0) return;
     const pattern = new RegExp(`(${words.map(escapeRegExp).join('|')})`, 'gi');
 
-    const textNodes: Text[] = [];
+    const textNodes = new Set<Text>();
     for (const el of elements) {
-      const walker = activeDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       let node: Node | null;
-      while ((node = walker.nextNode())) textNodes.push(node as Text);
+      while ((node = walker.nextNode())) {
+        if (!node.parentElement?.closest('.hybrid-search-word-match')) textNodes.add(node as Text);
+      }
     }
 
     for (const textNode of textNodes) {
@@ -719,17 +851,17 @@ export class SearchModal extends SuggestModal<SearchResult> {
       pattern.lastIndex = 0;
       if (!pattern.test(text)) continue;
       pattern.lastIndex = 0;
-      const frag = createFragment();
+      const doc = textNode.ownerDocument;
+      const frag = doc.adoptNode(createFragment());
       let last = 0;
       let m: RegExpExecArray | null;
       while ((m = pattern.exec(text)) !== null) {
-        if (m.index > last)
-          frag.appendChild(activeDocument.createTextNode(text.slice(last, m.index)));
-        const span = createSpan({ cls: 'hybrid-search-word-match', text: m[0] });
+        if (m.index > last) frag.appendChild(doc.createTextNode(text.slice(last, m.index)));
+        const span = doc.adoptNode(createSpan({ cls: 'hybrid-search-word-match', text: m[0] }));
         frag.appendChild(span);
         last = m.index + m[0].length;
       }
-      if (last < text.length) frag.appendChild(activeDocument.createTextNode(text.slice(last)));
+      if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
       textNode.parentNode?.replaceChild(frag, textNode);
     }
   }
@@ -741,13 +873,17 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     const collectedBlocks: Array<{ el: HTMLElement; isPrimary: boolean }> = [];
     const highlightRegions: Element[] = [];
+    const primaryAnchor = getPrimaryAnchor({
+      previewAnchors: anchors,
+      primaryAnchorIndex: primaryIdx,
+    });
 
     for (let i = 0; i < anchors.length; i++) {
       const anchor = anchors[i]!;
       const block = this.findAnchorBlock(anchor);
       if (!block) continue;
 
-      const isPrimary = i === primaryIdx;
+      const isPrimary = anchor === primaryAnchor;
       // Only the primary anchor's block gets the "this is the match" accent — a secondary
       // (e.g. bm25) anchor pointing at unrelated text would otherwise show an identical
       // accent next to it with nothing to distinguish which one is actually scrolled to.
@@ -784,6 +920,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
       this.hookMetaLinks();
     }
     this.previewMetaEl.empty();
+    this.previewMetaPath = nfcPath;
 
     const folder = nfcPath.includes('/') ? nfcPath.replace(/\/[^/]+$/, '') : '';
     const cache = this.app.metadataCache.getCache(nfcPath);
@@ -796,17 +933,6 @@ export class SearchModal extends SuggestModal<SearchResult> {
     const incoming: string[] = [];
     for (const [src, targets] of Object.entries(resolvedLinks)) {
       if (nfcPath in targets) incoming.push(src);
-    }
-
-    if (
-      !folder &&
-      aliases.length === 0 &&
-      tags.length === 0 &&
-      outgoing.length === 0 &&
-      incoming.length === 0
-    ) {
-      this.previewMetaEl.hide();
-      return;
     }
 
     if (folder) {
@@ -854,7 +980,45 @@ export class SearchModal extends SuggestModal<SearchResult> {
       });
     }
 
-    this.previewMetaEl.show();
+    this.updatePreviewMatchSources();
+  }
+
+  private updatePreviewMatchSources(): void {
+    const panel = this.previewMetaEl;
+    if (!panel) return;
+    const existing = panel.querySelector<HTMLElement>('.hybrid-search-preview-match-sources');
+    const description =
+      this.settings.showMatchSources &&
+      this.showMatchSourcesForQuery &&
+      this.currentPreviewResult &&
+      this.resultSourceEligibility.get(this.currentPreviewResult) !== false
+        ? getMatchSourceDescription(this.currentPreviewResult)
+        : '';
+    if (!description) existing?.remove();
+    else if (existing?.textContent !== description) {
+      const row =
+        existing ??
+        panel.createDiv({
+          cls: 'hybrid-search-preview-meta-row hybrid-search-preview-match-sources',
+        });
+      row.empty();
+      const icon = row.createSpan({
+        cls: 'hybrid-search-preview-meta-icon',
+        attr: { 'aria-hidden': 'true' },
+      });
+      setIcon(icon, 'search');
+      row.createSpan({ text: description });
+      row.setAttribute('aria-label', `Found by: ${description}`);
+      panel.prepend(row);
+    }
+    if (
+      this.settings.showPreviewMeta &&
+      this.currentPreviewPath === this.previewMetaPath &&
+      this.currentPreviewPath &&
+      panel.childElementCount
+    )
+      panel.show();
+    else panel.hide();
     this.positionPreviewMeta();
   }
 
@@ -1022,10 +1186,8 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function anchorKey(anchors?: MatchAnchor[], idx?: number): string {
-  if (!anchors?.length) return '';
-  const a = anchors[idx ?? 0]!;
-  return `${a.headingPath ?? ''}\x00${a.matchText}`;
+function normalizeDisplayText(text: string): string {
+  return text.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 /**

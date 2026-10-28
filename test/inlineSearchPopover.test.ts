@@ -73,6 +73,36 @@ describe('InlineSearchSuggest @similar', () => {
 });
 
 describe('InlineSearchSuggest preview panel', () => {
+  it('shows all metadata tags when enabled and none when disabled', () => {
+    const app = {
+      workspace: { getActiveFile: () => null },
+      metadataCache: { getCache: () => null },
+      vault: { getAbstractFileByPath: () => null },
+    };
+    const plugin = {
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS, showMeta: true },
+    };
+    const suggest = new InlineSearchSuggest(app as never, plugin as never);
+    const result = {
+      path: 'folder/note.md',
+      title: 'Note',
+      score: 0.9,
+      aliases: [],
+      tags: ['one', 'two', 'three', 'four', 'five', 'filter/match'],
+    };
+    const row = createDiv();
+    suggest.renderSuggestion(result, row);
+    expect(row.querySelector('.hybrid-search-meta-path')?.textContent).toBe('folder');
+    expect([...row.querySelectorAll('.hybrid-search-tag')].map((el) => el.textContent)).toEqual(
+      result.tags.map((tag) => `#${tag}`),
+    );
+    plugin.settings.showMeta = false;
+    const hidden = createDiv();
+    suggest.renderSuggestion(result, hidden);
+    expect(hidden.querySelector('.hybrid-search-inline-meta')).toBeNull();
+    suggest.close();
+  });
   afterEach(() => {
     activeDocument.querySelectorAll('.hybrid-search-inline-preview').forEach((el) => el.remove());
   });

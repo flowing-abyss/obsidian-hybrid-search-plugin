@@ -255,6 +255,8 @@ export class GraphWorkbenchView extends ItemView {
     if (!force && path === this.centerPath) return;
     const requestId = ++this.requestId;
     const client = this.plugin.client;
+    const isCurrent = () =>
+      !this.closed && requestId === this.requestId && client === this.plugin.client;
     const changingNote = path !== this.centerPath;
     this.centerPath = path;
     if (changingNote) {
@@ -266,9 +268,9 @@ export class GraphWorkbenchView extends ItemView {
     const graphIndex = buildGraphIndex(this.app);
     const analysis = analyzeGraph(this.app, path, this.resultLimit, graphIndex);
     const noteTextStats = await this.loadNoteTextStats(file);
-    if (this.closed || requestId !== this.requestId || client !== this.plugin.client) return;
-    const results = await this.loadClientResults(path, client);
-    if (this.closed || requestId !== this.requestId || client !== this.plugin.client) return;
+    if (!isCurrent()) return;
+    const results = await this.loadClientResults(path, client, isCurrent);
+    if (!results || !isCurrent()) return;
 
     // Metadata and modification times also affect labels and expanded backlink context.
     // Snapshot cached host data only; never read the whole vault from disk here.
@@ -345,17 +347,19 @@ export class GraphWorkbenchView extends ItemView {
   private async loadClientResults(
     path: string,
     client: PluginContext['client'],
+    isCurrent: () => boolean,
   ): Promise<{
     semantic: SearchResult[];
     related: SearchResult[];
     scoreMode: 'similarity' | 'structural';
-  }> {
+  } | null> {
     if (!client) return { semantic: [], related: [], scoreMode: 'similarity' };
     const similar = await fetchSimilarNotesDetailed(client, path, {
       limit: this.resultLimit,
       threshold: this.plugin.settings.similarNotesThreshold,
       anchors: true,
     }).catch(() => ({ results: [], scoreMode: 'similarity' as const }));
+    if (!isCurrent()) return null;
     const related =
       similar.scoreMode === 'similarity'
         ? await client

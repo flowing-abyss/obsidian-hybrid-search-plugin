@@ -85,6 +85,10 @@ export class SearchPreviewRenderer {
       () => requestId === this.requestId,
     );
     if (!child) return;
+    if (requestId !== this.requestId) {
+      child.unload();
+      return;
+    }
     this.previewChild = child;
 
     this.cleanupInternalLinks = hookInternalLinks(

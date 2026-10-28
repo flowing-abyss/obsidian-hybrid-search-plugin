@@ -699,9 +699,34 @@ describe('GraphWorkbenchView', () => {
     plugin.client = { search: vi.fn().mockResolvedValue([result('NewServer.md', 0.9)]) };
     pending.resolve([result('OldServer.md', 0.9)]);
     await opening;
+    expect(oldClient.search).toHaveBeenCalledOnce();
     expect(view.containerEl.textContent).not.toContain('OldServer');
     await view.refreshFromActiveFile(true);
     expect(view.containerEl.querySelector('[data-path="NewServer.md"]')).not.toBeNull();
+    await view.onClose();
+  });
+
+  it.each(['close', 'note change'])('does not start related search after %s', async (action) => {
+    const app = makeApp();
+    let path = 'A.md';
+    app.workspace.getActiveFile = vi.fn(() => createFile(path));
+    const pending = deferred<ReturnType<typeof result>[]>();
+    const client = {
+      search: vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue([]),
+    };
+    const view = makeView(app, client);
+    const opening = view.onOpen();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(client.search).toHaveBeenCalledOnce();
+    if (action === 'close') await view.onClose();
+    else {
+      path = 'Linked.md';
+      await view.refreshFromActiveFile();
+    }
+    const calls = client.search.mock.calls.length;
+    pending.resolve([result('Backlink.md', 0.9)]);
+    await opening;
+    expect(client.search).toHaveBeenCalledTimes(calls);
     await view.onClose();
   });
 

@@ -92,6 +92,29 @@ describe('DEFAULT_SETTINGS', () => {
 });
 
 describe('normalizeSettings', () => {
+  it('keeps match sources opt-in for old and invalid settings', () => {
+    for (const value of [undefined, null, 'true', 1]) {
+      expect(
+        normalizeSettings({ ...DEFAULT_SETTINGS, showMatchSources: value } as never)
+          .showMatchSources,
+      ).toBe(false);
+    }
+    expect(
+      normalizeSettings({ ...DEFAULT_SETTINGS, showMatchSources: true }).showMatchSources,
+    ).toBe(true);
+  });
+  it('keeps excerpts opt-in for old and invalid settings', () => {
+    expect(DEFAULT_SETTINGS.showResultSnippets).toBe(false);
+    for (const value of [undefined, null, 'true', 1]) {
+      expect(
+        normalizeSettings({ ...DEFAULT_SETTINGS, showResultSnippets: value } as never)
+          .showResultSnippets,
+      ).toBe(false);
+    }
+    expect(
+      normalizeSettings({ ...DEFAULT_SETTINGS, showResultSnippets: true }).showResultSnippets,
+    ).toBe(true);
+  });
   it('defaults a missing or invalid secret identifier to empty', () => {
     const normalized = normalizeSettings({
       ...DEFAULT_SETTINGS,
@@ -193,6 +216,69 @@ describe('normalizeSettings', () => {
 });
 
 describe('HybridSearchSettingTab', () => {
+  it('refreshes search metadata when its shared visibility setting changes', async () => {
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS },
+      saveSettings: vi.fn(),
+      restartClient: vi.fn(),
+      onSearchDisplaySettingsChanged: vi.fn(),
+    };
+    const tab = new HybridSearchSettingTab(createApp(), plugin as never);
+    tab.display();
+    findSetting(tab, 'Show path and tags')
+      .querySelector<HTMLElement>('.checkbox-container')!
+      .click();
+    await Promise.resolve();
+    expect(plugin.settings.showMeta).toBe(true);
+    expect(plugin.saveSettings).toHaveBeenCalledOnce();
+    expect(plugin.onSearchDisplaySettingsChanged).toHaveBeenCalledOnce();
+    expect(plugin.restartClient).not.toHaveBeenCalled();
+  });
+  it('saves snippets independently of preview without restarting the client', async () => {
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS, showPreview: false },
+      saveSettings: vi.fn(),
+      restartClient: vi.fn(),
+      onSearchDisplaySettingsChanged: vi.fn(),
+    };
+    const tab = new HybridSearchSettingTab(createApp(), plugin as never);
+    tab.display();
+    const setting = findSetting(tab, 'Show snippets in search results');
+    expect(setting.closest('[hidden]')).toBeNull();
+    setting.querySelector<HTMLElement>('.checkbox-container')!.click();
+    await Promise.resolve();
+    expect(plugin.settings.showResultSnippets).toBe(true);
+    expect(plugin.settings.showPreview).toBe(false);
+    expect(plugin.settings.scrollToSnippet).toBe(false);
+    expect(plugin.saveSettings).toHaveBeenCalledOnce();
+    expect(plugin.restartClient).not.toHaveBeenCalled();
+    expect(plugin.onSearchDisplaySettingsChanged).toHaveBeenCalledOnce();
+  });
+  it('saves match sources independently and refreshes them without a search refresh', async () => {
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS, showPreview: false },
+      saveSettings: vi.fn(),
+      restartClient: vi.fn(),
+      onMatchSourcesSettingsChanged: vi.fn(),
+      onSearchDisplaySettingsChanged: vi.fn(),
+    };
+    const tab = new HybridSearchSettingTab(createApp(), plugin as never);
+    tab.display();
+    const setting = findSetting(tab, 'Show match sources');
+    expect(setting.closest('[hidden]')).toBeNull();
+    setting.querySelector<HTMLElement>('.checkbox-container')!.click();
+    await Promise.resolve();
+    expect(plugin.settings.showMatchSources).toBe(true);
+    expect(plugin.settings.showResultSnippets).toBe(false);
+    expect(plugin.settings.showMeta).toBe(false);
+    expect(plugin.saveSettings).toHaveBeenCalledOnce();
+    expect(plugin.onMatchSourcesSettingsChanged).toHaveBeenCalledOnce();
+    expect(plugin.onSearchDisplaySettingsChanged).not.toHaveBeenCalled();
+    expect(plugin.restartClient).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.spyOn(ToggleComponent.prototype, 'constructor3__').mockImplementation(function (
       this: ToggleComponent,

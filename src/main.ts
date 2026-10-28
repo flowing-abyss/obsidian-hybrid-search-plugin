@@ -25,13 +25,15 @@ export default class HybridSearchPlugin extends Plugin {
   private graphWorkbenchRefreshTimer?: number;
   private clientGeneration = 0;
   private activeSearchModals = new Set<SearchModal>();
+  private inlineSearch?: InlineSearchSuggest;
 
   async onload(): Promise<void> {
     this.removeOrphanedPanels({ includeUnstamped: true });
     await this.loadSettings();
 
     this.restartClient();
-    this.registerEditorSuggest(new InlineSearchSuggest(this.app, this));
+    this.inlineSearch = new InlineSearchSuggest(this.app, this);
+    this.registerEditorSuggest(this.inlineSearch);
     this.registerView(SEARCH_PANEL_VIEW_TYPE, (leaf) => new SearchPanelView(leaf, this));
     this.registerView(GRAPH_WORKBENCH_VIEW_TYPE, (leaf) => new GraphWorkbenchView(leaf, this));
     if (typeof this.app.workspace.on === 'function') {
@@ -227,6 +229,21 @@ export default class HybridSearchPlugin extends Plugin {
   onSimilarNotesSettingsChanged(): void {
     this.similarNotesBottom?.settingsChanged();
     this.pagePreviewSimilarNotes?.settingsChanged();
+  }
+
+  onSearchDisplaySettingsChanged(): void {
+    for (const modal of this.activeSearchModals) void modal.refreshResultSnippets();
+    for (const leaf of this.app.workspace.getLeavesOfType?.(SEARCH_PANEL_VIEW_TYPE) ?? []) {
+      if (leaf.view instanceof SearchPanelView) leaf.view.refreshMetadata();
+    }
+  }
+
+  onMatchSourcesSettingsChanged(): void {
+    for (const modal of this.activeSearchModals) modal.refreshMatchSources();
+    for (const leaf of this.app.workspace.getLeavesOfType?.(SEARCH_PANEL_VIEW_TYPE) ?? []) {
+      if (leaf.view instanceof SearchPanelView) leaf.view.refreshMatchSources();
+    }
+    this.inlineSearch?.refreshMatchSources();
   }
 
   private refreshEndpointSensitiveViews(): void {

@@ -14,6 +14,8 @@ interface PluginRef {
   saveSettings(): Promise<void>;
   restartClient?(): void | Promise<void>;
   onSimilarNotesSettingsChanged?(): void;
+  onSearchDisplaySettingsChanged?(): void;
+  onMatchSourcesSettingsChanged?(): void;
   client?: SearchService;
 }
 
@@ -281,11 +283,38 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     new Setting(displayEl)
       .setName('Show path and tags')
-      .setDesc('Display folder path and tags below the note title in search results.')
+      .setDesc(
+        'Show folder paths and tags in the search window, side panel, and inline suggestions.',
+      )
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.showMeta).onChange(async (value) => {
           this.plugin.settings.showMeta = value;
           await this.plugin.saveSettings();
+          this.plugin.onSearchDisplaySettingsChanged?.();
+        }),
+      );
+
+    new Setting(displayEl)
+      .setName('Show snippets in search results')
+      .setDesc('Show a short passage below each result in the search window.')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showResultSnippets).onChange(async (value) => {
+          this.plugin.settings.showResultSnippets = value;
+          await this.plugin.saveSettings();
+          this.plugin.onSearchDisplaySettingsChanged?.();
+        }),
+      );
+
+    new Setting(displayEl)
+      .setName('Show match sources')
+      .setDesc(
+        'Show full-text, semantic, and title / alias sources beside scores and in preview metadata. Hybrid search only.',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showMatchSources).onChange(async (value) => {
+          this.plugin.settings.showMatchSources = value;
+          await this.plugin.saveSettings();
+          this.plugin.onMatchSourcesSettingsChanged?.();
         }),
       );
 
@@ -321,6 +350,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.showPreviewMeta).onChange(async (value) => {
           this.plugin.settings.showPreviewMeta = value;
           await this.plugin.saveSettings();
+          this.plugin.onMatchSourcesSettingsChanged?.();
         }),
       );
 

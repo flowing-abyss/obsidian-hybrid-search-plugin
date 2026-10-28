@@ -12,6 +12,7 @@ import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from '../../sea
 import type { PluginContext } from '../pluginContext';
 import { SearchPreviewRenderer } from '../preview/SearchPreviewRenderer';
 import { runAllCleanupSteps } from '../shared/cleanup';
+import { updateMatchSourceBadge } from '../shared/matchSources';
 import {
   createInternalLink,
   fileToDragWikiLink,
@@ -22,6 +23,7 @@ import {
   type SuperchargedWatch,
 } from '../shared/noteUtils';
 import { createBodyPanel } from '../shared/strayPanels';
+import { renderResultMetadata } from './resultPresentation';
 
 const INLINE_SEARCH_SNIPPET_LENGTH = 400;
 const INLINE_SEARCH_DEBOUNCE_MS = 150;
@@ -75,6 +77,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
   private renderedContainer?: HTMLElement;
   private selectedObserver?: MutationObserver;
   private lastResults: SearchResult[] = [];
+  private showMatchSourcesForResults = false;
   private readonly slWatch: SuperchargedWatch;
 
   constructor(
@@ -222,6 +225,8 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
         return [{ kind: 'status', message: 'Connection changed. Search again.' }];
       }
       this.currentMode = mode;
+      this.showMatchSourcesForResults =
+        mode === 'hybrid' && !notePath && Boolean(parsedQuery.trim());
       this.lastResults = [...results].sort((a, b) => b.score - a.score);
       if (this.lastResults.length === 0) {
         this.hidePreview();
@@ -237,6 +242,24 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
     return this.lastResults.length > 0
       ? this.lastResults
       : [{ kind: 'status', message: 'Search...' }];
+  }
+
+  refreshMatchSources(): void {
+    const results = new Map(
+      this.lastResults.map((result) => [result.path.normalize('NFC'), result]),
+    );
+    for (const row of this.renderedContainer?.querySelectorAll<HTMLElement>(
+      '.hybrid-search-inline-row',
+    ) ?? []) {
+      const score = row.querySelector<HTMLElement>('.hybrid-search-inline-score');
+      const result = results.get(row.dataset.path ?? '');
+      if (score && result)
+        updateMatchSourceBadge(
+          score,
+          result,
+          this.plugin.settings.showMatchSources && this.showMatchSourcesForResults,
+        );
+    }
   }
 
   renderSuggestion(result: InlineSearchSuggestion, el: HTMLElement): void {
@@ -268,19 +291,20 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
       'hybrid-search-inline-name',
       this.context?.file?.path ?? '',
     );
-    titleRow.createSpan({
+    const ranking = titleRow.createSpan({ cls: 'hybrid-search-result-ranking' });
+    const scoreEl = ranking.createSpan({
       cls: 'hybrid-search-inline-score',
       text: result.score.toFixed(2),
       attr: { style: `color:${scoreColor(result.score)}` },
     });
+    updateMatchSourceBadge(
+      scoreEl,
+      result,
+      this.plugin.settings.showMatchSources && this.showMatchSourcesForResults,
+    );
 
     if (this.plugin.settings.showMeta) {
-      const folder = result.path.includes('/') ? result.path.replace(/\/[^/]+$/, '') : '';
-      const meta = el.createDiv({ cls: 'hybrid-search-inline-meta' });
-      if (folder) meta.createSpan({ text: folder });
-      result.tags
-        .slice(0, 4)
-        .forEach((tag) => meta.createSpan({ cls: 'hybrid-search-tag', text: `#${tag}` }));
+      renderResultMetadata(el, result)?.addClass('hybrid-search-inline-meta');
     }
     window.setTimeout(() => this.syncPreviewFromSelection(), 0);
   }
@@ -405,7 +429,15 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
       'a.hybrid-search-inline-name',
       'hybrid-search-inline-row',
     );
-    this.selectedObserver = new MutationObserver(() => this.syncPreviewFromSelection());
+    this.selectedObserver = new MutationObserver((changes) => {
+      // Score/source annotations do not change selection. In particular, toggling
+      // sources must not restart a Markdown preview that is still being read.
+      const selectionMayChange = changes.some(({ target }) => {
+        const element = target.nodeType === 1 ? (target as Element) : target.parentElement;
+        return !element?.closest('.hybrid-search-result-ranking');
+      });
+      if (selectionMayChange) this.syncPreviewFromSelection();
+    });
     this.selectedObserver.observe(container, {
       subtree: true,
       childList: true,

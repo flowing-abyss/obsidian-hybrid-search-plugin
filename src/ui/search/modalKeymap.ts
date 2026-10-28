@@ -13,6 +13,7 @@ interface ModalKeymapTarget {
     snippet?: string,
     anchors?: MatchAnchor[],
     primaryIdx?: number,
+    result?: SearchResult,
   ): void;
   getGraphPanel(): GraphPanel | undefined;
   positionGraphPanel(): void;
@@ -77,6 +78,7 @@ export function registerModalKeymap(
           selected.snippet,
           selected.previewAnchors,
           selected.primaryAnchorIndex,
+          selected,
         );
     }
   });
@@ -84,7 +86,7 @@ export function registerModalKeymap(
   modal.scope.register(['Mod', 'Shift'], 'p', (_evt: KeyboardEvent) => {
     settings.scrollToSnippet = !settings.scrollToSnippet;
     void saveSettings();
-    if (settings.showPreview && settings.scrollToSnippet) {
+    if (settings.showPreview) {
       const selected = getSelected(modal);
       if (selected)
         modal.triggerPreview(
@@ -92,6 +94,7 @@ export function registerModalKeymap(
           selected.snippet,
           selected.previewAnchors,
           selected.primaryAnchorIndex,
+          selected,
         );
     }
   });

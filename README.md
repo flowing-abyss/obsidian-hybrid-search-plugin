@@ -131,8 +131,3 @@ zettelkasten #project @limit:20 @rerank @hybrid
 ## License
 
 MIT
-
-## Development
-
-Use the pinned pnpm version. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
-verification, and [ARCHITECTURE.md](ARCHITECTURE.md) for module ownership.

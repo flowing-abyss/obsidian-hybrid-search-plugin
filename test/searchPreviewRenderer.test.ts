@@ -35,6 +35,33 @@ type RendererInternals = {
 };
 
 describe('SearchPreviewRenderer cleanup', () => {
+  it('unloads Markdown when teardown runs between publication and ownership', async () => {
+    const app = createApp({ 'A.md': 'note' });
+    const containerEl = createDiv();
+    const renderer = new SearchPreviewRenderer({ app, containerEl, getSourcePath: () => '' });
+    const cleanup = vi.fn();
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(
+      async (_app, text, el, _path, child) => {
+        child.register(cleanup);
+        el.createEl('p', { text });
+      },
+    );
+    const observer = new MutationObserver(() => {
+      if (containerEl.childElementCount) renderer.unload();
+    });
+    observer.observe(containerEl, { childList: true });
+    try {
+      await renderer.render('A.md');
+      expect(cleanup).toHaveBeenCalledOnce();
+      expect((renderer as unknown as RendererInternals).currentPath).toBeUndefined();
+      expect((renderer as unknown as RendererInternals).previewChild).toBeUndefined();
+      expect(containerEl.childElementCount).toBe(0);
+    } finally {
+      observer.disconnect();
+      renderer.unload();
+    }
+  });
+
   it('clears every owned resource when internal-link cleanup throws', () => {
     const containerEl = createDiv();
     containerEl.createDiv({ text: 'rendered preview' });

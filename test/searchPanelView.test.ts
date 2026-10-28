@@ -15,6 +15,92 @@ const result: SearchResult = {
 };
 
 describe('SearchPanelView', () => {
+  it('does not attach stale metadata to a pending search message', async () => {
+    const app = createApp();
+    const search = vi
+      .fn()
+      .mockResolvedValue([{ ...result, path: 'folder/target.md', tags: ['tag'] }]);
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS, showMeta: true },
+      client: { search },
+    };
+    const view = new SearchPanelView(createLeaf(app), plugin as never);
+    await view.onOpen();
+    const run = (text: string) =>
+      (view as unknown as { search(query: string): Promise<void> }).search(text);
+    await run('old');
+    let finish!: (rows: SearchResult[]) => void;
+    search.mockImplementationOnce(
+      () =>
+        new Promise<SearchResult[]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = run('new');
+    view.refreshMetadata();
+    expect(view.containerEl.querySelector('.search-empty-state')?.textContent).toBe('Searching...');
+    expect(view.containerEl.querySelector('.hybrid-search-panel-meta')).toBeNull();
+    finish([]);
+    await pending;
+    await view.onClose();
+  });
+  it('shows folder and every returned tag, and updates visibility without losing search state', async () => {
+    const app = createApp();
+    const tagged = {
+      ...result,
+      path: 'notes/target.md',
+      tags: ['one', 'two', 'three', 'four', 'five', 'filter/match'],
+    };
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS, showMeta: true },
+      client: {
+        search: vi.fn().mockResolvedValue([tagged, { ...tagged, path: 'root.md' }, result]),
+      },
+    };
+    const view = new SearchPanelView(createLeaf(app), plugin as never);
+    await view.onOpen();
+    const internal = view as unknown as {
+      search(query: string): Promise<void>;
+      toggleResult(index: number): void;
+      selectedIndex: number;
+      expandedPaths: Set<string>;
+    };
+    await internal.search('target #filter/match');
+    const items = view.containerEl.querySelectorAll('.hybrid-search-panel-result');
+    expect(items[0]!.querySelector('.hybrid-search-meta-path')?.textContent).toBe('notes');
+    expect(
+      [...items[0]!.querySelectorAll('.hybrid-search-tag')].map((el) => el.textContent),
+    ).toEqual(tagged.tags.map((tag) => `#${tag}`));
+    expect(items[1]!.querySelector('.hybrid-search-meta-path')).toBeNull();
+    expect(items[1]!.querySelectorAll('.hybrid-search-tag')).toHaveLength(6);
+    expect(items[2]!.querySelector('.hybrid-search-panel-meta')).toBeNull();
+    internal.toggleResult(0);
+    const row = view.containerEl.querySelector('.hybrid-search-panel-row'),
+      snippet = view.containerEl.querySelector('.hybrid-search-panel-snippet');
+    const results = view.containerEl.querySelector<HTMLElement>('.hybrid-search-panel-results')!;
+    results.scrollTop = 40;
+    const refresh = () => (view as unknown as { refreshMetadata(): void }).refreshMetadata();
+    plugin.settings.showMeta = false;
+    refresh();
+    expect(view.containerEl.querySelector('.hybrid-search-panel-meta')).toBeNull();
+    plugin.settings.showMeta = true;
+    refresh();
+    expect(view.containerEl.querySelectorAll('.hybrid-search-tag')).toHaveLength(12);
+    expect(view.containerEl.querySelector('.hybrid-search-panel-row')).toBe(row);
+    expect(view.containerEl.querySelector('.hybrid-search-panel-snippet')).toBe(snippet);
+    expect(internal.selectedIndex).toBe(0);
+    expect(internal.expandedPaths.has('notes/target.md')).toBe(true);
+    expect(results.scrollTop).toBe(40);
+    expect(plugin.client.search).toHaveBeenCalledOnce();
+    await view.onClose();
+    plugin.settings.showMeta = false;
+    refresh();
+    expect(view.containerEl.querySelector('.hybrid-search-panel-meta')).not.toBeNull();
+  });
   it('discards search results from a replaced client', async () => {
     const app = createApp();
     let finish!: (rows: SearchResult[]) => void;

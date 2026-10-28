@@ -24,6 +24,7 @@ data.json
 docs/
 # Agent design and planning documents are local-only. Never force-add them.
 docs/superpowers/
+.superpowers/
 coverage/
 
 # ai

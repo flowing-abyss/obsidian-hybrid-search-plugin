@@ -4,6 +4,7 @@ import type { SearchResult } from '../../search/contracts';
 import { type SearchMode } from '../../search/contracts';
 import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from '../../search/queryParser';
 import type { PluginContext } from '../pluginContext';
+import { updateMatchSourceBadge } from '../shared/matchSources';
 import {
   createInternalLink,
   fileToDragWikiLink,
@@ -16,6 +17,7 @@ import {
   unhookSuperchargedLinks,
   type SuperchargedWatch,
 } from '../shared/noteUtils';
+import { renderResultMetadata } from './resultPresentation';
 
 export const SEARCH_PANEL_VIEW_TYPE = 'hybrid-search-panel';
 const SEARCH_PANEL_SNIPPET_LENGTH = 400;
@@ -42,6 +44,7 @@ export class SearchPanelView extends ItemView {
    *  Held on the view (not folded into `panelMode`) so mode cycling re-renders the badge
    *  through the same helper and cannot overwrite the `~` with a stale mode letter. */
   private similarPath: string | null = null;
+  private showMatchSourcesForResults = false;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -157,6 +160,45 @@ export class SearchPanelView extends ItemView {
     if (!this.closed && this.inputEl) void this.search(this.inputEl.value);
   }
 
+  refreshMetadata(): void {
+    if (this.closed) return;
+    const scrollTop = this.resultsEl.scrollTop;
+    const items = this.resultsEl.querySelectorAll<HTMLElement>('.hybrid-search-panel-result');
+    for (const [index, item] of Array.from(items).entries()) {
+      const result = this.results[index];
+      if (result) this.updateResultMetadata(item, result);
+    }
+    this.resultsEl.scrollTop = scrollTop;
+  }
+
+  refreshMatchSources(): void {
+    if (this.closed) return;
+    const items = this.resultsEl.querySelectorAll<HTMLElement>('.hybrid-search-panel-result');
+    for (const [index, item] of Array.from(items).entries()) {
+      const score = item.querySelector<HTMLElement>('.hybrid-search-panel-score');
+      const result = this.results[index];
+      if (score && result)
+        updateMatchSourceBadge(
+          score,
+          result,
+          this.plugin.settings.showMatchSources && this.showMatchSourcesForResults,
+        );
+    }
+  }
+
+  private updateResultMetadata(item: HTMLElement, result: SearchResult): void {
+    const existing = item.querySelector('.hybrid-search-panel-meta');
+    if (!this.plugin.settings.showMeta) {
+      existing?.remove();
+    } else if (!existing) {
+      const meta = renderResultMetadata(item, result);
+      if (meta) {
+        meta.addClass('hybrid-search-panel-meta');
+        item.querySelector('.hybrid-search-panel-row')?.after(meta);
+      }
+    }
+  }
+
   private scheduleSearch(): void {
     if (this.debounce !== undefined) window.clearTimeout(this.debounce);
     this.debounce = window.setTimeout(() => {
@@ -223,6 +265,8 @@ export class SearchPanelView extends ItemView {
         ...(threshold > 0 && { threshold }),
       });
       if (this.closed || requestId !== this.requestId || client !== this.plugin.client) return;
+      this.showMatchSourcesForResults =
+        mode === 'hybrid' && !this.similarPath && Boolean(parsedQuery.trim());
       this.results = [...results].sort((a, b) => b.score - a.score);
       this.selectedIndex = this.results.length > 0 ? 0 : -1;
       this.renderResults();
@@ -278,10 +322,12 @@ export class SearchPanelView extends ItemView {
         text: result.score.toFixed(2),
       });
       scoreEl.style.color = scoreColor(result.score);
-      if (this.plugin.settings.showMeta) {
-        const folder = result.path.includes('/') ? result.path.replace(/\/[^/]+$/, '') : '';
-        if (folder) item.createDiv({ cls: 'hybrid-search-panel-meta', text: folder });
-      }
+      updateMatchSourceBadge(
+        scoreEl,
+        result,
+        this.plugin.settings.showMatchSources && this.showMatchSourcesForResults,
+      );
+      this.updateResultMetadata(item, result);
       if (isExpanded && result.snippet) {
         const matches = item.createDiv({ cls: 'search-result-file-matches' });
         const match = matches.createDiv({
