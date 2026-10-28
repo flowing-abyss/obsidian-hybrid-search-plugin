@@ -1,8 +1,9 @@
 import { TFile, WorkspaceLeaf } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
-import type { SearchResult } from '../src/ipc';
-import { DEFAULT_SETTINGS } from '../src/settings';
-import { revealSearchPanel, SearchPanelView } from '../src/ui/SearchPanelView';
+import type { SearchResult } from '../src/search/contracts';
+import { DEFAULT_SETTINGS } from '../src/settings/model';
+import { revealSearchPanel, SearchPanelView } from '../src/ui/search/SearchPanelView';
+import { createApp, createFile, createLeaf } from './support/obsidian';
 
 const result: SearchResult = {
   path: 'target.md',
@@ -14,6 +15,80 @@ const result: SearchResult = {
 };
 
 describe('SearchPanelView', () => {
+  it('discards search results from a replaced client', async () => {
+    const app = createApp();
+    let finish!: (rows: SearchResult[]) => void;
+    const oldSearch = new Promise<SearchResult[]>((resolve) => {
+      finish = resolve;
+    });
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search: vi.fn().mockReturnValue(oldSearch) },
+    };
+    const view = new SearchPanelView(createLeaf(app), plugin as never);
+    await view.onOpen();
+    const pending = (view as unknown as { search(query: string): Promise<void> }).search('target');
+    plugin.client = { search: vi.fn().mockResolvedValue([]) };
+    finish([result]);
+    await pending;
+    expect(view.containerEl.querySelector('.hybrid-search-panel-row')).toBeNull();
+    await view.onClose();
+  });
+
+  it('ignores a pending response after Escape clears the input', async () => {
+    const app = createApp();
+    let resolve!: (results: SearchResult[]) => void;
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: {
+        search: vi.fn(
+          () =>
+            new Promise<SearchResult[]>((done) => {
+              resolve = done;
+            }),
+        ),
+      },
+    };
+    const view = new SearchPanelView(createLeaf(app), plugin as never);
+    await view.onOpen();
+    const input = view.containerEl.querySelector('input')!;
+    input.value = 'target';
+    const pending = (view as unknown as { search(query: string): Promise<void> }).search('target');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    resolve([result]);
+    await pending;
+    expect(view.containerEl.querySelector('.hybrid-search-panel-row')).toBeNull();
+    expect(input.value).toBe('');
+  });
+
+  it('retains result rows while changing selection and at list boundaries', async () => {
+    const app = createApp();
+    const plugin = {
+      app,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      client: { search: vi.fn().mockResolvedValue([result, { ...result, path: 'second.md' }]) },
+    };
+    const view = new SearchPanelView(createLeaf(app), plugin as never);
+    await view.onOpen();
+    const internal = view as unknown as {
+      search(query: string): Promise<void>;
+      moveSelection(delta: number): void;
+    };
+    await internal.search('target');
+    const rows = Array.from(view.containerEl.querySelectorAll('.hybrid-search-panel-row'));
+    internal.moveSelection(-1);
+    expect(view.containerEl.querySelectorAll('.hybrid-search-panel-row')[0]).toBe(rows[0]);
+    internal.moveSelection(1);
+    expect(view.containerEl.querySelectorAll('.hybrid-search-panel-row')[1]).toBe(rows[1]);
+    expect(rows[1]!.classList.contains('is-selected')).toBe(true);
+    expect(rows[0]!.classList.contains('is-selected')).toBe(false);
+  });
+
   it('does not render stale search results after close', async () => {
     let resolveSearch!: (results: SearchResult[]) => void;
     const searchPromise = new Promise<SearchResult[]>((resolve) => {
@@ -28,7 +103,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -48,12 +123,12 @@ describe('SearchPanelView', () => {
   });
 
   it('opens panel results in a markdown leaf instead of the panel leaf', () => {
-    const panelLeaf = new WorkspaceLeaf() as WorkspaceLeaf & { openFile: ReturnType<typeof vi.fn> };
+    const panelLeaf = createLeaf() as WorkspaceLeaf & { openFile: ReturnType<typeof vi.fn> };
     const markdownLeaf = {
       openFile: vi.fn().mockResolvedValue(undefined),
     };
     panelLeaf.openFile = vi.fn().mockResolvedValue(undefined);
-    const file = Object.assign(new TFile(), { path: 'target.md' });
+    const file = Object.assign(createFile(), { path: 'target.md' });
     const app = {
       workspace: {
         getLeavesOfType: () => [panelLeaf, markdownLeaf],
@@ -61,7 +136,7 @@ describe('SearchPanelView', () => {
       },
       vault: { getAbstractFileByPath: () => file },
     };
-    Object.assign(panelLeaf, { app });
+    Object.assign(panelLeaf, { app__: app });
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -88,7 +163,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -115,7 +190,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -151,7 +226,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -186,7 +261,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       app,
       manifest: { id: 'hybrid-search' },
@@ -217,7 +292,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       app,
       manifest: { id: 'hybrid-search' },
@@ -250,7 +325,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       app,
       manifest: { id: 'hybrid-search' },
@@ -288,7 +363,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       app,
       manifest: { id: 'hybrid-search' },
@@ -320,7 +395,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       app,
       manifest: { id: 'hybrid-search' },
@@ -350,7 +425,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -365,6 +440,7 @@ describe('SearchPanelView', () => {
       .querySelector<HTMLElement>('a.hybrid-search-panel-link')
       ?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, metaKey: true }));
 
+    expect(trigger).toHaveBeenCalledOnce();
     expect(trigger).toHaveBeenCalledWith(
       'hover-link',
       expect.objectContaining({
@@ -391,16 +467,16 @@ describe('SearchPanelView', () => {
         getLeaf: () => ({ openFile: vi.fn((file: TFile) => opened.push(file)) }),
       },
       vault: {
-        getAbstractFileByPath: (path: string) => Object.assign(new TFile(), { path }),
+        getAbstractFileByPath: (path: string) => Object.assign(createFile(), { path }),
       },
       metadataCache: {
         getCache: () => null,
         getFirstLinkpathDest: (_linkpath: string, path: string) =>
-          Object.assign(new TFile(), { path }),
+          Object.assign(createFile(), { path }),
         fileToLinktext: (file: TFile) => file.path.replace(/\.md$/, ''),
       },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -445,7 +521,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -492,13 +568,13 @@ describe('SearchPanelView', () => {
         getLeavesOfType: () => [],
         getLeaf: () => ({ openFile: vi.fn() }),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'target.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'target.md' }) },
       metadataCache: {
         getCache: () => null,
         fileToLinktext: (file: TFile) => file.path.replace(/\.md$/, ''),
       },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -535,7 +611,7 @@ describe('SearchPanelView', () => {
       primaryAnchorIndex: 0,
     };
     const openFile = vi.fn().mockResolvedValue(undefined);
-    const file = Object.assign(new TFile(), { path: 'target.md' });
+    const file = Object.assign(createFile(), { path: 'target.md' });
     const app = {
       workspace: {
         getActiveFile: () => null,
@@ -548,7 +624,7 @@ describe('SearchPanelView', () => {
       },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -595,7 +671,7 @@ describe('SearchPanelView', () => {
       primaryAnchorIndex: 0,
     };
     const openFile = vi.fn().mockResolvedValue(undefined);
-    const file = Object.assign(new TFile(), { path: 'target.md' });
+    const file = Object.assign(createFile(), { path: 'target.md' });
     const app = {
       workspace: {
         getActiveFile: () => null,
@@ -608,7 +684,7 @@ describe('SearchPanelView', () => {
       },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -652,7 +728,7 @@ describe('SearchPanelView', () => {
     };
     const tabOpenFile = vi.fn().mockResolvedValue(undefined);
     const markdownOpenFile = vi.fn().mockResolvedValue(undefined);
-    const file = Object.assign(new TFile(), { path: 'target.md' });
+    const file = Object.assign(createFile(), { path: 'target.md' });
     const app = {
       workspace: {
         getActiveFile: () => null,
@@ -665,7 +741,7 @@ describe('SearchPanelView', () => {
       },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -710,7 +786,7 @@ describe('SearchPanelView', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const leaf = Object.assign(new WorkspaceLeaf(), { app });
+    const leaf = createLeaf(app);
     const plugin = {
       manifest: { id: 'hybrid-search' },
       app,
@@ -749,7 +825,7 @@ describe('SearchPanelView', () => {
   });
 
   it('calls workspace.revealLeaf bound to the workspace object', async () => {
-    const leaf = Object.assign(new WorkspaceLeaf(), {
+    const leaf = Object.assign(createLeaf(), {
       setViewState: vi.fn().mockResolvedValue(undefined),
       view: null,
     });

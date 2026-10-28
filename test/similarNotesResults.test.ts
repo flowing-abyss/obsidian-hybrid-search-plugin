@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { App, type HoverParent } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
-import type { SearchResult } from '../src/ipc';
-import { SimilarNotesResults } from '../src/ui/SimilarNotesResults';
+import type { SearchResult } from '../src/search/contracts';
+import { SimilarNotesResults } from '../src/ui/similar/SimilarNotesResults';
+import { createApp } from './support/obsidian';
 
 const related: SearchResult = {
   path: 'related.md',
@@ -14,8 +15,8 @@ const related: SearchResult = {
 };
 
 function createView() {
-  const app = new App();
-  const containerEl = activeDocument.createDiv();
+  const app = createApp({ 'related.md': '' });
+  const containerEl = createDiv();
   const hoverParent: HoverParent = { hoverPopover: null };
   const onToggle = vi.fn();
   const onContentChanged = vi.fn();
@@ -45,9 +46,7 @@ describe('SimilarNotesResults', () => {
       'Related',
     );
     expect(containerEl.querySelector('.tree-item-flair')?.textContent).toBe('0.80');
-    expect(containerEl.querySelector('.collapse-icon')?.getAttribute('data-icon')).toBe(
-      'right-triangle',
-    );
+    expect(containerEl.querySelector('.collapse-icon')).not.toBeNull();
     expect(containerEl.querySelector('.search-result-file-match')).toBeNull();
     expect(onContentChanged).toHaveBeenCalledOnce();
   });
@@ -135,9 +134,9 @@ describe('SimilarNotesResults', () => {
       supercharged.observers.push([observer, id, 'search-result-file-title']);
     });
     const supercharged = { _watchContainerDynamic: watch, observers: [] as unknown[][] };
-    const app = new App() as App & { plugins: { plugins: Record<string, unknown> } };
+    const app = createApp() as App & { plugins: { plugins: Record<string, unknown> } };
     app.plugins = { plugins: { 'supercharged-links-obsidian': supercharged } };
-    const containerEl = activeDocument.createDiv();
+    const containerEl = createDiv();
     const view = new SimilarNotesResults({
       app,
       containerEl,

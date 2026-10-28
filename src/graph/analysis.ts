@@ -65,25 +65,24 @@ export function analyzeGraph(
   };
 }
 
-export function getGraphStats(app: App, centerPath: string): GraphStats {
-  return getGraphStatsFromIndex(buildGraphIndex(app), centerPath);
-}
-
 export function getGraphStatsFromIndex(index: GraphIndex, centerPath: string): GraphStats {
   const center = normalizePath(centerPath);
   const outgoing = getOutgoingFromIndex(index, center);
   const backlinks = getBacklinksFromIndex(index, center);
   const neighbours = union(outgoing, backlinks);
-  const neighbourList = [...neighbours];
   let edgesAmongNeighbours = 0;
-
-  for (let i = 0; i < neighbourList.length; i++) {
-    for (let j = i + 1; j < neighbourList.length; j++) {
-      if (hasAnyLinkInIndex(index, neighbourList[i]!, neighbourList[j]!)) edgesAmongNeighbours++;
+  for (const source of neighbours) {
+    for (const target of index.outgoing.get(source) ?? []) {
+      if (
+        target !== source &&
+        neighbours.has(target) &&
+        (source < target || !index.outgoing.get(target)?.has(source))
+      )
+        edgesAmongNeighbours++;
     }
   }
 
-  const possibleEdges = (neighbourList.length * (neighbourList.length - 1)) / 2;
+  const possibleEdges = (neighbours.size * (neighbours.size - 1)) / 2;
   return {
     outgoing: outgoing.size,
     backlinks: backlinks.size,
@@ -104,7 +103,7 @@ export function getPredictedLinks(app: App, centerPath: string, limit = 20): Pre
   );
 }
 
-export function getPredictedLinksFromIndex(
+function getPredictedLinksFromIndex(
   app: App,
   index: GraphIndex,
   centerPath: string,
@@ -166,7 +165,7 @@ export function getCoCitations(app: App, centerPath: string, limit = 20): CoCita
   return getCoCitationsFromIndex(app, buildGraphIndex(app), centerPath, limit);
 }
 
-export function getCoCitationsFromIndex(
+function getCoCitationsFromIndex(
   app: App,
   index: GraphIndex,
   centerPath: string,
@@ -196,18 +195,6 @@ export function getCoCitationsFromIndex(
     }))
     .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))
     .slice(0, limit);
-}
-
-export function getOutgoing(app: App, path: string): Set<string> {
-  return getOutgoingFromIndex(buildGraphIndex(app), path);
-}
-
-export function getBacklinks(app: App, path: string): Set<string> {
-  return getBacklinksFromIndex(buildGraphIndex(app), path);
-}
-
-export function getNeighbours(app: App, path: string): Set<string> {
-  return getNeighboursFromIndex(buildGraphIndex(app), path);
 }
 
 export function buildGraphIndex(app: App): GraphIndex {
@@ -247,13 +234,6 @@ export function getBacklinksFromIndex(index: GraphIndex, path: string): Set<stri
 
 export function getNeighboursFromIndex(index: GraphIndex, path: string): Set<string> {
   return union(getOutgoingFromIndex(index, path), getBacklinksFromIndex(index, path));
-}
-
-function hasAnyLinkInIndex(index: GraphIndex, a: string, b: string): boolean {
-  return (
-    getOutgoingFromIndex(index, a).has(normalizePath(b)) ||
-    getOutgoingFromIndex(index, b).has(normalizePath(a))
-  );
 }
 
 function normalizePath(path: string): string {

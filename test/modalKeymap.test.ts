@@ -1,7 +1,7 @@
-import { TFile } from 'obsidian';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SearchResult } from '../src/ipc';
-import { registerModalKeymap } from '../src/ui/modalKeymap';
+import type { SearchResult } from '../src/search/contracts';
+import { registerModalKeymap } from '../src/ui/search/modalKeymap';
+import { createFile } from './support/obsidian';
 
 describe('registerModalKeymap', () => {
   const registrations: Array<{
@@ -194,7 +194,7 @@ describe('registerModalKeymap', () => {
 
   describe('Mod+O — open in new tab', () => {
     it('opens selected file in new tab', () => {
-      mockGetAbstractFileByPath.mockReturnValue(Object.assign(new TFile(), { path: 'b.md' }));
+      mockGetAbstractFileByPath.mockReturnValue(Object.assign(createFile(), { path: 'b.md' }));
       const handler = findHandler(['Mod'], 'o');
       handler(new KeyboardEvent('keydown'));
       expect(mockGetAbstractFileByPath).toHaveBeenCalledWith('b.md');
@@ -213,7 +213,7 @@ describe('registerModalKeymap', () => {
   describe('Mod+Shift+O — open all in new tabs', () => {
     it('opens every result in a new tab', () => {
       mockGetAbstractFileByPath.mockImplementation((p: string) =>
-        Object.assign(new TFile(), { path: p }),
+        Object.assign(createFile(), { path: p }),
       );
       const handler = findHandler(['Mod', 'Shift'], 'o');
       handler(new KeyboardEvent('keydown'));

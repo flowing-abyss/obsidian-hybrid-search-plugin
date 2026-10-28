@@ -1,11 +1,11 @@
 import type { App } from 'obsidian';
 import { describe, expect, it } from 'vitest';
-import { SecretStorage } from '../__mocks__/obsidian';
-import * as secrets from '../src/secrets';
+import * as secrets from '../src/settings/secrets';
+import { createApp } from './support/obsidian';
 
 /** Obsidian 1.11.4 and newer. */
 function appWithKeychain(): App {
-  return { secretStorage: new SecretStorage() } as unknown as App;
+  return createApp();
 }
 
 /** Anything older, where `app.secretStorage` simply does not exist. */

@@ -7,12 +7,12 @@ import {
   type EventRef,
   type HoverParent,
 } from 'obsidian';
-import type HybridSearchPlugin from '../main';
-import { runAllCleanupSteps } from './cleanup';
-import type { SimilarNotesFetchResult } from './noteUtils';
-import { fetchSimilarNotesDetailed } from './noteUtils';
-import type { PagePreviewPlacementSide } from './pagePreviewPlacement';
-import { calculatePagePreviewCompanionPlacement } from './pagePreviewPlacement';
+import type { SimilarNotesFetchResult } from '../../search/similarNotes';
+import { fetchSimilarNotesDetailed } from '../../search/similarNotes';
+import type { PluginContext } from '../pluginContext';
+import type { PagePreviewPlacementSide } from '../preview/pagePreviewPlacement';
+import { calculatePagePreviewCompanionPlacement } from '../preview/pagePreviewPlacement';
+import { runAllCleanupSteps } from '../shared/cleanup';
 import { SimilarNotesResults } from './SimilarNotesResults';
 
 interface HoverLinkEventPayload {
@@ -48,7 +48,7 @@ export class PagePreviewSimilarNotesManager {
 
   constructor(
     private readonly app: App,
-    private readonly plugin: HybridSearchPlugin,
+    private readonly plugin: PluginContext,
   ) {}
 
   load(): void {
@@ -88,7 +88,12 @@ export class PagePreviewSimilarNotesManager {
 
   clientChanged(): void {
     this.clientGeneration++;
+    this.generation++;
     this.cache.clear();
+    this.clearAttachmentTimers();
+    const views = [...this.views];
+    this.views.clear();
+    runAllCleanupSteps(...views.map((view) => () => view.detach()));
   }
 
   private handleHoverLink(payload: HoverLinkEventPayload): void {
@@ -173,7 +178,7 @@ export class PagePreviewSimilarNotesManager {
 
 interface PagePreviewSimilarNotesViewOptions {
   app: App;
-  plugin: HybridSearchPlugin;
+  plugin: PluginContext;
   popover: HoverPopover;
   file: TFile;
   loadResults: () => Promise<SimilarNotesFetchResult>;

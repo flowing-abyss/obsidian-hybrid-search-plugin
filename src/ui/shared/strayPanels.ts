@@ -51,8 +51,12 @@ export function stampPanelOwner<T extends HTMLElement>(el: T, ownerId: string | 
 }
 
 /** Creates a body-level panel already stamped with its owner. */
-export function createBodyPanel(cls: BodyPanelClass, ownerId: string | undefined): HTMLDivElement {
-  return stampPanelOwner(activeDocument.body.createDiv(cls), ownerId);
+export function createBodyPanel(
+  cls: BodyPanelClass,
+  ownerId: string | undefined,
+  ownerDocument = activeDocument,
+): HTMLDivElement {
+  return stampPanelOwner(ownerDocument.body.createDiv(cls), ownerId);
 }
 
 /**

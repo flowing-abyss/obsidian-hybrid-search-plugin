@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculatePagePreviewCompanionPlacement } from '../src/ui/pagePreviewPlacement';
+import { calculatePagePreviewCompanionPlacement } from '../src/ui/preview/pagePreviewPlacement';
 
 const previewRect = {
   left: 600,

@@ -1,68 +1,8 @@
 import { TFile, type App } from 'obsidian';
-import type { MatchAnchor, SearchClient, SearchResult } from '../ipc';
-import type { HybridSearchSettings } from '../settings';
-import type { SimilarTarget } from './queryParser';
+import type { SearchMode, SearchResult } from '../../search/contracts';
+import type { SimilarTarget } from '../../search/queryParser';
 
-export type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
-
-/** The primary anchor is the one scrollTo/highlight logic should target — semantic when present. */
-export function getPrimaryAnchor(source: {
-  previewAnchors?: MatchAnchor[];
-  primaryAnchorIndex?: number;
-}): MatchAnchor | undefined {
-  const anchors = source.previewAnchors;
-  if (!anchors || anchors.length === 0) return undefined;
-  const index =
-    typeof source.primaryAnchorIndex === 'number' && source.primaryAnchorIndex >= 0
-      ? source.primaryAnchorIndex
-      : 0;
-  return anchors[index] ?? anchors[0];
-}
-
-/** Resolve an anchor's real character offset in `content`, validating charStart against
- *  matchText and falling back to a literal search when the offset doesn't line up. */
-export function getAnchorOffset(content: string, anchor: MatchAnchor): number {
-  if (
-    typeof anchor.charStart === 'number' &&
-    anchor.charStart >= 0 &&
-    anchor.charStart <= content.length
-  ) {
-    if (!anchor.matchText || content.startsWith(anchor.matchText, anchor.charStart)) {
-      return anchor.charStart;
-    }
-  }
-  if (!anchor.matchText) return -1;
-  return content.indexOf(anchor.matchText);
-}
-
-export function offsetToEditorPosition(
-  content: string,
-  offset: number,
-): { line: number; ch: number } {
-  let line = 0;
-  let lineStart = 0;
-  const boundedOffset = Math.max(0, Math.min(offset, content.length));
-  for (let index = 0; index < boundedOffset; index++) {
-    if (content.charCodeAt(index) === 10) {
-      line++;
-      lineStart = index + 1;
-    }
-  }
-  return { line, ch: boundedOffset - lineStart };
-}
-
-export interface SimilarNotesOptions {
-  limit: number;
-  threshold: number;
-  anchors?: boolean;
-}
-
-export interface SimilarNotesFetchResult {
-  results: SearchResult[];
-  scoreMode: 'similarity' | 'structural';
-}
-
-export interface SuperchargedLinksPlugin {
+interface SuperchargedLinksPlugin {
   _watchContainerDynamic: (
     watchId: string,
     container: HTMLElement,
@@ -81,43 +21,6 @@ interface AppWithSuperchargedLinks {
   };
 }
 
-export async function fetchSimilarNotesDetailed(
-  client: Pick<SearchClient, 'search'>,
-  path: string,
-  options: SimilarNotesOptions,
-): Promise<SimilarNotesFetchResult> {
-  const nfcPath = path.normalize('NFC');
-  const semantic = await client.search('', {
-    notePath: path,
-    limit: options.limit + 1,
-    ...(options.anchors && { anchors: true }),
-    ...(options.threshold > 0 && { threshold: options.threshold }),
-  });
-  const filteredSemantic = semantic.filter((result) => result.path.normalize('NFC') !== nfcPath);
-  if (filteredSemantic.length > 0) {
-    return { results: filteredSemantic.slice(0, options.limit), scoreMode: 'similarity' };
-  }
-  if (options.threshold > 0) {
-    return { results: [], scoreMode: 'similarity' };
-  }
-
-  const related = await client.search(path, { related: true, limit: options.limit + 1 });
-  return {
-    results: related
-      .filter((result) => result.path.normalize('NFC') !== nfcPath)
-      .slice(0, options.limit),
-    scoreMode: 'structural',
-  };
-}
-
-export async function fetchSimilarNotes(
-  client: Pick<SearchClient, 'search'>,
-  path: string,
-  options: SimilarNotesOptions,
-): Promise<SearchResult[]> {
-  return (await fetchSimilarNotesDetailed(client, path, options)).results;
-}
-
 export function getResultTitle(app: App, result: Pick<SearchResult, 'path' | 'title'>): string {
   const nfcPath = result.path.normalize('NFC');
   const fm = app.metadataCache.getCache(nfcPath)?.frontmatter;
@@ -127,7 +30,7 @@ export function getResultTitle(app: App, result: Pick<SearchResult, 'path' | 'ti
   );
 }
 
-export function fileToWikiLink(path: string): string {
+function fileToWikiLink(path: string): string {
   return `[[${path.normalize('NFC').replace(/\.md$/, '')}]]`;
 }
 
@@ -283,13 +186,6 @@ export function unhookSuperchargedLinks(app: App, ...watches: SuperchargedWatch[
     }
   }
   if (failed) throw firstError;
-}
-
-export function getSimilarNotesOptions(settings: HybridSearchSettings): SimilarNotesOptions {
-  return {
-    limit: settings.similarNotesBottomLimit,
-    threshold: settings.similarNotesThreshold,
-  };
 }
 
 export function scoreColor(score: number): string {

@@ -1,8 +1,9 @@
-import { App, HoverPopover, TFile, type HoverParent } from 'obsidian';
+import { HoverPopover, type HoverParent } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SearchResult } from '../src/ipc';
-import { DEFAULT_SETTINGS } from '../src/settings';
-import { PagePreviewSimilarNotesManager } from '../src/ui/PagePreviewSimilarNotes';
+import type { SearchResult } from '../src/search/contracts';
+import { DEFAULT_SETTINGS } from '../src/settings/model';
+import { PagePreviewSimilarNotesManager } from '../src/ui/similar/PagePreviewSimilarNotes';
+import { createApp, createFile } from './support/obsidian';
 
 const related: SearchResult = {
   path: 'related.md',
@@ -14,7 +15,7 @@ const related: SearchResult = {
 };
 
 function createHarness(search = vi.fn().mockResolvedValue([related])) {
-  const app = new App();
+  const app = createApp();
   let hoverCallback: ((payload: unknown) => void) | undefined;
   const workspaceOn = app.workspace.on as unknown as ReturnType<typeof vi.fn>;
   workspaceOn.mockImplementation((eventName: string, callback: (payload: unknown) => void) => {
@@ -23,7 +24,7 @@ function createHarness(search = vi.fn().mockResolvedValue([related])) {
   });
   app.metadataCache.getFirstLinkpathDest = vi
     .fn()
-    .mockReturnValue(Object.assign(new TFile(), { path: 'target.md', extension: 'md' }));
+    .mockReturnValue(Object.assign(createFile(), { path: 'target.md', extension: 'md' }));
   const plugin = {
     manifest: { id: 'hybrid-search' },
     settings: { ...DEFAULT_SETTINGS, showSimilarNotesInPagePreview: true },
@@ -60,6 +61,8 @@ function createLivePopover(targetEl: HTMLElement): {
 } {
   const hoverParent: HoverParent = { hoverPopover: null };
   const popover = new HoverPopover(hoverParent, targetEl);
+  hoverParent.hoverPopover = popover;
+  popover.hoverEl.addClass('popover', 'hover-popover');
   activeDocument.body.appendChild(popover.hoverEl);
   popover.load();
   return { hoverParent, popover };
@@ -99,7 +102,7 @@ describe('PagePreviewSimilarNotesManager', () => {
     const harness = createHarness();
     const resolver = vi.fn((linktext: string, sourcePath: string) => {
       if (linktext === 'Folder/Target.md' && sourcePath === 'source.md') {
-        return Object.assign(new TFile(), { path: 'Folder/Target.md', extension: 'md' });
+        return Object.assign(createFile(), { path: 'Folder/Target.md', extension: 'md' });
       }
       return null;
     });
@@ -108,7 +111,7 @@ describe('PagePreviewSimilarNotesManager', () => {
     const hoverParent: HoverParent = { hoverPopover: null };
 
     harness.emitHover(hoverParent, targetEl, 'Folder/Target.md#Overview');
-    harness.emitHover(hoverParent, targetEl, 'Folder/Target.md^summary-block');
+    harness.emitHover(hoverParent, targetEl, 'Folder/Target.md#^summary-block');
 
     expect(resolver).toHaveBeenNthCalledWith(1, 'Folder/Target.md', 'source.md');
     expect(resolver).toHaveBeenNthCalledWith(2, 'Folder/Target.md', 'source.md');
@@ -120,7 +123,7 @@ describe('PagePreviewSimilarNotesManager', () => {
     const harness = createHarness();
     const resolver = vi.fn((linktext: string, sourcePath: string) => {
       if (linktext === 'Folder/Target.md' && sourcePath === '') {
-        return Object.assign(new TFile(), { path: 'Folder/Target.md', extension: 'md' });
+        return Object.assign(createFile(), { path: 'Folder/Target.md', extension: 'md' });
       }
       return null;
     });
@@ -258,6 +261,8 @@ describe('PagePreviewSimilarNotesManager', () => {
     harness.plugin.settings.showSimilarNotesInPagePreview = false;
     harness.manager.settingsChanged();
     const popover = new HoverPopover(hoverParent, targetEl);
+    hoverParent.hoverPopover = popover;
+    popover.hoverEl.addClass('popover', 'hover-popover');
     activeDocument.body.appendChild(popover.hoverEl);
     popover.load();
     vi.runAllTimers();
@@ -299,6 +304,8 @@ describe('PagePreviewSimilarNotesManager', () => {
     harness.emitHover(hoverParent, targetEl);
     vi.advanceTimersByTime(0);
     const popover = new HoverPopover(hoverParent, targetEl);
+    hoverParent.hoverPopover = popover;
+    popover.hoverEl.addClass('popover', 'hover-popover');
     activeDocument.body.appendChild(popover.hoverEl);
     popover.load();
     vi.advanceTimersByTime(25);
@@ -319,6 +326,8 @@ describe('PagePreviewSimilarNotesManager', () => {
     harness.emitHover(hoverParent, targetEl);
     vi.advanceTimersByTime(299);
     const popover = new HoverPopover(hoverParent, targetEl);
+    hoverParent.hoverPopover = popover;
+    popover.hoverEl.addClass('popover', 'hover-popover');
     activeDocument.body.appendChild(popover.hoverEl);
     popover.load();
     vi.advanceTimersByTime(1);
@@ -334,7 +343,7 @@ describe('PagePreviewSimilarNotesManager', () => {
   it('keeps only the latest hover attempt for a shared hover parent', async () => {
     const harness = createHarness();
     harness.app.metadataCache.getFirstLinkpathDest = vi.fn((linktext: string) =>
-      Object.assign(new TFile(), { path: `${linktext}.md`, extension: 'md' }),
+      Object.assign(createFile(), { path: `${linktext}.md`, extension: 'md' }),
     );
     const firstTargetEl = activeDocument.body.createDiv();
     const secondTargetEl = activeDocument.body.createDiv();
@@ -345,6 +354,8 @@ describe('PagePreviewSimilarNotesManager', () => {
     harness.emitHover(hoverParent, secondTargetEl, 'second');
     vi.advanceTimersByTime(199);
     const popover = new HoverPopover(hoverParent, secondTargetEl);
+    hoverParent.hoverPopover = popover;
+    popover.hoverEl.addClass('popover', 'hover-popover');
     activeDocument.body.appendChild(popover.hoverEl);
     popover.load();
     vi.advanceTimersByTime(101);

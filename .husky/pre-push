@@ -1,1 +1,1 @@
-npm run review:local
+pnpm verify

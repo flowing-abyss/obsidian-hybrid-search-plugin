@@ -5,7 +5,7 @@ import {
   isReservedPostfixName,
   normalizePostfixName,
   parseQuery,
-} from '../src/ui/queryParser';
+} from '../src/search/queryParser';
 
 describe('parseQuery — mode prefix operators', () => {
   it('hybrid: sets mode and strips operator', () => {

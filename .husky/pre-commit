@@ -1,1 +1,1 @@
-npx eslint --fix src && npx prettier --write .
+pnpm exec eslint --fix src && pnpm exec prettier --write .

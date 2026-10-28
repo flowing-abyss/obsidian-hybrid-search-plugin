@@ -3,7 +3,7 @@ import sonarjs from 'eslint-plugin-sonarjs';
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'main.js', 'package-lock.json'],
+    ignores: ['dist/**', 'node_modules/**', 'main.js', 'pnpm-lock.yaml'],
     linterOptions: {
       reportUnusedDisableDirectives: false,
     },
@@ -22,5 +22,14 @@ export default [
         tsconfigRootDir: import.meta.dirname,
       },
     },
+  },
+  {
+    // This pass runs host rules only; Sonar suppressions are checked by the full lint pass.
+    linterOptions: { reportUnusedDisableDirectives: false },
+  },
+  {
+    // Process timers do not belong to a DOM window.
+    files: ['src/transport/stdio.ts'],
+    rules: { 'obsidianmd/prefer-window-timers': 'off' },
   },
 ];

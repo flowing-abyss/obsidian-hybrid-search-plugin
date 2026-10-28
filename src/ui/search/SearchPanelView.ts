@@ -1,23 +1,21 @@
 import { ItemView, Notice, setIcon, TFile, type WorkspaceLeaf } from 'obsidian';
-import type { SearchResult } from '../ipc';
-import type HybridSearchPlugin from '../main';
+import { getAnchorOffset, getPrimaryAnchor, offsetToEditorPosition } from '../../search/anchors';
+import type { SearchResult } from '../../search/contracts';
+import { type SearchMode } from '../../search/contracts';
+import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from '../../search/queryParser';
+import type { PluginContext } from '../pluginContext';
 import {
   createInternalLink,
   fileToDragWikiLink,
-  getAnchorOffset,
-  getPrimaryAnchor,
   getResultTitle,
   hookSuperchargedLinks,
   modeLabel,
-  offsetToEditorPosition,
   openResult,
   resolveSimilarTarget,
   scoreColor,
   unhookSuperchargedLinks,
-  type SearchMode,
   type SuperchargedWatch,
-} from './noteUtils';
-import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
+} from '../shared/noteUtils';
 
 export const SEARCH_PANEL_VIEW_TYPE = 'hybrid-search-panel';
 const SEARCH_PANEL_SNIPPET_LENGTH = 400;
@@ -47,7 +45,7 @@ export class SearchPanelView extends ItemView {
 
   constructor(
     leaf: WorkspaceLeaf,
-    private plugin: HybridSearchPlugin,
+    private plugin: PluginContext,
   ) {
     super(leaf);
     this.panelMode = plugin.settings.defaultMode;
@@ -74,7 +72,7 @@ export class SearchPanelView extends ItemView {
   async onOpen(): Promise<void> {
     await Promise.resolve();
     this.closed = false;
-    const container = this.containerEl.children[1] as HTMLElement;
+    const container = this.contentEl;
     container.empty();
     container.addClass('hybrid-search-panel');
 
@@ -155,6 +153,10 @@ export class SearchPanelView extends ItemView {
     unhookSuperchargedLinks(this.app, this.slWatch);
   }
 
+  refreshForClientChange(): void {
+    if (!this.closed && this.inputEl) void this.search(this.inputEl.value);
+  }
+
   private scheduleSearch(): void {
     if (this.debounce !== undefined) window.clearTimeout(this.debounce);
     this.debounce = window.setTimeout(() => {
@@ -178,7 +180,8 @@ export class SearchPanelView extends ItemView {
       this.renderEmpty('Type to search.');
       return;
     }
-    if (!this.plugin.client) {
+    const client = this.plugin.client;
+    if (!client) {
       this.results = [];
       this.renderEmpty('Search client not ready.');
       return;
@@ -207,7 +210,7 @@ export class SearchPanelView extends ItemView {
     try {
       // The backend ignores the query string during a path lookup, so send '' rather than
       // the leftover free text — it would only look like it had been searched for.
-      const results = await this.plugin.client.search(this.similarPath ? '' : parsedQuery, {
+      const results = await client.search(this.similarPath ? '' : parsedQuery, {
         mode,
         ...(this.similarPath && { notePath: this.similarPath }),
         limit,
@@ -219,12 +222,12 @@ export class SearchPanelView extends ItemView {
         ...(overrides.rerank !== undefined && { rerank: overrides.rerank }),
         ...(threshold > 0 && { threshold }),
       });
-      if (this.closed || requestId !== this.requestId) return;
+      if (this.closed || requestId !== this.requestId || client !== this.plugin.client) return;
       this.results = [...results].sort((a, b) => b.score - a.score);
       this.selectedIndex = this.results.length > 0 ? 0 : -1;
       this.renderResults();
     } catch {
-      if (!this.closed && requestId === this.requestId) {
+      if (!this.closed && requestId === this.requestId && client === this.plugin.client) {
         this.results = [];
         this.renderEmpty('Search failed.');
       }
@@ -269,7 +272,6 @@ export class SearchPanelView extends ItemView {
         'hybrid-search-panel-link',
       );
       link.classList.add('tree-item-inner');
-      link.addEventListener('mouseover', (evt) => this.handleHoverPreview(evt));
       const flairOuter = row.createDiv({ cls: 'tree-item-flair-outer' });
       const scoreEl = flairOuter.createSpan({
         cls: 'tree-item-flair hybrid-search-panel-score',
@@ -399,21 +401,32 @@ export class SearchPanelView extends ItemView {
     }
     if (evt.key === 'Escape') {
       evt.preventDefault();
-      this.inputEl.value = '';
-      this.results = [];
-      this.expandedPaths.clear();
-      // Escape discards the results without going through search(), so clear the similar
-      // state here too — otherwise the badge keeps claiming "~" for results that are gone.
-      this.similarPath = null;
-      this.updateModeBadge(this.panelMode, false);
-      this.renderEmpty('Type to search.');
+      this.clearSearch();
     }
+  }
+
+  private clearSearch(): void {
+    this.requestId++;
+    if (this.debounce !== undefined) window.clearTimeout(this.debounce);
+    this.debounce = undefined;
+    this.inputEl.value = '';
+    this.results = [];
+    this.expandedPaths.clear();
+    // Escape discards the results without going through search(), so clear the similar
+    // state here too — otherwise the badge keeps claiming "~" for results that are gone.
+    this.similarPath = null;
+    this.updateModeBadge(this.panelMode, false);
+    this.renderEmpty('Type to search.');
   }
 
   private moveSelection(delta: number): void {
     if (this.results.length === 0) return;
-    this.selectedIndex = Math.max(0, Math.min(this.results.length - 1, this.selectedIndex + delta));
-    this.renderResults();
+    const next = Math.max(0, Math.min(this.results.length - 1, this.selectedIndex + delta));
+    if (next === this.selectedIndex) return;
+    this.selectedIndex = next;
+    for (const row of this.resultsEl.querySelectorAll<HTMLElement>('.hybrid-search-panel-row')) {
+      row.classList.toggle('is-selected', Number(row.dataset.index) === next);
+    }
     this.resultsEl
       .querySelector<HTMLElement>(`.hybrid-search-panel-row[data-index="${this.selectedIndex}"]`)
       ?.scrollIntoView({ block: 'nearest' });
@@ -503,7 +516,7 @@ export class SearchPanelView extends ItemView {
       this.plugin.settings.searchPanelThreshold = this.panelThreshold;
       void this.plugin.saveSettings();
     }
-    if (this.inputEl.value.trim()) void this.search(this.inputEl.value);
+    if (changed && this.inputEl.value.trim()) void this.search(this.inputEl.value);
   }
 
   private toggleResult(index: number): void {
@@ -620,10 +633,7 @@ export class SearchPanelView extends ItemView {
   }
 }
 
-export async function revealSearchPanel(
-  plugin: HybridSearchPlugin,
-  mode?: SearchMode,
-): Promise<void> {
+export async function revealSearchPanel(plugin: PluginContext, mode?: SearchMode): Promise<void> {
   const existing = plugin.app.workspace.getLeavesOfType(SEARCH_PANEL_VIEW_TYPE)[0];
   const leaf = existing ?? plugin.app.workspace.getRightLeaf(false);
   if (!leaf) {

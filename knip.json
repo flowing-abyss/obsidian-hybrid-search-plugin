@@ -1,4 +1,3 @@
 {
-  "entry": ["src/main.ts"],
-  "project": ["src/**/*.ts", "__mocks__/**/*.ts"]
+  "project": ["src/**/*.ts", "test/**/*.ts"]
 }

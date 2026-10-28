@@ -1,150 +1,9 @@
 import { App, Notice, PluginSettingTab, SecretComponent, Setting, setIcon } from 'obsidian';
-import type { HttpSearchClient, SearchClient } from './ipc';
-import { getApiKey, isSecretStorageAvailable } from './secrets';
-import type { CustomPostfix } from './ui/queryParser';
-import { isReservedPostfixName, normalizePostfixName } from './ui/queryParser';
-import { StatusSection } from './ui/statusSection';
-
-export interface HybridSearchSettings {
-  binaryPath: string;
-  apiKeySecretId: string;
-  transport: 'stdio' | 'http';
-  httpHost: string;
-  httpPort: number;
-  httpFallbackEnabled: boolean;
-  httpFallbackHost: string;
-  httpFallbackPort: number;
-  defaultMode: 'hybrid' | 'semantic' | 'fulltext' | 'title';
-  defaultSearchFilters: string;
-  customPostfixes: CustomPostfix[];
-  showMeta: boolean;
-  showPreviewMeta: boolean;
-  centerPanels: boolean;
-  showPreview: boolean;
-  showGraphPanel: boolean;
-  scrollToSnippet: boolean;
-  rememberLastQuery: boolean;
-  lastQuery: string;
-  showSimilarNotesAtBottom: boolean;
-  similarNotesBottomLimit: number;
-  showSimilarNotesInPagePreview: boolean;
-  similarNotesPagePreviewLimit: number;
-  similarNotesThreshold: number;
-  searchPanelLimit: number;
-  searchPanelThreshold: number;
-  inlineSearchEnabled: boolean;
-  inlineSearchTrigger: string;
-  inlineSearchLimit: number;
-  inlineSearchThreshold: number;
-  inlineSearchShowPreview: boolean;
-}
-
-export const DEFAULT_SETTINGS: HybridSearchSettings = {
-  binaryPath: '',
-  apiKeySecretId: '',
-  transport: 'stdio',
-  httpHost: '127.0.0.1',
-  httpPort: 3939,
-  httpFallbackEnabled: false,
-  httpFallbackHost: '127.0.0.1',
-  httpFallbackPort: 3939,
-  defaultMode: 'hybrid',
-  defaultSearchFilters: '',
-  customPostfixes: [],
-  showMeta: false,
-  showPreviewMeta: true,
-  centerPanels: false,
-  showPreview: true,
-  showGraphPanel: false,
-  scrollToSnippet: false,
-  rememberLastQuery: true,
-  lastQuery: '',
-  showSimilarNotesAtBottom: false,
-  similarNotesBottomLimit: 5,
-  showSimilarNotesInPagePreview: false,
-  similarNotesPagePreviewLimit: 5,
-  similarNotesThreshold: 0,
-  searchPanelLimit: 20,
-  searchPanelThreshold: 0,
-  inlineSearchEnabled: true,
-  inlineSearchTrigger: ';;',
-  inlineSearchLimit: 10,
-  inlineSearchThreshold: 0,
-  inlineSearchShowPreview: true,
-};
-
-function normalizeCustomPostfixes(value: unknown): CustomPostfix[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const result: CustomPostfix[] = [];
-  for (const entry of value) {
-    if (
-      typeof entry !== 'object' ||
-      entry === null ||
-      typeof (entry as { name?: unknown }).name !== 'string' ||
-      typeof (entry as { filters?: unknown }).filters !== 'string'
-    ) {
-      continue;
-    }
-    const { name, filters } = entry as CustomPostfix;
-    const normalizedName = normalizePostfixName(name);
-    if (!normalizedName || isReservedPostfixName(normalizedName) || seen.has(normalizedName)) {
-      continue;
-    }
-    seen.add(normalizedName);
-    result.push({ name, filters });
-  }
-  return result;
-}
-
-export function normalizeSettings(settings: HybridSearchSettings): HybridSearchSettings {
-  return {
-    ...settings,
-    apiKeySecretId:
-      typeof settings.apiKeySecretId === 'string' ? settings.apiKeySecretId.trim() : '',
-    defaultSearchFilters:
-      typeof settings.defaultSearchFilters === 'string'
-        ? settings.defaultSearchFilters
-        : DEFAULT_SETTINGS.defaultSearchFilters,
-    customPostfixes: normalizeCustomPostfixes(settings.customPostfixes),
-    showSimilarNotesInPagePreview:
-      typeof settings.showSimilarNotesInPagePreview === 'boolean'
-        ? settings.showSimilarNotesInPagePreview
-        : DEFAULT_SETTINGS.showSimilarNotesInPagePreview,
-    similarNotesPagePreviewLimit: clampInteger(
-      settings.similarNotesPagePreviewLimit,
-      1,
-      20,
-      DEFAULT_SETTINGS.similarNotesPagePreviewLimit,
-    ),
-    inlineSearchEnabled:
-      typeof settings.inlineSearchEnabled === 'boolean'
-        ? settings.inlineSearchEnabled
-        : DEFAULT_SETTINGS.inlineSearchEnabled,
-    inlineSearchTrigger:
-      typeof settings.inlineSearchTrigger === 'string' &&
-      settings.inlineSearchTrigger.trim() &&
-      !settings.inlineSearchTrigger.trim().startsWith('[')
-        ? settings.inlineSearchTrigger.trim()
-        : DEFAULT_SETTINGS.inlineSearchTrigger,
-    inlineSearchLimit: clampInteger(
-      settings.inlineSearchLimit,
-      1,
-      50,
-      DEFAULT_SETTINGS.inlineSearchLimit,
-    ),
-    inlineSearchThreshold: clampNumber(
-      settings.inlineSearchThreshold,
-      0,
-      1,
-      DEFAULT_SETTINGS.inlineSearchThreshold,
-    ),
-    inlineSearchShowPreview:
-      typeof settings.inlineSearchShowPreview === 'boolean'
-        ? settings.inlineSearchShowPreview
-        : DEFAULT_SETTINGS.inlineSearchShowPreview,
-  };
-}
+import type { SearchService } from '../../search/contracts';
+import { isReservedPostfixName, normalizePostfixName } from '../../search/queryParser';
+import { DEFAULT_SETTINGS, type HybridSearchSettings } from '../../settings/model';
+import { getApiKey, isSecretStorageAvailable } from '../../settings/secrets';
+import { StatusSection } from './statusSection';
 
 const HTTP_START_COMMAND =
   'OBSIDIAN' + '_VAULT_PATH="/path/to/your/vault" obsidian-hybrid-search serve';
@@ -155,7 +14,7 @@ interface PluginRef {
   saveSettings(): Promise<void>;
   restartClient?(): void | Promise<void>;
   onSimilarNotesSettingsChanged?(): void;
-  client?: SearchClient | HttpSearchClient;
+  client?: SearchService;
 }
 
 const API_KEY_DESC =
@@ -168,6 +27,9 @@ const API_KEY_UNSUPPORTED_DESC =
 
 export class HybridSearchSettingTab extends PluginSettingTab {
   private statusSection: StatusSection | null = null;
+  private restartTimer?: number;
+  private disposed = false;
+  private hidden = true;
 
   constructor(
     app: App,
@@ -177,6 +39,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
   }
 
   display(): void {
+    this.hidden = false;
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass('hybrid-search-settings');
@@ -206,7 +69,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.transport = value as HybridSearchSettings['transport'];
             await this.plugin.saveSettings();
-            await this.plugin.restartClient?.();
+            await this.restartClient();
             httpSettingsEl.hidden = value !== 'http';
             stdioSettingsEl.hidden = value !== 'stdio';
             fallbackSettingsEl.hidden = !(
@@ -231,7 +94,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.httpHost = value.trim() || DEFAULT_SETTINGS.httpHost;
             await this.plugin.saveSettings();
-            await this.plugin.restartClient?.();
+            this.scheduleRestart();
           }),
       );
 
@@ -247,7 +110,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
             if (Number.isInteger(port) && port > 0 && port <= 65_535) {
               this.plugin.settings.httpPort = port;
               await this.plugin.saveSettings();
-              await this.plugin.restartClient?.();
+              this.scheduleRestart();
             }
           }),
       );
@@ -261,7 +124,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.httpFallbackEnabled).onChange(async (value) => {
           this.plugin.settings.httpFallbackEnabled = value;
           await this.plugin.saveSettings();
-          await this.plugin.restartClient?.();
+          await this.restartClient();
           fallbackSettingsEl.hidden = !value;
         }),
       );
@@ -277,7 +140,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
             this.plugin.settings.httpFallbackHost =
               value.trim() || DEFAULT_SETTINGS.httpFallbackHost;
             await this.plugin.saveSettings();
-            await this.plugin.restartClient?.();
+            this.scheduleRestart();
           }),
       );
 
@@ -293,7 +156,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
             if (Number.isInteger(port) && port > 0 && port <= 65_535) {
               this.plugin.settings.httpFallbackPort = port;
               await this.plugin.saveSettings();
-              await this.plugin.restartClient?.();
+              this.scheduleRestart();
             }
           }),
       );
@@ -310,7 +173,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.binaryPath = value;
             await this.plugin.saveSettings();
-            await this.plugin.restartClient?.();
+            this.scheduleRestart();
           }),
       );
 
@@ -330,14 +193,19 @@ export class HybridSearchSettingTab extends PluginSettingTab {
           .setButtonText('Test')
           .setCta()
           .onClick(async () => {
-            if (!this.plugin.client) {
+            const client = this.plugin.client;
+            if (!client) {
               new Notice('Search client not initialised.');
               return;
             }
             try {
-              await this.plugin.client.search('test', { limit: 1 });
+              await client.waitReady();
+              await client.search('test', { limit: 1 });
+              await client.waitReady();
+              if (this.disposed || client !== this.plugin.client) return;
               new Notice('Connected. Server running.');
             } catch (err) {
+              if (this.disposed || client !== this.plugin.client) return;
               new Notice(`Connection failed: ${err instanceof Error ? err.message : String(err)}`);
             }
           }),
@@ -655,9 +523,37 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     void statusSection.refresh();
   }
 
+  private scheduleRestart(): void {
+    if (this.disposed) return;
+    if (this.hidden) {
+      void this.restartClient();
+      return;
+    }
+    if (this.restartTimer !== undefined) window.clearTimeout(this.restartTimer);
+    this.restartTimer = window.setTimeout(() => {
+      void this.restartClient();
+    }, 400);
+  }
+
+  private async restartClient(): Promise<void> {
+    if (this.restartTimer !== undefined) window.clearTimeout(this.restartTimer);
+    this.restartTimer = undefined;
+    if (!this.disposed) await this.plugin.restartClient?.();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    if (this.restartTimer !== undefined) window.clearTimeout(this.restartTimer);
+    this.restartTimer = undefined;
+    this.statusSection?.dispose();
+    this.statusSection = null;
+  }
+
   /** Settings tabs are re-rendered on every open, so a pending status request from a
    *  previous open must not paint into the detached tree it captured. */
   hide(): void {
+    this.hidden = true;
+    if (this.restartTimer !== undefined) void this.restartClient();
     this.statusSection?.dispose();
     this.statusSection = null;
   }
@@ -696,7 +592,7 @@ export class HybridSearchSettingTab extends PluginSettingTab {
     if (settings.transport !== 'http') {
       return settings.binaryPath || 'obsidian-hybrid-search';
     }
-    if (client && 'activeEndpointLabel' in client) {
+    if (client?.activeEndpointLabel) {
       return client.activeEndpointLabel();
     }
     return `${settings.httpHost}:${String(settings.httpPort)}`;
@@ -722,9 +618,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     const secret = new SecretComponent(this.app, setting.controlEl);
     secret.setValue(this.plugin.settings.apiKeySecretId).onChange(async (value) => {
-      this.plugin.settings.apiKeySecretId = value.trim();
+      this.plugin.settings.apiKeySecretId = (value ?? '').trim();
       await this.plugin.saveSettings();
-      await this.plugin.restartClient?.();
+      await this.restartClient();
 
       if (!appliedHint.isConnected) return;
       appliedHint.hidden = false;
@@ -782,16 +678,4 @@ function renderCustomPostfixRow(
         .onChange(handleFiltersChange),
     )
     .addExtraButton((btn) => btn.setIcon('trash').setTooltip('Remove').onClick(handleRemove));
-}
-
-function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isInteger(parsed)) return fallback;
-  return Math.max(min, Math.min(max, parsed));
-}
-
-function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(min, Math.min(max, parsed));
 }

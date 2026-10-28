@@ -1,7 +1,15 @@
+import { Notice } from 'obsidian';
+import { SecretComponent, ToggleComponent } from 'obsidian-test-mocks/obsidian';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SecretComponent, Setting } from '../__mocks__/obsidian';
-import type { HybridSearchSettings } from '../src/settings';
-import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from '../src/settings';
+import type { HybridSearchSettings } from '../src/settings/model';
+import { DEFAULT_SETTINGS, normalizeSettings } from '../src/settings/model';
+import { HybridSearchSettingTab } from '../src/ui/settings/HybridSearchSettingTab';
+import { createApp } from './support/obsidian';
+
+vi.mock('obsidian', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('obsidian')>()),
+  Notice: vi.fn(),
+}));
 
 const mockPlugin = {
   app: {
@@ -12,6 +20,26 @@ const mockPlugin = {
   saveSettings: vi.fn(),
   client: undefined,
 };
+
+function findSetting(tab: HybridSearchSettingTab, name: string): HTMLElement {
+  const label = Array.from(tab.containerEl.querySelectorAll('.setting-item-name')).find(
+    (el) => el.textContent === name,
+  );
+  if (!label) throw new Error(`Missing setting: ${name}`);
+  return label.closest<HTMLElement>('.setting-item')!;
+}
+
+function changeText(setting: HTMLElement, value: string): void {
+  const input = setting.querySelector('input')!;
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function changeDropdown(setting: HTMLElement, value: string): void {
+  const select = setting.querySelector('select')!;
+  select.value = value;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+}
 
 describe('DEFAULT_SETTINGS', () => {
   it('has expected defaults', () => {
@@ -166,20 +194,24 @@ describe('normalizeSettings', () => {
 
 describe('HybridSearchSettingTab', () => {
   beforeEach(() => {
-    Setting.clearInstances();
-    SecretComponent.clearInstances();
+    vi.spyOn(ToggleComponent.prototype, 'constructor3__').mockImplementation(function (
+      this: ToggleComponent,
+    ) {
+      this.toggleEl.addClass('checkbox-container');
+      this.toggleEl.addEventListener('click', () => this.onClick());
+    });
     vi.clearAllMocks();
   });
 
   it('constructs without throwing', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     expect(() => new HybridSearchSettingTab(app as never, mockPlugin as never)).not.toThrow();
   });
 
   it('display() renders without throwing', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     expect(() => tab.display()).not.toThrow();
@@ -187,7 +219,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('display() does not render limit slider', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
@@ -201,7 +233,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('display() renders show meta toggle', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
@@ -214,7 +246,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('display() hides similar note limit until enabled', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
@@ -231,7 +263,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('display() renders similar note limit when similar notes are enabled', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true };
     tab.display();
@@ -244,7 +276,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('shows only page preview controls and the shared threshold when only page preview is enabled', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = {
       ...DEFAULT_SETTINGS,
@@ -261,7 +293,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('renders STDIO connection settings by default', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS };
     tab.display();
@@ -276,7 +308,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('binds the secret picker to its identifier and applies a new selection once', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     let finishSaving!: () => void;
     const saving = new Promise<void>((resolve) => {
       finishSaving = resolve;
@@ -289,11 +321,12 @@ describe('HybridSearchSettingTab', () => {
     };
     const tab = new HybridSearchSettingTab(app, plugin as never);
 
+    const setValue = vi.spyOn(SecretComponent.prototype, 'setValue');
+    const onChange = vi.spyOn(SecretComponent.prototype, 'onChange');
     tab.display();
-    const secret = SecretComponent.instances[0];
-    expect(secret?.value).toBe('existing-secret');
+    expect(setValue).toHaveBeenCalledWith('existing-secret');
 
-    const applying = secret?.triggerChange('ohs') as Promise<void>;
+    const applying = onChange.mock.calls[0]![0]('ohs');
 
     expect(plugin.settings.apiKeySecretId).toBe('ohs');
     expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
@@ -305,9 +338,96 @@ describe('HybridSearchSettingTab', () => {
     expect(plugin.restartClient).toHaveBeenCalledTimes(1);
   });
 
+  it('restarts once after connection typing settles and flushes on hide', async () => {
+    vi.useFakeTimers();
+    try {
+      const app = createApp();
+      const plugin = {
+        ...mockPlugin,
+        settings: { ...DEFAULT_SETTINGS },
+        saveSettings: vi.fn().mockResolvedValue(undefined),
+        restartClient: vi.fn(),
+      };
+      const tab = new HybridSearchSettingTab(app, plugin);
+      tab.display();
+      changeText(findSetting(tab, 'Binary path'), '/first');
+      await Promise.resolve();
+      changeText(findSetting(tab, 'Binary path'), '/final');
+      await Promise.resolve();
+      expect(plugin.restartClient).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(400);
+      expect(plugin.restartClient).toHaveBeenCalledOnce();
+      expect(plugin.settings.binaryPath).toBe('/final');
+      changeText(findSetting(tab, 'Binary path'), '/on-close');
+      await Promise.resolve();
+      tab.hide();
+      expect(plugin.restartClient).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(plugin.restartClient).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not report connection success for a terminated client', async () => {
+    const client = {
+      waitReady: vi.fn().mockRejectedValue(new Error('terminated')),
+      search: vi.fn().mockResolvedValue([]),
+      statusReport: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS }, client };
+    const tab = new HybridSearchSettingTab(createApp(), plugin);
+    vi.mocked(Notice).mockClear();
+    tab.display();
+    findSetting(tab, 'Test connection').querySelector('button')!.click();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(Notice).toHaveBeenCalledWith(expect.stringContaining('terminated'));
+    expect(Notice).not.toHaveBeenCalledWith('Connected. Server running.');
+  });
+
+  it('suppresses a connection-test notice after the client is replaced', async () => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const client = {
+      waitReady: vi.fn().mockResolvedValue(undefined),
+      search: vi.fn().mockReturnValue(pending),
+      statusReport: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS }, client };
+    const tab = new HybridSearchSettingTab(createApp(), plugin);
+    vi.mocked(Notice).mockClear();
+    tab.display();
+    findSetting(tab, 'Test connection').querySelector('button')!.click();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    plugin.client = { ...client };
+    finish();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(Notice).not.toHaveBeenCalled();
+  });
+
+  it('clears an optional secret selection without throwing', async () => {
+    const app = createApp();
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS, apiKeySecretId: 'old-secret' },
+      saveSettings: vi.fn().mockResolvedValue(undefined),
+      restartClient: vi.fn(),
+    };
+    const onChange = vi.spyOn(SecretComponent.prototype, 'onChange');
+    new HybridSearchSettingTab(app, plugin).display();
+    await onChange.mock.calls[0]![0](null);
+    expect(plugin.settings.apiKeySecretId).toBe('');
+    expect(plugin.saveSettings).toHaveBeenCalledOnce();
+    expect(plugin.restartClient).toHaveBeenCalledOnce();
+  });
+
   it('renders HTTP host and port settings in HTTP mode', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS, transport: 'http' };
     tab.display();
@@ -322,7 +442,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('renders HTTP startup hint in HTTP mode', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS, transport: 'http' };
     tab.display();
@@ -333,7 +453,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('renders fallback HTTP settings in HTTP mode', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = { ...DEFAULT_SETTINGS, transport: 'http' };
     tab.display();
@@ -347,7 +467,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('renders fallback host and port when fallback is enabled', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
     mockPlugin.settings = {
       ...DEFAULT_SETTINGS,
@@ -364,7 +484,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('fallback toggle saves, restarts client, and refreshes settings UI', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = {
       manifest: { id: 'hybrid-search' },
       ...mockPlugin,
@@ -377,9 +497,9 @@ describe('HybridSearchSettingTab', () => {
     };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const fallbackSetting = Setting.instances.find((s) => s.getName() === 'Enable fallback server');
+    const fallbackSetting = findSetting(tab, 'Enable fallback server');
     expect(fallbackSetting).toBeDefined();
-    fallbackSetting!.toggleComponents[0]!.triggerChange(true);
+    fallbackSetting.querySelector<HTMLElement>('.checkbox-container')!.click();
     await Promise.resolve();
     expect(plugin.settings.httpFallbackEnabled).toBe(true);
     expect(plugin.saveSettings).toHaveBeenCalled();
@@ -388,20 +508,20 @@ describe('HybridSearchSettingTab', () => {
 
   it('binaryPath onChange updates settings and saves', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS } };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const binarySetting = Setting.instances.find((s) => s.getName() === 'Binary path');
+    const binarySetting = findSetting(tab, 'Binary path');
     expect(binarySetting).toBeDefined();
-    binarySetting!.textComponents[0]!.triggerChange('/usr/local/bin/ohs');
+    changeText(binarySetting, '/usr/local/bin/ohs');
     expect(plugin.settings.binaryPath).toBe('/usr/local/bin/ohs');
     expect(plugin.saveSettings).toHaveBeenCalled();
   });
 
   it('connection mode onChange updates settings, saves, and restarts client', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = {
       manifest: { id: 'hybrid-search' },
       ...mockPlugin,
@@ -410,9 +530,9 @@ describe('HybridSearchSettingTab', () => {
     };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const transportSetting = Setting.instances.find((s) => s.getName() === 'Connection mode');
+    const transportSetting = findSetting(tab, 'Connection mode');
     expect(transportSetting).toBeDefined();
-    transportSetting!.dropdownComponents[0]!.triggerChange('http');
+    changeDropdown(transportSetting, 'http');
     await Promise.resolve();
     expect(plugin.settings.transport).toBe('http');
     expect(plugin.saveSettings).toHaveBeenCalled();
@@ -421,33 +541,33 @@ describe('HybridSearchSettingTab', () => {
 
   it('defaultMode onChange updates settings', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS } };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const modeSetting = Setting.instances.find((s) => s.getName() === 'Default mode');
+    const modeSetting = findSetting(tab, 'Default mode');
     expect(modeSetting).toBeDefined();
-    modeSetting!.dropdownComponents[0]!.triggerChange('semantic');
+    changeDropdown(modeSetting, 'semantic');
     expect(plugin.settings.defaultMode).toBe('semantic');
     expect(plugin.saveSettings).toHaveBeenCalled();
   });
 
   it('showPreview toggle updates settings', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS, showPreview: false } };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const previewToggle = Setting.instances.find((s) => s.getName() === 'Show preview');
+    const previewToggle = findSetting(tab, 'Show preview');
     expect(previewToggle).toBeDefined();
-    previewToggle!.toggleComponents[0]!.triggerChange(true);
+    previewToggle.querySelector<HTMLElement>('.checkbox-container')!.click();
     expect(plugin.settings.showPreview).toBe(true);
     expect(plugin.saveSettings).toHaveBeenCalled();
   });
 
   it('similar notes toggle updates settings and refreshes bottom views', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = {
       manifest: { id: 'hybrid-search' },
       ...mockPlugin,
@@ -456,9 +576,9 @@ describe('HybridSearchSettingTab', () => {
     };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const setting = Setting.instances.find((s) => s.getName() === 'Show similar notes at bottom');
+    const setting = findSetting(tab, 'Show similar notes at bottom');
     expect(setting).toBeDefined();
-    setting!.toggleComponents[0]!.triggerChange(true);
+    setting.querySelector<HTMLElement>('.checkbox-container')!.click();
     await Promise.resolve();
     expect(plugin.settings.showSimilarNotesAtBottom).toBe(true);
     expect(plugin.saveSettings).toHaveBeenCalled();
@@ -467,7 +587,7 @@ describe('HybridSearchSettingTab', () => {
 
   it('page preview similar notes controls save and refresh preview views', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = {
       manifest: { id: 'hybrid-search' },
       ...mockPlugin,
@@ -476,17 +596,13 @@ describe('HybridSearchSettingTab', () => {
     };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const toggleSetting = Setting.instances.find(
-      (setting) => setting.getName() === 'Show similar notes in page preview',
-    );
-    const limitSetting = Setting.instances.find(
-      (setting) => setting.getName() === 'Page preview limit',
-    );
+    const toggleSetting = findSetting(tab, 'Show similar notes in page preview');
+    const limitSetting = findSetting(tab, 'Page preview limit');
 
     expect(toggleSetting).toBeDefined();
     expect(limitSetting).toBeDefined();
-    toggleSetting!.toggleComponents[0]!.triggerChange(true);
-    limitSetting!.textComponents[0]!.triggerChange('7');
+    toggleSetting.querySelector<HTMLElement>('.checkbox-container')!.click();
+    changeText(limitSetting, '7');
     await Promise.resolve();
 
     expect(plugin.settings.showSimilarNotesInPagePreview).toBe(true);
@@ -497,26 +613,26 @@ describe('HybridSearchSettingTab', () => {
 
   it('showGraphPanel toggle updates settings', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS, showGraphPanel: false } };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const graphToggle = Setting.instances.find((s) => s.getName() === 'Show graph panel');
+    const graphToggle = findSetting(tab, 'Show graph panel');
     expect(graphToggle).toBeDefined();
-    graphToggle!.toggleComponents[0]!.triggerChange(true);
+    graphToggle.querySelector<HTMLElement>('.checkbox-container')!.click();
     expect(plugin.settings.showGraphPanel).toBe(true);
     expect(plugin.saveSettings).toHaveBeenCalled();
   });
 
   it('inline search settings render and save trigger changes', async () => {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = { ...mockPlugin, settings: { ...DEFAULT_SETTINGS } };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();
-    const triggerSetting = Setting.instances.find((s) => s.getName() === 'Trigger text');
+    const triggerSetting = findSetting(tab, 'Trigger text');
     expect(triggerSetting).toBeDefined();
-    triggerSetting!.textComponents[0]!.triggerChange('::');
+    changeText(triggerSetting, '::');
     expect(plugin.settings.inlineSearchTrigger).toBe('::');
     expect(plugin.saveSettings).toHaveBeenCalled();
   });
@@ -525,7 +641,7 @@ describe('HybridSearchSettingTab', () => {
 describe('HybridSearchSettingTab — showPreview conditional UI', () => {
   async function makeTab(settings: HybridSearchSettings) {
     const { App } = await import('obsidian');
-    const app = new App();
+    const app = createApp();
     const plugin = { ...mockPlugin, settings };
     const tab = new HybridSearchSettingTab(app, plugin);
     tab.display();

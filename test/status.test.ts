@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { isUnsupportedStatusError } from '../src/ipc';
-import { fetchStatus, isStatusCapable, normaliseStatus } from '../src/status';
+import { fetchStatus, isStatusCapable, normaliseStatus } from '../src/search/status';
+import { isUnsupportedStatusError } from '../src/transport/errors';
 
 const REPORT: Record<string, unknown> = {
   total: 3315,

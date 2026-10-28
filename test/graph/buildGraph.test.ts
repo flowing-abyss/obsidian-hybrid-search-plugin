@@ -21,6 +21,17 @@ function mockApp(links: Record<string, Record<string, number>>) {
 }
 
 describe('buildGraph', () => {
+  it('follows incoming chains through bidirectional neighbors without duplicate edges', () => {
+    const graph = buildGraph(
+      mockApp({ 'A.md': { 'B.md': 1 }, 'B.md': { 'A.md': 1 }, 'C.md': { 'B.md': 1 } }),
+      'A.md',
+      2,
+    );
+    expect(graph.nodes.map((node) => node.path)).toContain('C.md');
+    expect(graph.edges).toHaveLength(3);
+    expect(new Set(graph.edges.map((edge) => `${edge.source}:${edge.target}`)).size).toBe(3);
+  });
+
   it('returns only center node when no links exist', () => {
     const app = mockApp({});
     const result = buildGraph(app, 'A.md', 1);

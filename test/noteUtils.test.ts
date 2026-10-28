@@ -1,16 +1,17 @@
-import { TFile, type App } from 'obsidian';
+import { type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
-import type { SearchResult } from '../src/ipc';
+import type { SearchResult } from '../src/search/contracts';
+import { fetchSimilarNotesDetailed } from '../src/search/similarNotes';
 import {
   applySuperchargedLinkAttributes,
   createInternalLink,
-  fetchSimilarNotesDetailed,
   fileToDragWikiLink,
   getResultTitle,
   hookSuperchargedLinks,
   resolveSimilarTarget,
   unhookSuperchargedLinks,
-} from '../src/ui/noteUtils';
+} from '../src/ui/shared/noteUtils';
+import { createFile } from './support/obsidian';
 
 const related: SearchResult = {
   path: 'related.md',
@@ -69,7 +70,7 @@ describe('noteUtils', () => {
   });
 
   it('fileToDragWikiLink uses Obsidian fileToLinktext when available', () => {
-    const file = Object.assign(new TFile(), { path: 'folder/target.md' });
+    const file = Object.assign(createFile(), { path: 'folder/target.md' });
     const app = {
       vault: { getAbstractFileByPath: () => file },
       metadataCache: {
@@ -95,7 +96,7 @@ describe('noteUtils', () => {
         }),
       },
     };
-    const link = activeDocument.createEl('a');
+    const link = createEl('a');
 
     applySuperchargedLinkAttributes(app as never, link, 'note.md');
 
@@ -118,7 +119,7 @@ describe('noteUtils', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const parent = activeDocument.createDiv();
+    const parent = createDiv();
     const link = createInternalLink(app as never, parent, 'weird "note".md', 'Weird', 'test-link');
     const payloads = new Map<string, string>();
     const event = new Event('dragstart') as DragEvent;
@@ -141,7 +142,7 @@ describe('noteUtils', () => {
       vault: { getAbstractFileByPath: () => null },
       metadataCache: { getCache: () => null },
     };
-    const parent = activeDocument.createDiv();
+    const parent = createDiv();
     const link = createInternalLink(
       app as never,
       parent,
@@ -202,7 +203,7 @@ describe('supercharged-links watch scoping', () => {
     return { app, observers };
   }
 
-  const container = () => activeDocument.createDiv();
+  const container = () => createDiv();
 
   it('namespaces the watch key with the owner id', () => {
     const { app, observers } = appWithSl();

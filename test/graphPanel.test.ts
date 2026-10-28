@@ -1,6 +1,6 @@
-import { App } from 'obsidian';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GraphPanel } from '../src/ui/GraphPanel';
+import { GraphPanel } from '../src/ui/graph/GraphPanel';
+import { createApp } from './support/obsidian';
 
 describe('GraphPanel', () => {
   beforeEach(() => {
@@ -8,7 +8,7 @@ describe('GraphPanel', () => {
   });
 
   function appWithLinks() {
-    const app = new App();
+    const app = createApp();
     app.metadataCache.resolvedLinks = {
       'A.md': { 'B.md': 1 },
       'C.md': { 'A.md': 1 },
@@ -26,7 +26,7 @@ describe('GraphPanel', () => {
     });
     panel.show('A.md');
     const el = panel.getElement();
-    expect(el.isShown()).toBe(true);
+    expect(el.style.display !== 'none').toBe(true);
     expect(
       Array.from(el.querySelectorAll('.ohs-graph-node')).map((node) => node.textContent),
     ).toEqual(['C', 'A', 'B']);

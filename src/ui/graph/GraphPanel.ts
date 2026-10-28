@@ -1,13 +1,13 @@
 import type { App } from 'obsidian';
-import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../graph/buildGraph';
-import { runAllCleanupSteps } from './cleanup';
-import { hookInternalLinks } from './linkHandler';
+import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../../graph/buildGraph';
+import { runAllCleanupSteps } from '../shared/cleanup';
+import { hookInternalLinks, openLinkedFile } from '../shared/linkHandler';
 import {
   hookSuperchargedLinks,
   unhookSuperchargedLinks,
   type SuperchargedWatch,
-} from './noteUtils';
-import { createBodyPanel } from './strayPanels';
+} from '../shared/noteUtils';
+import { createBodyPanel } from '../shared/strayPanels';
 
 export class GraphPanel {
   private el: HTMLDivElement;
@@ -26,11 +26,11 @@ export class GraphPanel {
     private app: App,
     // ownerId is a required key with a nullable value on purpose: forgetting to wire it should be
     // a compile error, not a silently unstamped panel that any installed copy may sweep.
-    options: { onCloseModal: () => void; ownerId: string | undefined },
+    options: { onCloseModal: () => void; ownerId: string | undefined; ownerDocument?: Document },
   ) {
     this.onCloseModal = options.onCloseModal;
     this.slWatch = { ownerId: options.ownerId, id: 'hybrid-search-graph-panel' };
-    this.el = createBodyPanel('ohs-graph-panel', options.ownerId);
+    this.el = createBodyPanel('ohs-graph-panel', options.ownerId, options.ownerDocument);
     this.el.hide();
 
     this.viewportEl = this.el.createDiv('ohs-graph-viewport');
@@ -44,14 +44,14 @@ export class GraphPanel {
     const nfcPath = notePath.normalize('NFC');
     if (nfcPath === this.centerPath) {
       this.el.show();
-      window.requestAnimationFrame(() => this.renderEdges());
+      this.el.win.requestAnimationFrame(() => this.renderEdges());
       return;
     }
     if (nfcPath !== this.centerPath) this.expandedPaths.clear();
     this.centerPath = nfcPath;
     this.render();
     this.el.show();
-    window.requestAnimationFrame(() => this.renderEdges());
+    this.el.win.requestAnimationFrame(() => this.renderEdges());
   }
 
   hide(): void {
@@ -212,7 +212,7 @@ export class GraphPanel {
       this.expandedPaths.add(path);
     }
     this.render();
-    window.requestAnimationFrame(() => this.renderEdges());
+    this.el.win.requestAnimationFrame(() => this.renderEdges());
   }
 
   private applyExpandedNodes(graphData: GraphData): void {
@@ -330,12 +330,12 @@ export class GraphPanel {
       if (this.depth <= 1) return;
       this.depth--;
       this.render();
-      window.requestAnimationFrame(() => this.renderEdges());
+      this.el.win.requestAnimationFrame(() => this.renderEdges());
     });
     btnPlus.addEventListener('click', () => {
       this.depth++;
       this.render();
-      window.requestAnimationFrame(() => this.renderEdges());
+      this.el.win.requestAnimationFrame(() => this.renderEdges());
     });
   }
 
@@ -352,14 +352,9 @@ export class GraphPanel {
           sourcePath: this.centerPath ?? '',
         });
       },
-      onOpenFile: (file, background) => {
-        if (background) {
-          // @ts-ignore - 'tab' is a valid PaneType in modern Obsidian.
-          void this.app.workspace.getLeaf('tab').openFile(file, { active: false });
-        } else {
-          void this.app.workspace.getLeaf(false).openFile(file);
-          this.onCloseModal();
-        }
+      onOpenFile: (file, background, closeModal, subpath) => {
+        openLinkedFile(this.app, file, background, subpath);
+        if (closeModal) this.onCloseModal();
       },
     });
   }

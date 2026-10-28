@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS, type HybridSearchSettings } from '../src/settings';
-import { StatusSection, type StatusSectionDeps } from '../src/ui/statusSection';
+import { DEFAULT_SETTINGS, type HybridSearchSettings } from '../src/settings/model';
+import { StatusSection, type StatusSectionDeps } from '../src/ui/settings/statusSection';
 
 const HEALTHY: Record<string, unknown> = {
   total: 100,

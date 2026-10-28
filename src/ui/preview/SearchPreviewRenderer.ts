@@ -1,7 +1,8 @@
-import { App, MarkdownRenderChild, MarkdownRenderer, TFile } from 'obsidian';
-import type { MatchAnchor } from '../ipc';
-import { runAllCleanupSteps } from './cleanup';
-import { hookInternalLinks } from './linkHandler';
+import { App, MarkdownRenderChild, TFile } from 'obsidian';
+import type { MatchAnchor } from '../../search/contracts';
+import { runAllCleanupSteps } from '../shared/cleanup';
+import { hookInternalLinks, openLinkedFile } from '../shared/linkHandler';
+import { renderMarkdownPreview } from './renderMarkdownPreview';
 
 export interface SearchPreviewRendererOptions {
   app: App;
@@ -76,28 +77,24 @@ export class SearchPreviewRenderer {
     }
     if (requestId !== this.requestId) return;
 
-    this.previewChild = new MarkdownRenderChild(this.options.containerEl);
-    this.previewChild.load();
-    await MarkdownRenderer.render(
+    const child = await renderMarkdownPreview(
       this.options.app,
       content,
       this.options.containerEl,
       nfcPath,
-      this.previewChild,
+      () => requestId === this.requestId,
     );
-    if (requestId !== this.requestId) return;
+    if (!child) return;
+    this.previewChild = child;
 
     this.cleanupInternalLinks = hookInternalLinks(
       this.options.containerEl,
       this.options.app,
-      this.options.getSourcePath,
+      () => this.currentPath ?? nfcPath,
       {
         onHoverPreview: (evt, targetEl, href) => this.triggerHoverPreview(evt, targetEl, href),
-        onOpenFile: (openFile, background) => {
-          const leaf = background
-            ? this.options.app.workspace.getLeaf('tab')
-            : this.options.app.workspace.getLeaf(false);
-          void leaf.openFile(openFile);
+        onOpenFile: (file, background, _closeModal, subpath) => {
+          openLinkedFile(this.options.app, file, background, subpath);
         },
       },
     );
@@ -155,8 +152,7 @@ export class SearchPreviewRenderer {
       this.options.containerEl.querySelectorAll('h1, h2, h3, h4, h5, h6'),
     );
     return headings.find((h) => (h.textContent ?? '').trim().toLowerCase() === leaf) as
-      | HTMLElement
-      | undefined;
+      HTMLElement | undefined;
   }
 
   private findSnippetBlock(candidates: string[]): HTMLElement | undefined {
@@ -186,13 +182,13 @@ function anchorKey(anchors?: MatchAnchor[], idx?: number): string {
 const MD_STRIP = /[*_`#^~|\\]/g;
 
 function toDisplayText(s: string): string {
-  /* eslint-disable sonarjs/slow-regex -- markdown link stripping is bounded to one snippet line or anchor string */
+  /* eslint-disable sonarjs/super-linear-regex -- markdown link stripping is bounded to one snippet line or anchor string */
   return s
     .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(MD_STRIP, '');
-  /* eslint-enable sonarjs/slow-regex -- bounded markdown link stripping completed */
+  /* eslint-enable sonarjs/super-linear-regex -- bounded markdown link stripping completed */
 }
 
 function snippetScrollCandidates(snippet: string): string[] {

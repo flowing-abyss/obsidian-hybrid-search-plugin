@@ -1,12 +1,14 @@
-import { App, TFile } from 'obsidian';
+import { TFile } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
-import { hookInternalLinks } from '../src/ui/linkHandler';
+import { hookInternalLinks } from '../src/ui/shared/linkHandler';
+import { createApp, createFile } from './support/obsidian';
 
 describe('hookInternalLinks', () => {
   function setup() {
-    const app = new App();
-    const el = activeDocument.createDiv();
-    const link = activeDocument.createEl('a');
+    const app = createApp();
+    app.metadataCache.getFirstLinkpathDest = vi.fn(() => createFile('Target.md'));
+    const el = createDiv();
+    const link = createEl('a');
     link.setAttribute('data-href', 'Target');
     link.textContent = 'Target';
     el.appendChild(link);
@@ -17,6 +19,26 @@ describe('hookInternalLinks', () => {
     hookInternalLinks(el, app, 'Source.md', callbacks);
     return { app, el, link, callbacks };
   }
+
+  it.each(['Target#Heading', 'Target#^block', '#Local heading'])(
+    'preserves the subpath in %s',
+    (href) => {
+      const { app, link, callbacks } = setup();
+      link.setAttribute('data-href', href);
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      const split = href.indexOf('#');
+      expect(app.metadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
+        href.slice(0, split) || 'Source.md',
+        'Source.md',
+      );
+      expect(callbacks.onOpenFile).toHaveBeenCalledWith(
+        expect.any(TFile),
+        false,
+        true,
+        href.slice(split),
+      );
+    },
+  );
 
   it('triggers hover preview on Mod hover', () => {
     const { link, callbacks } = setup();
@@ -31,14 +53,14 @@ describe('hookInternalLinks', () => {
   });
 
   it('resolves links with a dynamic source path', () => {
-    const app = new App();
+    const app = createApp();
     const getFirstLinkpathDest = vi
       .fn()
       .mockReturnValue(
-        Object.assign(new TFile(), { path: 'Folder/Target.md' }),
+        Object.assign(createFile(), { path: 'Folder/Target.md' }),
       ) as unknown as typeof app.metadataCache.getFirstLinkpathDest;
     app.metadataCache.getFirstLinkpathDest = getFirstLinkpathDest;
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     const link = el.createEl('a', { attr: { 'data-href': 'Target' } });
     let sourcePath = 'Folder/Source.md';
     hookInternalLinks(el, app, () => sourcePath, {
@@ -66,14 +88,14 @@ describe('hookInternalLinks', () => {
   });
 
   it('passes the clicked link to dynamic source path resolvers', () => {
-    const app = new App();
+    const app = createApp();
     const getFirstLinkpathDest = vi
       .fn()
       .mockReturnValue(
-        Object.assign(new TFile(), { path: 'Nested/Target.md' }),
+        Object.assign(createFile(), { path: 'Nested/Target.md' }),
       ) as unknown as typeof app.metadataCache.getFirstLinkpathDest;
     app.metadataCache.getFirstLinkpathDest = getFirstLinkpathDest;
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     const wrapper = el.createDiv();
     wrapper.setAttribute('data-source-path', 'Nested/Source.md');
     const link = wrapper.createDiv();
@@ -98,9 +120,10 @@ describe('hookInternalLinks', () => {
   });
 
   it('returns a cleanup function for registered listeners', () => {
-    const app = new App();
-    const el = activeDocument.createDiv();
-    const link = activeDocument.createEl('a');
+    const app = createApp();
+    app.metadataCache.getFirstLinkpathDest = vi.fn(() => createFile('Target.md'));
+    const el = createDiv();
+    const link = createEl('a');
     link.setAttribute('data-href', 'Target');
     el.appendChild(link);
     const callbacks = {

@@ -1,22 +1,27 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  oxc: {
+    // Preserve optional fields required by upstream mocks that proxy subclass instances.
+    typescript: { removeClassFieldsWithoutInitializer: false },
+  },
   test: {
     include: ['test/**/*.test.ts'],
     setupFiles: ['test/setup.ts'],
-    passWithNoTests: true,
+    passWithNoTests: false,
     environment: 'jsdom',
     alias: {
-      obsidian: new URL('./__mocks__/obsidian.ts', import.meta.url).pathname,
+      obsidian: 'obsidian-test-mocks/obsidian',
     },
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      // Start at 0; raise thresholds as tests are added
+      // Measured baseline: 76% lines, 73% functions, 61% branches, 72% statements.
       thresholds: {
-        lines: 0,
-        functions: 0,
-        branches: 0,
+        lines: 75,
+        functions: 70,
+        branches: 60,
+        statements: 70,
       },
     },
   },

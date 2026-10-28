@@ -35,9 +35,11 @@ export default tseslint.config(
       'sonarjs/cognitive-complexity': ['error', 30],
       // Redundant with @typescript-eslint/no-unused-vars
       'sonarjs/no-unused-vars': 'off',
-      // MCP/Obsidian deprecations are out of scope to address
-      'sonarjs/deprecation': 'off',
     },
+  },
+  {
+    files: ['src/transport/stdio.ts'],
+    rules: { 'obsidianmd/prefer-window-timers': 'off' },
   },
   {
     // Relax type-unsafe rules in test files — vi matchers (expect.objectContaining etc.) return any

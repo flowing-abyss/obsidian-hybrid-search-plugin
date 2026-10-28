@@ -6,9 +6,12 @@ import {
   type EditorPosition,
   type EditorSuggestContext,
 } from 'obsidian';
-import type { SearchResult } from '../ipc';
-import type HybridSearchPlugin from '../main';
-import { runAllCleanupSteps } from './cleanup';
+import type { SearchResult } from '../../search/contracts';
+import { type SearchMode } from '../../search/contracts';
+import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from '../../search/queryParser';
+import type { PluginContext } from '../pluginContext';
+import { SearchPreviewRenderer } from '../preview/SearchPreviewRenderer';
+import { runAllCleanupSteps } from '../shared/cleanup';
 import {
   createInternalLink,
   fileToDragWikiLink,
@@ -16,12 +19,9 @@ import {
   resolveSimilarTarget,
   scoreColor,
   unhookSuperchargedLinks,
-  type SearchMode,
   type SuperchargedWatch,
-} from './noteUtils';
-import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
-import { SearchPreviewRenderer } from './SearchPreviewRenderer';
-import { createBodyPanel } from './strayPanels';
+} from '../shared/noteUtils';
+import { createBodyPanel } from '../shared/strayPanels';
 
 const INLINE_SEARCH_SNIPPET_LENGTH = 400;
 const INLINE_SEARCH_DEBOUNCE_MS = 150;
@@ -79,7 +79,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
 
   constructor(
     app: App,
-    private readonly plugin: Pick<HybridSearchPlugin, 'client' | 'settings' | 'manifest'>,
+    private readonly plugin: Pick<PluginContext, 'client' | 'settings' | 'manifest'>,
   ) {
     super(app);
     this.slWatch = {
@@ -216,6 +216,11 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
         ...(threshold > 0 && { threshold }),
       });
       if (requestId !== this.requestId) return this.keepOpenSuggestions();
+      if (client !== this.plugin.client) {
+        this.lastResults = [];
+        this.hidePreview();
+        return [{ kind: 'status', message: 'Connection changed. Search again.' }];
+      }
       this.currentMode = mode;
       this.lastResults = [...results].sort((a, b) => b.score - a.score);
       if (this.lastResults.length === 0) {
@@ -284,7 +289,7 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
     if (isStatusSuggestion(result)) return;
     const context = this.context;
     if (!context) return;
-    if (evt instanceof KeyboardEvent) {
+    if ('key' in evt) {
       const mode = modeForShortcut(evt.key);
       if (mode && (evt.ctrlKey || evt.metaKey) && !evt.altKey && !evt.shiftKey) {
         this.currentMode = mode;
@@ -340,7 +345,11 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
 
   private ensurePreview(): void {
     if (this.previewWrapEl && this.previewRenderer) return;
-    this.previewWrapEl = createBodyPanel('hybrid-search-inline-preview', this.plugin.manifest.id);
+    this.previewWrapEl = createBodyPanel(
+      'hybrid-search-inline-preview',
+      this.plugin.manifest.id,
+      this.renderedContainer?.ownerDocument,
+    );
     this.previewEl = this.previewWrapEl.createDiv({
       cls: 'markdown-preview-view markdown-rendered',
     });
@@ -375,9 +384,9 @@ export class InlineSearchSuggest extends EditorSuggest<InlineSearchSuggestion> {
     const width = this.previewWrapEl.offsetWidth || 460;
     const height = this.previewWrapEl.offsetHeight || 420;
     const rightLeft = rect.right + gap;
-    const hasRightRoom = rightLeft + width + 8 <= window.innerWidth;
+    const hasRightRoom = rightLeft + width + 8 <= suggestEl.win.innerWidth;
     const left = hasRightRoom ? rightLeft : Math.max(8, rect.left - width - gap);
-    const top = clamp(rect.top, 8, Math.max(8, window.innerHeight - height - 8));
+    const top = clamp(rect.top, 8, Math.max(8, suggestEl.win.innerHeight - height - 8));
     this.previewWrapEl.style.left = `${left}px`;
     this.previewWrapEl.style.top = `${top}px`;
   }

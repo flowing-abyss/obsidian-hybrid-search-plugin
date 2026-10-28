@@ -41,6 +41,13 @@ export function buildGraph(
   const depthLimit = Math.max(0, Math.floor(maxDepth));
   const nodes = new Map<string, GraphNode>();
   const edges: GraphEdge[] = [];
+  const edgeKeys = new Set<string>();
+  const addEdge = (source: string, target: string) => {
+    const key = JSON.stringify([source, target]);
+    if (edgeKeys.has(key)) return;
+    edgeKeys.add(key);
+    edges.push({ source, target });
+  };
 
   nodes.set(normalizedCenter, {
     path: normalizedCenter,
@@ -53,7 +60,7 @@ export function buildGraph(
     const next: string[] = [];
     for (const path of frontier) {
       for (const target of getOutgoingFromIndex(index, path)) {
-        edges.push({ source: path, target });
+        addEdge(path, target);
         if (!nodes.has(target)) {
           nodes.set(target, { path: target, depth, title: getTitle(app, target) });
           next.push(target);
@@ -64,14 +71,18 @@ export function buildGraph(
     if (frontier.length === 0) break;
   }
 
+  const incomingVisited = new Set([normalizedCenter]);
   frontier = [normalizedCenter];
   for (let depth = 1; depth <= depthLimit; depth++) {
     const next: string[] = [];
     for (const path of frontier) {
       for (const source of getBacklinksFromIndex(index, path)) {
-        edges.push({ source, target: path });
+        addEdge(source, path);
         if (!nodes.has(source)) {
           nodes.set(source, { path: source, depth: -depth, title: getTitle(app, source) });
+        }
+        if (!incomingVisited.has(source)) {
+          incomingVisited.add(source);
           next.push(source);
         }
       }

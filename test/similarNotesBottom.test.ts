@@ -1,10 +1,11 @@
-import { MarkdownRenderer, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
-import { describe, expect, it, vi } from 'vitest';
-import type { SearchResult } from '../src/ipc';
-import { DEFAULT_SETTINGS } from '../src/settings';
-import { fetchSimilarNotesDetailed } from '../src/ui/noteUtils';
-import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
-import { PANEL_OWNER_ATTR } from '../src/ui/strayPanels';
+import { MarkdownRenderer, MarkdownView } from 'obsidian';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SearchResult } from '../src/search/contracts';
+import { fetchSimilarNotesDetailed } from '../src/search/similarNotes';
+import { DEFAULT_SETTINGS } from '../src/settings/model';
+import { PANEL_OWNER_ATTR } from '../src/ui/shared/strayPanels';
+import { SimilarNotesBottomManager } from '../src/ui/similar/SimilarNotesBottom';
+import { createFile, createLeaf } from './support/obsidian';
 
 const result: SearchResult = {
   path: 'related.md',
@@ -16,6 +17,9 @@ const result: SearchResult = {
 };
 
 describe('SimilarNotesBottomManager', () => {
+  beforeEach(() => {
+    vi.spyOn(MarkdownRenderer, 'render');
+  });
   it('unloads every registered view and clears the registry when one view fails', () => {
     const app = { workspace: { offref: vi.fn() } };
     const plugin = {
@@ -28,12 +32,12 @@ describe('SimilarNotesBottomManager', () => {
     };
     const failure = new Error('first view unload failed');
     const secondUnload = vi.fn();
-    internals.views.set(new MarkdownView(new WorkspaceLeaf()), {
+    internals.views.set(new MarkdownView(createLeaf()), {
       unload: vi.fn(() => {
         throw failure;
       }),
     });
-    internals.views.set(new MarkdownView(new WorkspaceLeaf()), { unload: secondUnload });
+    internals.views.set(new MarkdownView(createLeaf()), { unload: secondUnload });
 
     expect(() => manager.unload()).toThrow(failure);
 
@@ -43,10 +47,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('invalidates an in-flight result before removing its view', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -90,11 +94,11 @@ describe('SimilarNotesBottomManager', () => {
 
   it('settingsChanged forces reload for the same note', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const wrapper = activeDocument.createDiv();
-    const backlinks = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const wrapper = createDiv();
+    const backlinks = createDiv();
     backlinks.className = 'embedded-backlinks';
     wrapper.appendChild(backlinks);
     markdownView.containerEl.appendChild(wrapper);
@@ -108,10 +112,10 @@ describe('SimilarNotesBottomManager', () => {
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
         trigger: vi.fn(),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: {
         getCache: () => null,
-        getFirstLinkpathDest: () => Object.assign(new TFile(), { path: 'related.md' }),
+        getFirstLinkpathDest: () => Object.assign(createFile(), { path: 'related.md' }),
       },
     };
     const plugin = {
@@ -143,10 +147,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('refresh forces reload for the same note', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -159,10 +163,10 @@ describe('SimilarNotesBottomManager', () => {
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
         trigger: vi.fn(),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: {
         getCache: () => null,
-        getFirstLinkpathDest: () => Object.assign(new TFile(), { path: 'related.md' }),
+        getFirstLinkpathDest: () => Object.assign(createFile(), { path: 'related.md' }),
       },
     };
     const plugin = {
@@ -193,10 +197,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('keeps a forced refresh when a normal refresh is queued before debounce fires', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -213,10 +217,10 @@ describe('SimilarNotesBottomManager', () => {
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
         trigger: vi.fn(),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: {
         getCache: () => null,
-        getFirstLinkpathDest: () => Object.assign(new TFile(), { path: 'related.md' }),
+        getFirstLinkpathDest: () => Object.assign(createFile(), { path: 'related.md' }),
       },
     };
     const plugin = {
@@ -248,10 +252,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('attaches to the markdown body when embedded backlinks are not present', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -262,7 +266,7 @@ describe('SimilarNotesBottomManager', () => {
         offref: vi.fn(),
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: { getCache: () => ({ frontmatter: { type: 'daily' } }) },
     };
     const plugin = {
@@ -284,10 +288,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('renders result snippets collapsed by default and expands a single result', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -298,7 +302,7 @@ describe('SimilarNotesBottomManager', () => {
         offref: vi.fn(),
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: { getCache: () => ({ frontmatter: { type: 'daily' } }) },
     };
     const plugin = {
@@ -329,10 +333,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('renders the section title without a collapse icon', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -343,7 +347,7 @@ describe('SimilarNotesBottomManager', () => {
         offref: vi.fn(),
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: { getCache: () => null },
     };
     const plugin = {
@@ -371,10 +375,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('uses tree item title classes without search-result row separators or duplicated Supercharged data', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -385,7 +389,7 @@ describe('SimilarNotesBottomManager', () => {
         offref: vi.fn(),
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: { getCache: () => ({ frontmatter: { type: 'daily' } }) },
     };
     const plugin = {
@@ -418,10 +422,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('refreshes visible similar notes periodically for delayed embedding updates', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -437,7 +441,7 @@ describe('SimilarNotesBottomManager', () => {
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
       },
       vault: {
-        getAbstractFileByPath: (path: string) => Object.assign(new TFile(), { path }),
+        getAbstractFileByPath: (path: string) => Object.assign(createFile(), { path }),
       },
       metadataCache: { getCache: () => null },
     };
@@ -466,12 +470,67 @@ describe('SimilarNotesBottomManager', () => {
     vi.useRealTimers();
   });
 
+  it('preserves last successful results through a silent polling failure and recovery', async () => {
+    vi.useFakeTimers();
+    const leaf = createLeaf();
+    const markdownView = new MarkdownView(leaf);
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
+    sizer.className = 'markdown-preview-sizer';
+    markdownView.containerEl.appendChild(sizer);
+    leaf.view = markdownView;
+
+    const search = vi
+      .fn()
+      .mockResolvedValueOnce([result])
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue([result]);
+    const app = {
+      workspace: {
+        on: vi.fn().mockReturnValue({}),
+        offref: vi.fn(),
+        getLeavesOfType: vi.fn().mockReturnValue([leaf]),
+      },
+      vault: {
+        getAbstractFileByPath: (path: string) => Object.assign(createFile(), { path }),
+      },
+      metadataCache: { getCache: () => null },
+    };
+    const plugin = {
+      manifest: { id: 'hybrid-search' },
+      app,
+      settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
+      client: { search },
+      saveSettings: vi.fn().mockResolvedValue(undefined),
+    };
+    const manager = new SimilarNotesBottomManager(app as never, plugin as never);
+
+    manager.load();
+    vi.advanceTimersByTime(150);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sizer.textContent).toContain('Related');
+
+    vi.advanceTimersByTime(10_000);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sizer.textContent).toContain('Related');
+    vi.advanceTimersByTime(10_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(search).toHaveBeenCalledTimes(3);
+    expect(sizer.textContent).toContain('Related');
+    manager.unload();
+    vi.useRealTimers();
+  });
+
   it('collapses and expands the whole section when the title is clicked', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -482,7 +541,7 @@ describe('SimilarNotesBottomManager', () => {
         offref: vi.fn(),
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: { getCache: () => null },
     };
     const plugin = {
@@ -501,19 +560,19 @@ describe('SimilarNotesBottomManager', () => {
 
     const resultsEl = sizer.querySelector<HTMLElement>('.search-result-container');
     sizer.querySelector<HTMLElement>('.hybrid-search-similar-title-wrap')?.click();
-    expect(resultsEl?.isShown()).toBe(false);
+    expect(resultsEl?.style.display !== 'none').toBe(false);
     sizer.querySelector<HTMLElement>('.hybrid-search-similar-title-wrap')?.click();
-    expect(resultsEl?.isShown()).toBe(true);
+    expect(resultsEl?.style.display !== 'none').toBe(true);
     manager.unload();
     vi.useRealTimers();
   });
 
   it('opens the filter row when the search toolbar button is clicked', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -524,7 +583,7 @@ describe('SimilarNotesBottomManager', () => {
         offref: vi.fn(),
         getLeavesOfType: vi.fn().mockReturnValue([leaf]),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: { getCache: () => null },
     };
     const plugin = {
@@ -545,7 +604,7 @@ describe('SimilarNotesBottomManager', () => {
     expect(searchRow?.classList.contains('is-hidden')).toBe(true);
     sizer.querySelectorAll<HTMLElement>('.hybrid-search-similar-toolbar-btn')[1]?.click();
     expect(searchRow?.classList.contains('is-hidden')).toBe(false);
-    expect(searchRow?.isShown()).toBe(true);
+    expect(searchRow?.style.display !== 'none').toBe(true);
     const resultsEl = sizer.querySelector<HTMLElement>('.search-result-container');
     expect(searchRow).toBeTruthy();
     expect(resultsEl).toBeTruthy();
@@ -558,10 +617,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('triggers Obsidian hover preview for similar note links', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -575,10 +634,10 @@ describe('SimilarNotesBottomManager', () => {
         trigger,
         getLeaf: vi.fn().mockReturnValue({ openFile: vi.fn() }),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: {
         getCache: () => null,
-        getFirstLinkpathDest: () => Object.assign(new TFile(), { path: 'related.md' }),
+        getFirstLinkpathDest: () => Object.assign(createFile(), { path: 'related.md' }),
       },
     };
     const plugin = {
@@ -612,10 +671,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('opens similar note links in a background tab on Mod-click', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;
@@ -630,10 +689,10 @@ describe('SimilarNotesBottomManager', () => {
         trigger,
         getLeaf: vi.fn().mockReturnValue({ openFile }),
       },
-      vault: { getAbstractFileByPath: () => Object.assign(new TFile(), { path: 'related.md' }) },
+      vault: { getAbstractFileByPath: () => Object.assign(createFile(), { path: 'related.md' }) },
       metadataCache: {
         getCache: () => null,
-        getFirstLinkpathDest: () => Object.assign(new TFile(), { path: 'related.md' }),
+        getFirstLinkpathDest: () => Object.assign(createFile(), { path: 'related.md' }),
       },
     };
     const plugin = {
@@ -675,10 +734,10 @@ describe('SimilarNotesBottomManager', () => {
 
   it('stamps the bottom panel with the plugin id so a stranded one can be swept', async () => {
     vi.useFakeTimers();
-    const leaf = new WorkspaceLeaf();
+    const leaf = createLeaf();
     const markdownView = new MarkdownView(leaf);
-    markdownView.file = Object.assign(new TFile(), { path: 'source.md', extension: 'md' });
-    const sizer = activeDocument.createDiv();
+    markdownView.file = Object.assign(createFile(), { path: 'source.md', extension: 'md' });
+    const sizer = createDiv();
     sizer.className = 'markdown-preview-sizer';
     markdownView.containerEl.appendChild(sizer);
     leaf.view = markdownView;

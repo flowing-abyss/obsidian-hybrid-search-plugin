@@ -1,0 +1,22 @@
+packages:
+  - .
+
+saveExact: true
+strictPeerDependencies: true
+engineStrict: true
+strictDepBuilds: true
+minimumReleaseAge: 1440
+blockExoticSubdeps: true
+peerDependencyRules:
+  allowedVersions:
+    # The linter declares an obsolete exact host peer; its own rules support newer APIs.
+    'eslint-plugin-obsidianmd@0.4.2>obsidian': '1.14.4'
+allowedDeprecatedVersions:
+  # The Obsidian lint plugin still requires @eslint/js 9.
+  eslint: '9.39.5'
+overrides:
+  # The linter's nested Obsidian types still pin vulnerable Moment 2.29.4.
+  'moment@>=2.29.2 <2.31.0': '2.31.0'
+allowBuilds:
+  esbuild: true
+  fsevents: false

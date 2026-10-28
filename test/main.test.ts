@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createApp } from './support/obsidian';
 
 vi.mock('obsidian', async (importOriginal) => {
   const actual = await importOriginal<typeof import('obsidian')>();
@@ -8,36 +9,38 @@ vi.mock('obsidian', async (importOriginal) => {
   };
 });
 
-vi.mock('../src/ipc', () => {
-  const stdioInstance = {
+vi.mock('../src/transport/stdio', () => {
+  const instance = {
     waitReady: vi.fn().mockResolvedValue(undefined),
     dispose: vi.fn(),
     search: vi.fn().mockResolvedValue([]),
   };
-  const httpInstance = {
-    waitReady: vi.fn().mockResolvedValue(undefined),
-    dispose: vi.fn(),
-    search: vi.fn().mockResolvedValue([]),
-  };
-  function MockSearchClient() {
-    return stdioInstance;
-  }
-  function MockHttpSearchClient() {
-    return httpInstance;
-  }
   return {
-    SearchClient: vi.fn(MockSearchClient),
-    HttpSearchClient: vi.fn(MockHttpSearchClient),
+    SearchClient: vi.fn(function () {
+      return instance;
+    }),
+  };
+});
+vi.mock('../src/transport/http', () => {
+  const instance = {
+    waitReady: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+    search: vi.fn().mockResolvedValue([]),
+  };
+  return {
+    HttpSearchClient: vi.fn(function () {
+      return instance;
+    }),
   };
 });
 
-import { App, Notice, SecretStorage, type PluginManifest } from 'obsidian';
+import { App, Notice, type PluginManifest } from 'obsidian';
 import HybridSearchPlugin from '../src/main';
-import { GraphWorkbenchView } from '../src/ui/GraphWorkbenchView';
-import { PagePreviewSimilarNotesManager } from '../src/ui/PagePreviewSimilarNotes';
-import { SearchModal } from '../src/ui/SearchModal';
-import { SimilarNotesBottomManager } from '../src/ui/SimilarNotesBottom';
-import { BODY_PANEL_CLASSES, createBodyPanel } from '../src/ui/strayPanels';
+import { GraphWorkbenchView } from '../src/ui/graph/GraphWorkbenchView';
+import { SearchModal } from '../src/ui/search/SearchModal';
+import { BODY_PANEL_CLASSES, createBodyPanel } from '../src/ui/shared/strayPanels';
+import { PagePreviewSimilarNotesManager } from '../src/ui/similar/PagePreviewSimilarNotes';
+import { SimilarNotesBottomManager } from '../src/ui/similar/SimilarNotesBottom';
 
 const mockGetBasePath = vi.fn().mockReturnValue('/vault');
 const mockGetActiveFile = vi.fn().mockReturnValue({ path: 'active.md' });
@@ -49,7 +52,7 @@ const mockApp = {
   workspace: {
     getActiveFile: mockGetActiveFile,
   },
-  secretStorage: new SecretStorage(),
+  secretStorage: createApp().secretStorage,
 };
 
 const mockManifest: PluginManifest = {
@@ -86,7 +89,7 @@ describe('HybridSearchPlugin', () => {
     activeDocument.querySelectorAll(ALL_BODY_PANELS).forEach((el) => el.remove());
     NoticeMock.mockClear();
     // The keychain mock is shared across the file; keep each test independent of order.
-    mockApp.secretStorage = new SecretStorage();
+    mockApp.secretStorage = createApp().secretStorage;
     delete (mockApp.workspace as { getLeavesOfType?: unknown }).getLeavesOfType;
     plugin = new HybridSearchPlugin(mockApp as unknown as App, mockManifest);
     plugin.loadData = vi.fn().mockResolvedValue({});
@@ -102,6 +105,35 @@ describe('HybridSearchPlugin', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     activeDocument.querySelectorAll(ALL_BODY_PANELS).forEach((el) => el.remove());
+  });
+
+  it.each(['restart', 'unload'])(
+    'ignores startup failures from a client after %s',
+    async (action) => {
+      await plugin.onload();
+      const client = plugin.client!;
+      let reject!: (error: Error) => void;
+      vi.mocked(client.waitReady).mockReturnValueOnce(
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+      );
+      plugin.restartClient();
+      if (action === 'restart') plugin.restartClient();
+      else plugin.onunload();
+      NoticeMock.mockClear();
+      reject(new Error('stale startup'));
+      await flushPromises();
+      expect(NoticeMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('reports a startup failure from the current client', async () => {
+    await plugin.onload();
+    vi.mocked(plugin.client!.waitReady).mockRejectedValueOnce(new Error('current startup'));
+    plugin.restartClient();
+    await flushPromises();
+    expect(NoticeMock).toHaveBeenCalledWith(expect.stringContaining('current startup'), 0);
   });
 
   it('loads settings on onload', async () => {
@@ -143,13 +175,13 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('initialises SearchClient with binary, vault path and api key', async () => {
-    const { SearchClient } = await import('../src/ipc');
+    const { SearchClient } = await import('../src/transport/stdio');
     await plugin.onload();
     expect(SearchClient).toHaveBeenCalledWith('obsidian-hybrid-search', '/vault', '');
   });
 
   it('resolves the selected secret before passing the api key to SearchClient', async () => {
-    const { SearchClient } = await import('../src/ipc');
+    const { SearchClient } = await import('../src/transport/stdio');
     mockApp.secretStorage.setSecret('ohs', 'sk-test-key');
     plugin.loadData = vi.fn().mockResolvedValue({ apiKeySecretId: 'ohs' });
 
@@ -159,7 +191,7 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('migrates a live 0.9.x secret reference and starts with its resolved key', async () => {
-    const { SearchClient } = await import('../src/ipc');
+    const { SearchClient } = await import('../src/transport/stdio');
     mockApp.secretStorage.setSecret('obsidian-hybrid-search-openai-api-key', 'ohs');
     mockApp.secretStorage.setSecret('ohs', 'sk-test-key');
 
@@ -183,7 +215,7 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('does not restore a legacy reference after the saved selection was cleared', async () => {
-    const { SearchClient } = await import('../src/ipc');
+    const { SearchClient } = await import('../src/transport/stdio');
     mockApp.secretStorage.setSecret('obsidian-hybrid-search-openai-api-key', 'ohs');
     mockApp.secretStorage.setSecret('ohs', 'sk-test-key');
     plugin.loadData = vi.fn().mockResolvedValue({ apiKeySecretId: '' });
@@ -196,7 +228,8 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('initialises HttpSearchClient when HTTP transport is selected', async () => {
-    const { HttpSearchClient, SearchClient } = await import('../src/ipc');
+    const { HttpSearchClient } = await import('../src/transport/http');
+    const { SearchClient } = await import('../src/transport/stdio');
     plugin.loadData = vi.fn().mockResolvedValue({
       transport: 'http',
       httpHost: 'remote.example.com',
@@ -223,7 +256,7 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('shows notices for meaningful HTTP endpoint status changes', async () => {
-    const { HttpSearchClient } = await import('../src/ipc');
+    const { HttpSearchClient } = await import('../src/transport/http');
     plugin.loadData = vi.fn().mockResolvedValue({
       transport: 'http',
       httpHost: 'remote.example.com',
@@ -236,8 +269,7 @@ describe('HybridSearchPlugin', () => {
     await plugin.onload();
 
     const options = vi.mocked(HttpSearchClient).mock.calls[0]?.[2] as
-      | { onStatusChange?: (event: unknown) => void }
-      | undefined;
+      { onStatusChange?: (event: unknown) => void } | undefined;
     expect(options?.onStatusChange).toEqual(expect.any(Function));
 
     options!.onStatusChange!({
@@ -261,7 +293,7 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('refreshes endpoint-sensitive panes when HTTP endpoint changes', async () => {
-    const { HttpSearchClient } = await import('../src/ipc');
+    const { HttpSearchClient } = await import('../src/transport/http');
     const similarRefresh = vi.spyOn(SimilarNotesBottomManager.prototype, 'refresh');
     const refreshFromActiveFile = vi.fn().mockResolvedValue(undefined);
     const workbenchView = Object.assign(Object.create(GraphWorkbenchView.prototype), {
@@ -280,10 +312,14 @@ describe('HybridSearchPlugin', () => {
     });
 
     await plugin.onload();
+    await flushPromises();
+    expect(similarRefresh).toHaveBeenCalledOnce();
+    expect(refreshFromActiveFile).toHaveBeenCalledOnce();
+    similarRefresh.mockClear();
+    refreshFromActiveFile.mockClear();
 
     const options = vi.mocked(HttpSearchClient).mock.calls[0]?.[2] as
-      | { onStatusChange?: (event: unknown) => void }
-      | undefined;
+      { onStatusChange?: (event: unknown) => void } | undefined;
     options!.onStatusChange!({
       type: 'fallback-activated',
       from: { host: 'remote.example.com', port: 3939, label: 'remote.example.com:3939' },
@@ -312,7 +348,7 @@ describe('HybridSearchPlugin', () => {
   });
 
   it('shows fallback failure reason without duplicate generic startup notice', async () => {
-    const { HttpSearchClient } = await import('../src/ipc');
+    const { HttpSearchClient } = await import('../src/transport/http');
     plugin.loadData = vi.fn().mockResolvedValue({
       transport: 'http',
       httpHost: 'remote.example.com',

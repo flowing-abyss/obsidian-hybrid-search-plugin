@@ -9,12 +9,13 @@ import {
   type HoverParent,
   type WorkspaceLeaf,
 } from 'obsidian';
-import type { SearchResult } from '../ipc';
-import type HybridSearchPlugin from '../main';
-import { runAllCleanupSteps } from './cleanup';
-import { fetchSimilarNotesDetailed, fileToDragWikiLink, getResultTitle } from './noteUtils';
+import type { SearchResult } from '../../search/contracts';
+import { fetchSimilarNotesDetailed } from '../../search/similarNotes';
+import type { PluginContext } from '../pluginContext';
+import { runAllCleanupSteps } from '../shared/cleanup';
+import { fileToDragWikiLink, getResultTitle } from '../shared/noteUtils';
+import { stampPanelOwner } from '../shared/strayPanels';
 import { SimilarNotesResults } from './SimilarNotesResults';
-import { stampPanelOwner } from './strayPanels';
 
 const WATCH_ID_PREFIX = 'hybrid-search-similar-bottom';
 const REFRESH_INTERVAL_MS = 10_000;
@@ -30,7 +31,7 @@ export class SimilarNotesBottomManager {
 
   constructor(
     private app: App,
-    private plugin: HybridSearchPlugin,
+    private plugin: PluginContext,
   ) {}
 
   load(): void {
@@ -181,7 +182,7 @@ class SimilarNotesBottomView extends Component {
 
   constructor(
     private app: App,
-    private plugin: HybridSearchPlugin,
+    private plugin: PluginContext,
     private markdownView: MarkdownView,
     parentEl: HTMLElement,
   ) {
@@ -302,7 +303,10 @@ class SimilarNotesBottomView extends Component {
     if (!file || (!force && this.lastRefreshKey === refreshKey)) return;
     this.currentPath = file.path;
     this.lastRefreshKey = refreshKey;
-    if (!silent) this.renderLoading();
+    if (!silent) {
+      this.lastResultsSignature = '';
+      this.renderLoading();
+    }
     void this.loadResults(file, silent);
   }
 
@@ -317,17 +321,18 @@ class SimilarNotesBottomView extends Component {
 
   private async loadResults(file: TFile, silent: boolean): Promise<void> {
     const requestId = ++this.requestId;
+    const client = this.plugin.client;
     try {
-      if (!this.plugin.client) {
+      if (!client) {
         this.lastRefreshKey = '';
         this.renderEmpty('Search client not ready.');
         return;
       }
-      const result = await fetchSimilarNotesDetailed(this.plugin.client, file.path, {
+      const result = await fetchSimilarNotesDetailed(client, file.path, {
         limit: this.plugin.settings.similarNotesBottomLimit,
         threshold: this.plugin.settings.similarNotesThreshold,
       });
-      if (requestId !== this.requestId) return;
+      if (requestId !== this.requestId || client !== this.plugin.client) return;
       const signature = getResultsSignature(result.scoreMode, result.results);
       if (silent && signature === this.lastResultsSignature) return;
       this.lastResultsSignature = signature;
@@ -336,9 +341,12 @@ class SimilarNotesBottomView extends Component {
       this.pruneExpandedPaths(result.results);
       this.renderResults(result.results);
     } catch {
-      if (requestId === this.requestId) {
+      if (requestId === this.requestId && client === this.plugin.client) {
         this.lastRefreshKey = '';
-        this.renderEmpty('No similar notes found.');
+        if (!silent || !this.lastResultsSignature) {
+          this.lastResultsSignature = '';
+          this.renderEmpty('No similar notes found.');
+        }
       }
     }
   }

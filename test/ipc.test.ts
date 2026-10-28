@@ -22,10 +22,15 @@ vi.mock('child_process', () => ({
   spawn: vi.fn(() => mockProc),
 }));
 
+vi.mock('obsidian', () => ({ requestUrl: vi.fn() }));
+
+vi.stubGlobal('window', globalThis);
+
 import { spawn } from 'child_process';
 import type { RequestUrlParam } from 'obsidian';
 import { requestUrl } from 'obsidian';
-import { HttpSearchClient, SearchClient } from '../src/ipc';
+import { HttpSearchClient } from '../src/transport/http';
+import { SearchClient } from '../src/transport/stdio';
 
 type RequestUrlResponse = Awaited<ReturnType<typeof requestUrl>>;
 
@@ -118,6 +123,56 @@ describe('SearchClient', () => {
       client.dispose();
     } catch {
       // ignore
+    }
+  });
+
+  it.each(['exit', 'close', 'error'])(
+    'settles pending work on process %s and prevents later writes',
+    async (event) => {
+      const ready = client.waitReady().catch((error: unknown) => error);
+      const settled = vi.fn();
+      void client.search('pending').then(settled);
+      mockProc.emit(event, event === 'error' ? new Error('broken pipe') : 1, null);
+      await flushPromises();
+      expect(settled).toHaveBeenCalledWith([]);
+      expect(await ready).toBeInstanceOf(Error);
+      const writes = mockStdin.write.mock.calls.length;
+      await expect(client.search('after death')).resolves.toEqual([]);
+      await expect(client.statusReport()).rejects.toThrow();
+      expect(mockStdin.write).toHaveBeenCalledTimes(writes);
+    },
+  );
+
+  it('disposal rejects readiness immediately and clears all owned timers', async () => {
+    vi.useFakeTimers();
+    try {
+      const failure = vi.fn();
+      void client.waitReady().catch(failure);
+      const report = client.statusReport().catch((error: unknown) => error);
+      client.dispose();
+      await flushPromises();
+      expect(failure).toHaveBeenCalledOnce();
+      expect(await report).toBeInstanceOf(Error);
+      expect(vi.getTimerCount()).toBe(0);
+      client.dispose();
+      expect(mockProc.kill).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not send a status request that timed out before readiness', async () => {
+    vi.useFakeTimers();
+    try {
+      const status = client.statusReport(20).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(21);
+      expect(await status).toBeInstanceOf(Error);
+      emitLine(JSON.stringify({ ready: true }));
+      await flushPromises();
+      expect(mockStdin.write).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
     }
   });
 

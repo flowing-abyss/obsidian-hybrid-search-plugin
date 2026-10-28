@@ -3,7 +3,9 @@
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
-    "target": "ES6",
+    "target": "ES2018",
+    "useDefineForClassFields": true,
+    "strict": true,
     "allowJs": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
@@ -18,5 +20,5 @@
     "useUnknownInCatchVariables": true,
     "lib": ["DOM", "ES5", "ES6", "ES7"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "__mocks__/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCliEnv } from '../src/ipc';
+import { buildCliEnv } from '../src/transport/cliEnvironment';
 
 describe('buildCliEnv', () => {
   it('points the child at the vault it is meant to serve', () => {

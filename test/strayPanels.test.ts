@@ -7,7 +7,7 @@ import {
   createBodyPanel,
   stampPanelOwner,
   sweepStrayPanels,
-} from '../src/ui/strayPanels';
+} from '../src/ui/shared/strayPanels';
 
 const ALL_BODY_PANELS = STRAY_PANEL_CLASSES.map((cls) => `.${cls}`).join(', ');
 
@@ -22,6 +22,13 @@ afterEach(() => {
 });
 
 describe('createBodyPanel', () => {
+  it('attaches a panel to its owner document when another window has focus', () => {
+    const owner = activeDocument.implementation.createHTMLDocument('popout');
+    const panel = createBodyPanel('hybrid-search-preview', 'hybrid-search', owner);
+    expect(panel.ownerDocument).toBe(owner);
+    expect(panel.parentElement).toBe(owner.body);
+  });
+
   it('attaches the panel to the body with its class', () => {
     const el = createBodyPanel('hybrid-search-preview', 'hybrid-search');
 

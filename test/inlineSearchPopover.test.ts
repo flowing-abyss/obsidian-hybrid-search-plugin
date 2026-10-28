@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS } from '../src/settings';
-import { findInlineSearchTrigger, InlineSearchSuggest } from '../src/ui/InlineSearchSuggest';
-import { PANEL_OWNER_ATTR } from '../src/ui/strayPanels';
+import { DEFAULT_SETTINGS } from '../src/settings/model';
+import { findInlineSearchTrigger, InlineSearchSuggest } from '../src/ui/search/InlineSearchSuggest';
+import { PANEL_OWNER_ATTR } from '../src/ui/shared/strayPanels';
 
 describe('findInlineSearchTrigger', () => {
   it('finds the last trigger before the cursor', () => {
@@ -75,6 +75,36 @@ describe('InlineSearchSuggest @similar', () => {
 describe('InlineSearchSuggest preview panel', () => {
   afterEach(() => {
     activeDocument.querySelectorAll('.hybrid-search-inline-preview').forEach((el) => el.remove());
+  });
+
+  it('recognizes keyboard shortcuts from another window without realm-specific prototypes', () => {
+    const frame = createEl('iframe');
+    activeDocument.body.appendChild(frame);
+    try {
+      const otherWindow = frame.contentWindow as Window & typeof globalThis;
+      const app = {
+        workspace: { getActiveFile: () => null },
+        vault: { getAbstractFileByPath: () => null },
+      };
+      const suggest = new InlineSearchSuggest(
+        app as never,
+        {
+          settings: { ...DEFAULT_SETTINGS },
+          manifest: { id: 'hybrid-search' },
+          client: { search: vi.fn() },
+        } as never,
+      );
+      Object.assign(suggest, { context: { file: { path: 'source.md' } } });
+      const close = vi.spyOn(suggest, 'close');
+      suggest.selectSuggestion(
+        { path: 'target.md', title: 'Target', score: 1, tags: [], aliases: [] },
+        new otherWindow.KeyboardEvent('keydown', { key: '3', metaKey: true }),
+      );
+      expect((suggest as unknown as { currentMode: string }).currentMode).toBe('fulltext');
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      frame.remove();
+    }
   });
 
   it('stamps its body-level preview with the plugin id so the sweep can scope by instance', () => {
@@ -191,7 +221,7 @@ describe('InlineSearchSuggest preview panel', () => {
     suggest.previewWrapEl = wrapper;
     suggest.previewEl = wrapper.createDiv();
     suggest.selectedObserver = { disconnect: selectedDisconnect };
-    suggest.renderedContainer = activeDocument.createDiv();
+    suggest.renderedContainer = createDiv();
     const watchKey = `${suggest.slWatch.ownerId}:${suggest.slWatch.id}`;
     observers.push([{ disconnect: slDisconnect }, watchKey]);
 
@@ -234,7 +264,7 @@ describe('InlineSearchSuggest preview panel', () => {
         throw failure;
       }),
     };
-    suggest.renderedContainer = activeDocument.createDiv();
+    suggest.renderedContainer = createDiv();
     const watchKey = `${suggest.slWatch.ownerId}:${suggest.slWatch.id}`;
     observers.push([{ disconnect: slDisconnect }, watchKey]);
 

@@ -1,8 +1,22 @@
-import { App, TFile } from 'obsidian';
-import type { SearchResult } from '../ipc';
-import type { HybridSearchSettings } from '../settings';
-import { fileToDragWikiLink } from './noteUtils';
-import type { SearchModal } from './SearchModal';
+import { App, TFile, type Scope } from 'obsidian';
+import type { MatchAnchor, SearchResult } from '../../search/contracts';
+import type { HybridSearchSettings } from '../../settings/model';
+import type { GraphPanel } from '../graph/GraphPanel';
+import { fileToDragWikiLink } from '../shared/noteUtils';
+
+interface ModalKeymapTarget {
+  scope: Scope;
+  close(): void;
+  hidePreviewPanel(): void;
+  triggerPreview(
+    path: string,
+    snippet?: string,
+    anchors?: MatchAnchor[],
+    primaryIdx?: number,
+  ): void;
+  getGraphPanel(): GraphPanel | undefined;
+  positionGraphPanel(): void;
+}
 
 interface ModalWithChooser {
   chooser?: {
@@ -13,19 +27,19 @@ interface ModalWithChooser {
 }
 
 export function registerModalKeymap(
-  modal: SearchModal,
+  modal: ModalKeymapTarget,
   app: App,
   settings: HybridSearchSettings,
   saveSettings: () => Promise<void>,
 ): void {
   // Mod = Cmd on macOS, Ctrl on Windows/Linux
 
-  function getSelected(m: SearchModal): SearchResult | undefined {
+  function getSelected(m: ModalKeymapTarget): SearchResult | undefined {
     const chooser = (m as unknown as ModalWithChooser).chooser;
     return chooser?.values?.[chooser?.selectedItem ?? 0] as SearchResult | undefined;
   }
 
-  function getAll(m: SearchModal): SearchResult[] {
+  function getAll(m: ModalKeymapTarget): SearchResult[] {
     const chooser = (m as unknown as ModalWithChooser).chooser;
     return (chooser?.values ?? []) as SearchResult[];
   }
@@ -105,7 +119,6 @@ export function registerModalKeymap(
     if (!result) return;
     const file = app.vault.getAbstractFileByPath(result.path.normalize('NFC'));
     if (file instanceof TFile) {
-      // @ts-ignore — 'tab' is a valid PaneType in modern Obsidian
       void app.workspace.getLeaf('tab').openFile(file);
     }
   });
@@ -118,7 +131,6 @@ export function registerModalKeymap(
     for (const r of results) {
       const file = app.vault.getAbstractFileByPath(r.path.normalize('NFC'));
       if (file instanceof TFile) {
-        // @ts-ignore — 'tab' is a valid PaneType in modern Obsidian
         void app.workspace.getLeaf('tab').openFile(file);
       }
     }

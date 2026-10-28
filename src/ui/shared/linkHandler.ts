@@ -1,8 +1,8 @@
-import { TFile, type App } from 'obsidian';
+import { parseLinktext, TFile, type App } from 'obsidian';
 
 interface LinkHandlerCallbacks {
   onHoverPreview: (evt: MouseEvent, targetEl: HTMLElement, href: string) => void;
-  onOpenFile: (file: TFile, background: boolean, closeModal: boolean) => void;
+  onOpenFile: (file: TFile, background: boolean, closeModal: boolean, subpath?: string) => void;
 }
 
 type SourcePathResolver = string | ((link?: HTMLElement) => string);
@@ -32,10 +32,15 @@ export function hookInternalLinks(
     evt.stopPropagation();
 
     const currentSourcePath = resolveSourcePath(sourcePath, link);
-    const file = app.metadataCache.getFirstLinkpathDest(href, currentSourcePath);
+    const { path, subpath } = parseLinktext(href);
+    const file = app.metadataCache.getFirstLinkpathDest(
+      path || currentSourcePath,
+      currentSourcePath,
+    );
     if (!(file instanceof TFile)) return;
     const background = evt.button === 1 || evt.ctrlKey || evt.metaKey;
-    callbacks.onOpenFile(file, background, !background);
+    if (subpath) callbacks.onOpenFile(file, background, !background, subpath);
+    else callbacks.onOpenFile(file, background, !background);
   };
 
   el.addEventListener('click', handler);
@@ -49,4 +54,17 @@ export function hookInternalLinks(
 
 function resolveSourcePath(sourcePath: SourcePathResolver, link: HTMLElement): string {
   return typeof sourcePath === 'function' ? sourcePath(link) : sourcePath;
+}
+
+/** Let the host resolve headings and block references with its public navigation API. */
+export function openLinkedFile(app: App, file: TFile, background: boolean, subpath?: string): void {
+  if (subpath) {
+    void app.workspace.openLinkText(file.path + subpath, '', background ? 'tab' : false, {
+      active: !background,
+    });
+  } else if (background) {
+    void app.workspace.getLeaf('tab').openFile(file, { active: false });
+  } else {
+    void app.workspace.getLeaf(false).openFile(file);
+  }
 }

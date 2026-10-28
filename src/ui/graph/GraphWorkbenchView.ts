@@ -1,4 +1,5 @@
-/* eslint-disable sonarjs/slow-regex -- graph workbench uses regexes for link parsing and path matching; patterns are bounded by input text length */
+import { computeNoteTextStats, type NoteTextStats } from '../../search/noteStats';
+/* eslint-disable sonarjs/super-linear-regex -- graph workbench uses regexes for link parsing and path matching; patterns are bounded by input text length */
 import { ItemView, Notice, setIcon, TFile, type App, type WorkspaceLeaf } from 'obsidian';
 import {
   analyzeGraph,
@@ -9,24 +10,22 @@ import {
   getTitle,
   type GraphAnalysis,
   type GraphIndex,
-} from '../graph/analysis';
-import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../graph/buildGraph';
-import type { MatchAnchor, SearchResult } from '../ipc';
-import type HybridSearchPlugin from '../main';
-import { runAllCleanupSteps } from './cleanup';
-import { hookInternalLinks } from './linkHandler';
+} from '../../graph/analysis';
+import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../../graph/buildGraph';
+import { getAnchorOffset, getPrimaryAnchor, offsetToEditorPosition } from '../../search/anchors';
+import type { MatchAnchor, SearchResult } from '../../search/contracts';
+import { fetchSimilarNotesDetailed } from '../../search/similarNotes';
+import type { PluginContext } from '../pluginContext';
+import { runAllCleanupSteps } from '../shared/cleanup';
+import { hookInternalLinks, openLinkedFile } from '../shared/linkHandler';
 import {
   createInternalLink,
   createTreeItemLink,
-  fetchSimilarNotesDetailed,
-  getAnchorOffset,
-  getPrimaryAnchor,
   hookSuperchargedLinks,
-  offsetToEditorPosition,
   openResult,
   unhookSuperchargedLinks,
   type SuperchargedWatch,
-} from './noteUtils';
+} from '../shared/noteUtils';
 
 export const GRAPH_WORKBENCH_VIEW_TYPE = 'hybrid-search-graph-workbench';
 
@@ -82,22 +81,6 @@ interface CandidateNote {
   cosine: number;
 }
 
-interface NoteTextStats {
-  words: number;
-  characters: number;
-  cjkCharacters: number;
-  pages: number;
-  readingMinutes: number;
-  headings: number;
-  listItems: number;
-  paragraphs: number;
-  quoteBlocks: number;
-  callouts: number;
-  frontmatterFields: number;
-  tags: number;
-  aliases: number;
-}
-
 const GRAPH_WIDTH = 360;
 const GRAPH_HEIGHT = 240;
 const CENTER_Y = 112;
@@ -106,9 +89,6 @@ const GRAPH_NODE_HEIGHT = 30;
 const GRAPH_NODE_GAP_X = 8;
 const GRAPH_ROW_GAP_Y = 13;
 const BRIDGE_GRAPH_LIMIT = 3;
-const WORDS_PER_MINUTE = 265;
-const CJK_CHARS_PER_MINUTE = 500;
-const WORDS_PER_PAGE = 300;
 const TAB_DEFINITIONS: Array<{
   tab: AnalysisTab;
   label: string;
@@ -167,6 +147,7 @@ export class GraphWorkbenchView extends ItemView {
   private detailsEl!: HTMLElement;
   private analysisTab: AnalysisTab = 'best';
   private centerPath: string | null = null;
+  private renderedPath: string | null = null;
   private semanticResults: SearchResult[] = [];
   private similarNotesScoreMode: 'similarity' | 'structural' = 'similarity';
   private relatedResults: SearchResult[] = [];
@@ -178,6 +159,7 @@ export class GraphWorkbenchView extends ItemView {
   private expandedGraphPaths = new Set<string>();
   private linkGraphDepth = 1;
   private dismissedPaths = new Set<string>();
+  private snapshotSignature = '';
   private requestId = 0;
   private closed = true;
   private cleanupCallbacks: Array<() => void> = [];
@@ -185,7 +167,7 @@ export class GraphWorkbenchView extends ItemView {
 
   constructor(
     leaf: WorkspaceLeaf,
-    private plugin: HybridSearchPlugin,
+    private plugin: PluginContext,
   ) {
     super(leaf);
   }
@@ -205,7 +187,7 @@ export class GraphWorkbenchView extends ItemView {
   async onOpen(): Promise<void> {
     await Promise.resolve();
     this.closed = false;
-    const container = this.containerEl.children[1] as HTMLElement;
+    const container = this.contentEl;
     container.empty();
     container.addClass('hybrid-search-graph-workbench');
 
@@ -248,10 +230,14 @@ export class GraphWorkbenchView extends ItemView {
   }
 
   async refreshFromActiveFile(force = false): Promise<void> {
+    if (this.closed) return;
     const file = this.app.workspace.getActiveFile();
     if (!file) {
       this.requestId++;
+      if (this.snapshotSignature === 'empty') return;
+      this.snapshotSignature = 'empty';
       this.centerPath = null;
+      this.renderedPath = null;
       this.semanticResults = [];
       this.similarNotesScoreMode = 'similarity';
       this.relatedResults = [];
@@ -268,21 +254,61 @@ export class GraphWorkbenchView extends ItemView {
     const path = file.path.normalize('NFC');
     if (!force && path === this.centerPath) return;
     const requestId = ++this.requestId;
+    const client = this.plugin.client;
+    const changingNote = path !== this.centerPath;
     this.centerPath = path;
-    this.semanticResults = [];
-    this.similarNotesScoreMode = 'similarity';
-    this.relatedResults = [];
-    this.candidateCache = null;
-    this.noteTextStats = null;
-    this.expandedPaths.clear();
-    this.expandedGraphPaths.clear();
-    this.graphIndex = buildGraphIndex(this.app);
-    this.analysis = analyzeGraph(this.app, path, this.resultLimit, this.graphIndex);
-    this.noteTextStats = await this.loadNoteTextStats(file);
-    if (this.closed || requestId !== this.requestId) return;
-    this.renderLoading(path);
+    if (changingNote) {
+      this.snapshotSignature = '';
+      this.expandedPaths.clear();
+      this.expandedGraphPaths.clear();
+      this.renderLoading(path);
+    }
+    const graphIndex = buildGraphIndex(this.app);
+    const analysis = analyzeGraph(this.app, path, this.resultLimit, graphIndex);
+    const noteTextStats = await this.loadNoteTextStats(file);
+    if (this.closed || requestId !== this.requestId || client !== this.plugin.client) return;
+    const results = await this.loadClientResults(path, client);
+    if (this.closed || requestId !== this.requestId || client !== this.plugin.client) return;
 
-    await this.loadClientResults(path, requestId);
+    // Metadata and modification times also affect labels and expanded backlink context.
+    // Snapshot cached host data only; never read the whole vault from disk here.
+    const paths = new Set([
+      path,
+      ...graphIndex.outgoing.keys(),
+      ...graphIndex.backlinks.keys(),
+      ...results.semantic.map((result) => result.path),
+      ...results.related.map((result) => result.path),
+    ]);
+    const signature = JSON.stringify({
+      path,
+      noteTextStats,
+      analysis,
+      results,
+      links: [...graphIndex.outgoing]
+        .map(([source, targets]) => [source, [...targets].sort((a, b) => a.localeCompare(b))])
+        .sort(([a], [b]) => String(a).localeCompare(String(b))),
+      notes: [...paths]
+        .sort((a, b) => a.localeCompare(b))
+        .map((notePath) => {
+          const note = this.app.vault.getAbstractFileByPath(notePath);
+          return [
+            notePath,
+            getTitle(this.app, notePath),
+            note instanceof TFile ? note.stat.mtime : null,
+          ];
+        }),
+    });
+    if (signature === this.snapshotSignature) return;
+    this.snapshotSignature = signature;
+    this.renderedPath = path;
+    this.graphIndex = graphIndex;
+    this.analysis = analysis;
+    this.noteTextStats = noteTextStats;
+    this.semanticResults = results.semantic;
+    this.relatedResults = results.related;
+    this.similarNotesScoreMode = results.scoreMode;
+    this.candidateCache = null;
+    this.render();
   }
 
   private get resultLimit(): number {
@@ -316,39 +342,36 @@ export class GraphWorkbenchView extends ItemView {
     }
   }
 
-  private async loadClientResults(path: string, requestId: number): Promise<void> {
-    if (!this.plugin.client) {
-      if (!this.closed && requestId === this.requestId) this.render();
-      return;
-    }
-
-    try {
-      const similar = await fetchSimilarNotesDetailed(this.plugin.client, path, {
-        limit: this.resultLimit,
-        threshold: this.plugin.settings.similarNotesThreshold,
-        anchors: true,
-      }).catch(() => ({ results: [], scoreMode: 'similarity' as const }));
-      if (this.closed || requestId !== this.requestId) return;
-      const related =
-        similar.scoreMode === 'similarity'
-          ? await this.plugin.client
-              .search(path, {
-                related: true,
-                depth: 1,
-                direction: 'both',
-                limit: this.resultLimit + 1,
-              })
-              .catch(() => [])
-          : [];
-      if (this.closed || requestId !== this.requestId) return;
-      this.semanticResults = similar.results;
-      this.similarNotesScoreMode = similar.scoreMode;
-      this.relatedResults = related.filter((result) => result.path.normalize('NFC') !== path);
-      this.candidateCache = null;
-      this.render();
-    } catch {
-      if (!this.closed && requestId === this.requestId) this.render();
-    }
+  private async loadClientResults(
+    path: string,
+    client: PluginContext['client'],
+  ): Promise<{
+    semantic: SearchResult[];
+    related: SearchResult[];
+    scoreMode: 'similarity' | 'structural';
+  }> {
+    if (!client) return { semantic: [], related: [], scoreMode: 'similarity' };
+    const similar = await fetchSimilarNotesDetailed(client, path, {
+      limit: this.resultLimit,
+      threshold: this.plugin.settings.similarNotesThreshold,
+      anchors: true,
+    }).catch(() => ({ results: [], scoreMode: 'similarity' as const }));
+    const related =
+      similar.scoreMode === 'similarity'
+        ? await client
+            .search(path, {
+              related: true,
+              depth: 1,
+              direction: 'both',
+              limit: this.resultLimit + 1,
+            })
+            .catch(() => [])
+        : [];
+    return {
+      semantic: similar.results,
+      related: related.filter((result) => result.path.normalize('NFC') !== path),
+      scoreMode: similar.scoreMode,
+    };
   }
 
   private renderLoading(_path: string): void {
@@ -372,6 +395,7 @@ export class GraphWorkbenchView extends ItemView {
     }
     this.renderGraphTabs();
     this.renderAnalysisTabs();
+    if (this.centerPath !== this.renderedPath) return;
     this.renderGraph();
     this.renderDetails();
   }
@@ -423,6 +447,7 @@ export class GraphWorkbenchView extends ItemView {
     this.expandedPaths.clear();
     this.renderGraphTabs();
     this.renderAnalysisTabs();
+    if (this.centerPath !== this.renderedPath) return;
     this.renderGraph();
     this.renderDetails();
   }
@@ -733,7 +758,7 @@ export class GraphWorkbenchView extends ItemView {
       'a.ohs-graph-node-link',
       'ohs-graph-node-item',
     );
-    window.requestAnimationFrame(() =>
+    this.graphEl.win.requestAnimationFrame(() =>
       this.renderExpandableLinkEdges(svgEl, layersEl, graphData.edges),
     );
   }
@@ -1422,13 +1447,8 @@ export class GraphWorkbenchView extends ItemView {
           sourcePath,
         });
       },
-      onOpenFile: (file, background) => {
-        if (background) {
-          // @ts-ignore - 'tab' is a valid PaneType in modern Obsidian.
-          void this.app.workspace.getLeaf('tab').openFile(file, { active: false });
-        } else {
-          void this.app.workspace.getLeaf(false).openFile(file);
-        }
+      onOpenFile: (file, background, _closeModal, subpath) => {
+        openLinkedFile(this.app, file, background, subpath);
       },
     });
   }
@@ -1881,7 +1901,7 @@ export class GraphWorkbenchView extends ItemView {
   }
 }
 
-export async function revealGraphWorkbench(plugin: HybridSearchPlugin): Promise<void> {
+export async function revealGraphWorkbench(plugin: PluginContext): Promise<void> {
   const existing = plugin.app.workspace.getLeavesOfType(GRAPH_WORKBENCH_VIEW_TYPE)[0];
   const leaf = existing ?? plugin.app.workspace.getRightLeaf(false);
   if (!leaf) {
@@ -1893,7 +1913,7 @@ export async function revealGraphWorkbench(plugin: HybridSearchPlugin): Promise<
     revealLeaf?: (workspaceLeaf: WorkspaceLeaf) => void | Promise<void>;
   };
   await workspace.revealLeaf?.(leaf);
-  if (leaf.view instanceof GraphWorkbenchView) await leaf.view.refreshFromActiveFile(true);
+  if (existing && leaf.view instanceof GraphWorkbenchView) await leaf.view.refreshFromActiveFile();
 }
 
 function layoutStructuredNodes(nodes: Array<Omit<WorkbenchNode, 'x' | 'y'>>): WorkbenchNode[] {
@@ -1999,130 +2019,6 @@ function safeDecodeLinkpath(linkpath: string): string {
   } catch {
     return linkpath;
   }
-}
-
-export function computeNoteTextStats(
-  content: string,
-  frontmatter?: Record<string, unknown>,
-): NoteTextStats {
-  const body = stripFrontmatter(content);
-  const visibleBody = normalizeVisibleMarkdown(body);
-  const cjkCharacters = countCjkCharacters(visibleBody);
-  const wordText = visibleBody.replace(CJK_CHARACTER_PATTERN, ' ');
-  const words = wordText.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
-  const characters = visibleBody.replace(/\s/g, '').length;
-  const headings = body.match(/^\s*#{1,6}\s+\S.*$/gm)?.length ?? 0;
-  const listItems = body.match(/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\S.*$/gm)?.length ?? 0;
-  const quoteBlocks = countQuoteBlocks(body);
-  const callouts = countCalloutBlocks(body);
-  const paragraphs = visibleBody
-    .split(/\n\s*\n/g)
-    .map((part) => part.trim())
-    .filter((part) => Boolean(part.replace(/^#+\s+/gm, '').trim())).length;
-  const frontmatterFields = frontmatter ? Object.keys(frontmatter).length : 0;
-  const frontmatterTags = countFrontmatterValues(frontmatter?.['tags'] ?? frontmatter?.['tag']);
-  const inlineTags = new Set(
-    Array.from(visibleBody.matchAll(/(^|\s)#([\p{L}\p{N}_/-]+)/gu), (match) => match[2]),
-  ).size;
-  const aliases = countFrontmatterValues(frontmatter?.['aliases'] ?? frontmatter?.['alias']);
-  const readingMinutes = Math.max(
-    1,
-    Math.ceil(words / WORDS_PER_MINUTE + cjkCharacters / CJK_CHARS_PER_MINUTE),
-  );
-  const pages = (words + cjkCharacters) / WORDS_PER_PAGE;
-  return {
-    words,
-    characters,
-    cjkCharacters,
-    pages,
-    readingMinutes,
-    headings,
-    listItems,
-    paragraphs,
-    quoteBlocks,
-    callouts,
-    frontmatterFields,
-    tags: frontmatterTags + inlineTags,
-    aliases,
-  };
-}
-
-const CJK_CHARACTER_PATTERN =
-  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
-
-function normalizeVisibleMarkdown(content: string): string {
-  return content
-    .replace(/(^|\n)(```|~~~)[\s\S]*?(?:\n\2[ \t]*(?=\n|$)|$)/g, '\n')
-    .replace(/%%[\s\S]*?%%/g, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/^\s*\[\^[^\]]+\]:.*(?:\n[ \t]+.*)*/gm, '')
-    .replace(/\[\^[^\]]+\]/g, '')
-    .replace(/!\[\[[^\]]+\]\]/g, ' ')
-    .replace(/!\[[^\]]*?\]\([^)]+?\)/g, ' ')
-    .replace(/\[([^\]]*?)\]\([^)]+?\)/g, '$1')
-    .replace(/\[([^\]]*?)\]\[[^\]]*?\]/g, '$1')
-    .replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?\|([^\]]+)\]\]/g, '$2')
-    .replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?\]\]/g, (_, linkText: string) => displayLinkText(linkText))
-    .replace(/`[^`\n]*`/g, ' ')
-    .replace(/^\s*(?:>\s*)+/gm, '')
-    .replace(/^\s*#{1,6}\s+/gm, '')
-    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, '')
-    .replace(/[*_~=`>|[\]{}()]/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .trim();
-}
-
-function displayLinkText(linkText: string): string {
-  return linkText.replace(/^.*\//, '').replace(/\.md$/i, '').trim();
-}
-
-function countCjkCharacters(content: string): number {
-  let count = 0;
-  CJK_CHARACTER_PATTERN.lastIndex = 0;
-  while (CJK_CHARACTER_PATTERN.exec(content)) count++;
-  return count;
-}
-
-function countCalloutBlocks(content: string): number {
-  return content.match(/^\s*>\s*\[![^\]]+\]/gim)?.length ?? 0;
-}
-
-function countQuoteBlocks(content: string): number {
-  let count = 0;
-  let inQuoteBlock = false;
-  let currentBlockIsCallout = false;
-  const quoteLinePattern = /^\s*>\s?(.*)$/;
-  for (const line of content.split(/\r?\n/)) {
-    const quoteMatch = quoteLinePattern.exec(line);
-    if (!quoteMatch) {
-      if (inQuoteBlock && !currentBlockIsCallout) count++;
-      inQuoteBlock = false;
-      currentBlockIsCallout = false;
-      continue;
-    }
-    if (!inQuoteBlock) {
-      inQuoteBlock = true;
-      currentBlockIsCallout = /^\s*\[![^\]]+\]/i.test(quoteMatch[1] ?? '');
-    }
-  }
-  if (inQuoteBlock && !currentBlockIsCallout) count++;
-  return count;
-}
-
-function stripFrontmatter(content: string): string {
-  return content.replace(/^---\s*\n[\s\S]*?\n---\s*(?:\n|$)/, '');
-}
-
-function countFrontmatterValues(value: unknown): number {
-  if (Array.isArray(value)) return value.length;
-  if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean).length;
-  }
-  return value == null ? 0 : 1;
 }
 
 function getSearchMatchSignals(result: SearchResult): string[] {
@@ -2242,4 +2138,4 @@ function isNoisyPath(path: string): boolean {
   );
 }
 
-/* eslint-enable sonarjs/slow-regex -- graph workbench regexes completed */
+/* eslint-enable sonarjs/super-linear-regex -- graph workbench regexes completed */

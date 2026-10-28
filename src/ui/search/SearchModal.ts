@@ -1,23 +1,16 @@
-import {
-  App,
-  debounce,
-  MarkdownRenderChild,
-  MarkdownRenderer,
-  setIcon,
-  SuggestModal,
-  TFile,
-} from 'obsidian';
-import type { MatchAnchor, SearchClient, SearchResult } from '../ipc';
-import type { HybridSearchSettings } from '../settings';
-import { runAllCleanupSteps } from './cleanup';
-import { GraphPanel } from './GraphPanel';
-import { hookInternalLinks } from './linkHandler';
-import { registerModalKeymap } from './modalKeymap';
+import { App, debounce, MarkdownRenderChild, setIcon, SuggestModal, TFile } from 'obsidian';
+import { getAnchorOffset } from '../../search/anchors';
+import type { MatchAnchor, SearchResult, SearchService } from '../../search/contracts';
+import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from '../../search/queryParser';
+import { fetchSimilarNotesDetailed } from '../../search/similarNotes';
+import type { HybridSearchSettings } from '../../settings/model';
+import { GraphPanel } from '../graph/GraphPanel';
+import { renderMarkdownPreview } from '../preview/renderMarkdownPreview';
+import { runAllCleanupSteps } from '../shared/cleanup';
+import { hookInternalLinks, openLinkedFile } from '../shared/linkHandler';
 import {
   applySuperchargedLinkAttributes,
   createInternalLink,
-  fetchSimilarNotesDetailed,
-  getAnchorOffset,
   getResultTitle,
   hookSuperchargedLinks,
   modeLabel,
@@ -25,9 +18,9 @@ import {
   scoreColor,
   unhookSuperchargedLinks,
   type SuperchargedWatch,
-} from './noteUtils';
-import { applyCustomPostfixes, applyDefaultFilters, parseQuery } from './queryParser';
-import { createBodyPanel } from './strayPanels';
+} from '../shared/noteUtils';
+import { createBodyPanel } from '../shared/strayPanels';
+import { registerModalKeymap } from './modalKeymap';
 
 type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
 
@@ -76,7 +69,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
   constructor(
     app: App,
-    private client: Pick<SearchClient, 'search'>,
+    private client: Pick<SearchService, 'search'>,
     private settings: HybridSearchSettings,
     private readonly saveSettings: () => Promise<void>,
     options: SearchModalOptions = {},
@@ -98,6 +91,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     this.graphPanel = new GraphPanel(this.app, {
       onCloseModal: () => this.close(),
       ownerId: this.ownerId,
+      ownerDocument: this.modalEl.ownerDocument,
     });
     if (!this.settings.showGraphPanel) this.graphPanel.hide();
     if (this.settings.rememberLastQuery && this.settings.lastQuery) {
@@ -170,8 +164,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
       (h) => !h.closest('.callout'),
     );
     return headings.find((h) => (h.textContent ?? '').trim().toLowerCase() === leaf) as
-      | HTMLElement
-      | undefined;
+      HTMLElement | undefined;
   }
 
   private getHeadingSiblings(headingEl: HTMLElement): Element[] {
@@ -546,11 +539,16 @@ export class SearchModal extends SuggestModal<SearchResult> {
 
     // Synchronous DOM setup — must happen before any await
     if (!this.previewEl) {
-      this.previewEl = createBodyPanel('hybrid-search-preview', this.ownerId);
+      this.previewEl = createBodyPanel(
+        'hybrid-search-preview',
+        this.ownerId,
+        this.modalEl.ownerDocument,
+      );
       this.previewEl.classList.add('markdown-preview-view', 'markdown-rendered');
       this.hookPreviewLinks();
     }
     this.previewEl.show();
+    const previewEl = this.previewEl;
     const previousChild = this.previewChild;
     this.previewChild = undefined;
     this.currentPreviewPath = undefined;
@@ -569,16 +567,21 @@ export class SearchModal extends SuggestModal<SearchResult> {
     try {
       content = await this.app.vault.cachedRead(abstract);
     } catch {
-      this.previewEl.hide();
+      if (callId === this.previewCallId && previewEl === this.previewEl) previewEl.hide();
       return;
     }
 
     if (callId !== this.previewCallId) return;
 
-    this.previewChild = new MarkdownRenderChild(this.previewEl);
-    this.previewChild.load();
-    await MarkdownRenderer.render(this.app, content, this.previewEl, nfcPath, this.previewChild);
-    if (callId !== this.previewCallId) return;
+    const child = await renderMarkdownPreview(
+      this.app,
+      content,
+      previewEl,
+      nfcPath,
+      () => callId === this.previewCallId && previewEl === this.previewEl,
+    );
+    if (!child) return;
+    this.previewChild = child;
 
     this.currentPreviewPath = nfcPath;
     this.currentPreviewContent = content;
@@ -773,7 +776,11 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (!this.settings.showPreviewMeta || !this.previewEl) return;
 
     if (!this.previewMetaEl) {
-      this.previewMetaEl = createBodyPanel('hybrid-search-preview-meta-panel', this.ownerId);
+      this.previewMetaEl = createBodyPanel(
+        'hybrid-search-preview-meta-panel',
+        this.ownerId,
+        this.modalEl.ownerDocument,
+      );
       this.hookMetaLinks();
     }
     this.previewMetaEl.empty();
@@ -901,7 +908,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
         totalWidth += gap + graphWidth;
       }
 
-      const vw = window.innerWidth;
+      const vw = this.modalEl.win.innerWidth;
 
       if (totalWidth + 16 <= vw) {
         // Center the modal+preview(+graph) pair horizontally
@@ -932,7 +939,7 @@ export class SearchModal extends SuggestModal<SearchResult> {
     if (this.settings.centerPanels && !this.previewEl?.isShown()) {
       const graphWidth = graphEl.offsetWidth || 380;
       const totalWidth = modalRect.width + gap + graphWidth;
-      const vw = window.innerWidth;
+      const vw = this.modalEl.win.innerWidth;
 
       if (totalWidth + 16 <= vw) {
         const pairLeft = Math.max(8, (vw - totalWidth) / 2);
@@ -961,14 +968,9 @@ export class SearchModal extends SuggestModal<SearchResult> {
   private hookInternalLinks(el: HTMLElement): void {
     hookInternalLinks(el, this.app, () => this.currentPreviewPath ?? '', {
       onHoverPreview: (evt, targetEl, href) => this.triggerHoverPreview(evt, targetEl, href),
-      onOpenFile: (file, background, closeModal) => {
-        if (background) {
-          // @ts-ignore - 'tab' is a valid PaneType in modern Obsidian.
-          void this.app.workspace.getLeaf('tab').openFile(file, { active: false });
-        } else {
-          void this.app.workspace.getLeaf(false).openFile(file);
-          if (closeModal) this.close();
-        }
+      onOpenFile: (file, background, closeModal, subpath) => {
+        openLinkedFile(this.app, file, background, subpath);
+        if (closeModal) this.close();
       },
     });
   }
@@ -1043,13 +1045,13 @@ const MD_STRIP = /[*_`#^~|\\]/g;
 
 /** Convert markdown source text to plain display text matching DOM textContent. */
 function toDisplayText(s: string): string {
-  /* eslint-disable sonarjs/slow-regex -- markdown link and alias stripping; patterns are bounded by input line length */
+  /* eslint-disable sonarjs/super-linear-regex -- markdown link and alias stripping; patterns are bounded by input line length */
   return s
     .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2') // [[link|alias]] → alias
     .replace(/\[\[([^\]]+)\]\]/g, '$1') // [[link]] → link text
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) → text
     .replace(MD_STRIP, '');
-  /* eslint-enable sonarjs/slow-regex -- markdown link and alias stripping completed */
+  /* eslint-enable sonarjs/super-linear-regex -- markdown link and alias stripping completed */
 }
 
 /**

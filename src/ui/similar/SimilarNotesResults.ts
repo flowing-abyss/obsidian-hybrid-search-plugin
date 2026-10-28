@@ -1,14 +1,14 @@
 import { Component, setIcon, TFile, type App, type HoverParent } from 'obsidian';
-import type { SearchResult } from '../ipc';
-import { runAllCleanupSteps } from './cleanup';
-import { hookInternalLinks } from './linkHandler';
+import type { SearchResult } from '../../search/contracts';
+import { runAllCleanupSteps } from '../shared/cleanup';
+import { hookInternalLinks, openLinkedFile } from '../shared/linkHandler';
 import {
   createTreeItemLink,
   getResultTitle,
   hookSuperchargedLinks,
   unhookSuperchargedLinks,
   type SuperchargedWatch,
-} from './noteUtils';
+} from '../shared/noteUtils';
 
 export type SimilarNotesScoreMode = 'similarity' | 'structural';
 
@@ -48,7 +48,10 @@ export class SimilarNotesResults extends Component {
             sourcePath: options.getSourcePath(targetEl),
           });
         },
-        onOpenFile: (file, background) => this.openFile(file, background),
+        onOpenFile: (file, background, _closeModal, subpath) => {
+          if (subpath) openLinkedFile(this.options.app, file, background, subpath);
+          else this.openFile(file, background);
+        },
       },
     );
     hookSuperchargedLinks(

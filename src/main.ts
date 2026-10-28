@@ -1,30 +1,29 @@
 import { Notice, Plugin, type EventRef } from 'obsidian';
-import type { HttpSearchClientStatusEvent } from './ipc';
-import { HttpSearchClient, SearchClient } from './ipc';
-import { getApiKey, getLegacyApiKeySecretId } from './secrets';
-import type { HybridSearchSettings } from './settings';
-import { DEFAULT_SETTINGS, HybridSearchSettingTab, normalizeSettings } from './settings';
-import {
-  GRAPH_WORKBENCH_VIEW_TYPE,
-  GraphWorkbenchView,
-  revealGraphWorkbench,
-} from './ui/GraphWorkbenchView';
-import { InlineSearchSuggest } from './ui/InlineSearchSuggest';
-import { PagePreviewSimilarNotesManager } from './ui/PagePreviewSimilarNotes';
-import { SearchModal } from './ui/SearchModal';
-import { revealSearchPanel, SEARCH_PANEL_VIEW_TYPE, SearchPanelView } from './ui/SearchPanelView';
-import { SimilarNotesBottomManager } from './ui/SimilarNotesBottom';
-import { runAllCleanupSteps } from './ui/cleanup';
-import { sweepStrayPanels } from './ui/strayPanels';
-
-type SearchMode = 'hybrid' | 'semantic' | 'fulltext' | 'title';
+import { registerCommands } from './commands';
+import type { SearchMode, SearchService } from './search/contracts';
+import type { HybridSearchSettings } from './settings/model';
+import { DEFAULT_SETTINGS, normalizeSettings } from './settings/model';
+import { getApiKey, getLegacyApiKeySecretId } from './settings/secrets';
+import type { HttpSearchClientStatusEvent } from './transport/http';
+import { HttpSearchClient } from './transport/http';
+import { SearchClient } from './transport/stdio';
+import { GRAPH_WORKBENCH_VIEW_TYPE, GraphWorkbenchView } from './ui/graph/GraphWorkbenchView';
+import { InlineSearchSuggest } from './ui/search/InlineSearchSuggest';
+import { SearchModal } from './ui/search/SearchModal';
+import { SEARCH_PANEL_VIEW_TYPE, SearchPanelView } from './ui/search/SearchPanelView';
+import { HybridSearchSettingTab } from './ui/settings/HybridSearchSettingTab';
+import { runAllCleanupSteps } from './ui/shared/cleanup';
+import { sweepStrayPanels } from './ui/shared/strayPanels';
+import { PagePreviewSimilarNotesManager } from './ui/similar/PagePreviewSimilarNotes';
+import { SimilarNotesBottomManager } from './ui/similar/SimilarNotesBottom';
 
 export default class HybridSearchPlugin extends Plugin {
-  settings!: HybridSearchSettings;
-  client?: SearchClient | HttpSearchClient;
+  declare settings: HybridSearchSettings;
+  client?: SearchService;
   private similarNotesBottom?: SimilarNotesBottomManager;
   private pagePreviewSimilarNotes?: PagePreviewSimilarNotesManager;
   private graphWorkbenchRefreshTimer?: number;
+  private clientGeneration = 0;
   private activeSearchModals = new Set<SearchModal>();
 
   async onload(): Promise<void> {
@@ -73,92 +72,19 @@ export default class HybridSearchPlugin extends Plugin {
     this.pagePreviewSimilarNotes = new PagePreviewSimilarNotesManager(this.app, this);
     this.pagePreviewSimilarNotes.load();
 
-    this.addCommand({
-      id: 'open-search',
-      name: 'Open search',
-      callback: () => this.openSearchModal(),
-    });
-
-    this.addCommand({
-      id: 'search-hybrid',
-      name: 'Hybrid mode',
-      callback: () => this.openSearchModal('hybrid'),
-    });
-
-    this.addCommand({
-      id: 'search-fulltext',
-      name: 'Fulltext mode',
-      callback: () => this.openSearchModal('fulltext'),
-    });
-
-    this.addCommand({
-      id: 'search-semantic',
-      name: 'Semantic mode',
-      callback: () => this.openSearchModal('semantic'),
-    });
-
-    this.addCommand({
-      id: 'search-title',
-      name: 'Title mode',
-      callback: () => this.openSearchModal('title'),
-    });
-
-    this.addCommand({
-      id: 'open-search-panel',
-      name: 'Open search panel',
-      callback: () => {
-        void revealSearchPanel(this);
-      },
-    });
-
-    this.addCommand({
-      id: 'open-graph-workbench',
-      name: 'Open graph workbench',
-      callback: () => {
-        void revealGraphWorkbench(this);
-      },
-    });
-
-    this.addCommand({
-      id: 'search-panel-hybrid',
-      name: 'Search panel: Hybrid mode',
-      callback: () => {
-        void revealSearchPanel(this, 'hybrid');
-      },
-    });
-
-    this.addCommand({
-      id: 'search-panel-fulltext',
-      name: 'Search panel: Fulltext mode',
-      callback: () => {
-        void revealSearchPanel(this, 'fulltext');
-      },
-    });
-
-    this.addCommand({
-      id: 'search-panel-semantic',
-      name: 'Search panel: Semantic mode',
-      callback: () => {
-        void revealSearchPanel(this, 'semantic');
-      },
-    });
-
-    this.addCommand({
-      id: 'search-panel-title',
-      name: 'Search panel: Title mode',
-      callback: () => {
-        void revealSearchPanel(this, 'title');
-      },
-    });
+    registerCommands(this, (mode) => this.openSearchModal(mode));
 
     this.addRibbonIcon('search', 'Hybrid search', () => {
       this.openSearchModal();
     });
 
-    this.addSettingTab(new HybridSearchSettingTab(this.app, this));
+    const settingsTab = new HybridSearchSettingTab(this.app, this);
+    this.addSettingTab(settingsTab);
+    this.register(() => settingsTab.dispose());
   }
 
   onunload(): void {
+    this.clientGeneration++;
     try {
       runAllCleanupSteps(
         () => this.closeActiveSearchModals(),
@@ -218,6 +144,8 @@ export default class HybridSearchPlugin extends Plugin {
   }
 
   restartClient(): void {
+    const generation = ++this.clientGeneration;
+    this.closeActiveSearchModals();
     this.client?.dispose();
     let startupFailureCoveredByStatus = false;
     this.client =
@@ -230,6 +158,7 @@ export default class HybridSearchPlugin extends Plugin {
                 }
               : undefined,
             onStatusChange: (event) => {
+              if (generation !== this.clientGeneration) return;
               if (event.type === 'fallback-failed') startupFailureCoveredByStatus = true;
               this.handleHttpStatusChange(event);
             },
@@ -241,11 +170,16 @@ export default class HybridSearchPlugin extends Plugin {
           );
     this.pagePreviewSimilarNotes?.clientChanged();
 
-    this.client.waitReady(30_000).catch((err: unknown) => {
-      if (startupFailureCoveredByStatus) return;
-      const detail = err instanceof Error ? err.message : String(err);
-      new Notice(`Hybrid search: server did not start.\n\n${detail}`, 0);
-    });
+    this.client
+      .waitReady(30_000)
+      .then(() => {
+        if (generation === this.clientGeneration) this.refreshEndpointSensitiveViews();
+      })
+      .catch((err: unknown) => {
+        if (generation !== this.clientGeneration || startupFailureCoveredByStatus) return;
+        const detail = err instanceof Error ? err.message : String(err);
+        new Notice(`Hybrid search: server did not start.\n\n${detail}`, 0);
+      });
   }
 
   private handleHttpStatusChange(event: HttpSearchClientStatusEvent): void {
@@ -296,6 +230,9 @@ export default class HybridSearchPlugin extends Plugin {
   }
 
   private refreshEndpointSensitiveViews(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType?.(SEARCH_PANEL_VIEW_TYPE) ?? []) {
+      if (leaf.view instanceof SearchPanelView) leaf.view.refreshForClientChange();
+    }
     this.similarNotesBottom?.refresh(true);
     void this.refreshGraphWorkbenchViews(true);
   }

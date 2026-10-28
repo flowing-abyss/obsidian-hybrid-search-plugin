@@ -1,7 +1,7 @@
 import { Notice } from 'obsidian';
-import type { HybridSearchSettings } from '../settings';
-import type { CliStatus } from '../status';
-import { fetchStatus } from '../status';
+import type { CliStatus } from '../../search/status';
+import { fetchStatus } from '../../search/status';
+import type { HybridSearchSettings } from '../../settings/model';
 
 export interface StatusSectionDeps {
   settings: HybridSearchSettings;

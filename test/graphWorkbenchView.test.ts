@@ -1,7 +1,9 @@
-import { App, TFile, WorkspaceLeaf } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS } from '../src/settings';
-import { GraphWorkbenchView, computeNoteTextStats } from '../src/ui/GraphWorkbenchView';
+import { computeNoteTextStats } from '../src/search/noteStats';
+import { DEFAULT_SETTINGS } from '../src/settings/model';
+import { GraphWorkbenchView } from '../src/ui/graph/GraphWorkbenchView';
+import { createApp, createFile, createLeaf } from './support/obsidian';
 
 function result(path: string, score: number) {
   return {
@@ -22,7 +24,7 @@ function deferred<T>() {
 }
 
 function makeApp() {
-  const app = new App();
+  const app = createApp({ 'A.md': '', 'Backlink.md': '', 'Linked.md': '' });
   app.metadataCache.resolvedLinks = {
     'A.md': { 'Linked.md': 1 },
     'Backlink.md': { 'A.md': 1 },
@@ -37,8 +39,7 @@ function makeApp() {
 }
 
 function makeView(app: App, client: { search: ReturnType<typeof vi.fn> }) {
-  const leaf = new WorkspaceLeaf();
-  (leaf as WorkspaceLeaf & { app: App }).app = app;
+  const leaf = createLeaf(app);
   const plugin = {
     app,
     client,
@@ -69,7 +70,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const client = {
       search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
         if (options.notePath) return Promise.resolve([result('Similar.md', 0.91)]);
@@ -101,7 +102,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const client = {
       search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
         if (options.notePath) {
@@ -132,7 +133,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const client = {
       search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
         if (options.notePath) return Promise.resolve([result('Similar.md', 0.91)]);
@@ -164,7 +165,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     app.metadataCache.resolvedLinks = {
       'Backlink.md': { 'A.md': 1 },
     };
@@ -222,7 +223,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const view = makeView(app, { search: vi.fn().mockResolvedValue([]) });
 
     await view.onOpen();
@@ -244,7 +245,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const view = makeView(app, { search: vi.fn().mockResolvedValue([]) });
 
     await view.onOpen();
@@ -330,7 +331,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const view = makeView(app, { search: vi.fn().mockResolvedValue([]) });
 
     await view.onOpen();
@@ -362,7 +363,7 @@ describe('GraphWorkbenchView', () => {
     };
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const view = makeView(app, { search: vi.fn().mockResolvedValue([]) });
 
     await view.onOpen();
@@ -416,7 +417,7 @@ describe('GraphWorkbenchView', () => {
     };
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const view = makeView(app, { search: vi.fn().mockResolvedValue([]) });
 
     await view.onOpen();
@@ -447,7 +448,7 @@ describe('GraphWorkbenchView', () => {
     };
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const semanticResults = [
       'Similar1.md',
       'Similar2.md',
@@ -490,7 +491,7 @@ describe('GraphWorkbenchView', () => {
     app.metadataCache.resolvedLinks = {};
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const semanticResults = [
       'Missing1.md',
       'Missing2.md',
@@ -527,7 +528,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const client = {
       search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
         if (options.notePath) return Promise.resolve([result('SemanticOnly.md', 0.61)]);
@@ -555,7 +556,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const client = {
       search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
         if (options.notePath) return Promise.resolve([result('HighSemantic.md', 0.72)]);
@@ -585,7 +586,7 @@ describe('GraphWorkbenchView', () => {
     };
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const client = {
       search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
         if (options.notePath) return Promise.resolve([result('Supported.md', 0.72)]);
@@ -609,7 +610,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const client = {
       search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
         if (options.notePath) return Promise.resolve([result('Similar.md', 0.91)]);
@@ -627,7 +628,7 @@ describe('GraphWorkbenchView', () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const client = {
       search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) => {
         if (options.notePath) return Promise.resolve([]);
@@ -657,11 +658,101 @@ describe('GraphWorkbenchView', () => {
     expect(client.search).toHaveBeenCalledTimes(2);
   });
 
+  it('does not render the previous note snapshot when a tab is selected during a note change', async () => {
+    const app = makeApp();
+    let path = 'A.md';
+    app.workspace.getActiveFile = vi.fn(() => createFile(path));
+    const view = makeView(app, {
+      search: vi.fn().mockResolvedValue([result('OldSimilar.md', 0.9)]),
+    });
+    await view.onOpen();
+    const reading = deferred<string>();
+    vi.mocked(app.vault.cachedRead).mockReturnValueOnce(reading.promise);
+    path = 'B.md';
+    const pending = view.refreshFromActiveFile();
+    view.containerEl
+      .querySelectorAll<HTMLButtonElement>('.ohs-workbench-tabs-bottom .ohs-workbench-tab')[3]!
+      .click();
+    expect(view.containerEl.querySelector('.ohs-workbench-details')!.textContent).not.toContain(
+      'OldSimilar',
+    );
+    reading.resolve('new note');
+    await pending;
+    await view.onClose();
+  });
+
+  it('discards results from a client replaced during refresh', async () => {
+    const app = makeApp();
+    app.workspace.getActiveFile = vi.fn(() => createFile('A.md'));
+    const pending = deferred<ReturnType<typeof result>[]>();
+    const oldClient = { search: vi.fn().mockReturnValue(pending.promise) };
+    const plugin = {
+      app,
+      client: oldClient,
+      manifest: { id: 'hybrid-search' },
+      settings: { ...DEFAULT_SETTINGS },
+      saveSettings: vi.fn(),
+    };
+    const view = new GraphWorkbenchView(createLeaf(app), plugin as never);
+    const opening = view.onOpen();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    plugin.client = { search: vi.fn().mockResolvedValue([result('NewServer.md', 0.9)]) };
+    pending.resolve([result('OldServer.md', 0.9)]);
+    await opening;
+    expect(view.containerEl.textContent).not.toContain('OldServer');
+    await view.refreshFromActiveFile(true);
+    expect(view.containerEl.querySelector('[data-path="NewServer.md"]')).not.toBeNull();
+    await view.onClose();
+  });
+
+  it('keeps newer note statistics when an older read finishes last', async () => {
+    const app = makeApp();
+    let activePath = 'A.md';
+    app.workspace.getActiveFile = vi.fn(() => createFile(activePath));
+    const oldRead = deferred<string>();
+    vi.mocked(app.vault.cachedRead).mockImplementation((file) =>
+      file.path === 'A.md' ? oldRead.promise : Promise.resolve('new note words'),
+    );
+    const view = makeView(app, { search: vi.fn().mockResolvedValue([]) });
+    const opening = view.onOpen();
+    activePath = 'B.md';
+    await view.refreshFromActiveFile(true);
+    oldRead.resolve('old');
+    await opening;
+    expect((view as unknown as { noteTextStats: { words: number } }).noteTextStats.words).toBe(3);
+  });
+
+  it('keeps unchanged graph DOM, expansion and scroll during background refresh', async () => {
+    const app = makeApp();
+    app.workspace.getActiveFile = vi.fn(() => createFile('A.md'));
+    const view = makeView(app, {
+      search: vi.fn().mockResolvedValue([{ ...result('Similar.md', 0.9), snippet: 'context' }]),
+    });
+    await view.onOpen();
+    view.containerEl
+      .querySelectorAll<HTMLButtonElement>('.ohs-workbench-tabs-bottom .ohs-workbench-tab')[3]!
+      .click();
+    view.containerEl.querySelector<HTMLElement>('.ohs-workbench-collapse')!.click();
+    const row = view.containerEl.querySelector('.ohs-workbench-collapse');
+    const details = view.containerEl.querySelector<HTMLElement>('.ohs-workbench-details')!;
+    details.scrollTop = 41;
+    const mutations: MutationRecord[] = [];
+    const observer = new MutationObserver((records) => mutations.push(...records));
+    observer.observe(details, { childList: true, subtree: true });
+    await view.refreshFromActiveFile(true);
+    mutations.push(...observer.takeRecords());
+    observer.disconnect();
+    expect(view.containerEl.querySelector('.ohs-workbench-collapse')).toBe(row);
+    expect(details.textContent).toContain('context');
+    expect(details.scrollTop).toBe(41);
+    expect(mutations).toHaveLength(0);
+  });
+
   it('ignores stale async results after a forced refresh starts', async () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
       .fn()
-      .mockReturnValue(Object.assign(new TFile(), { path: 'A.md' }));
+      .mockReturnValue(Object.assign(createFile(), { path: 'A.md' }));
     const staleSemantic = deferred<ReturnType<typeof result>[]>();
     const statsRefresh = deferred<string>();
     let notePathCalls = 0;
@@ -702,7 +793,7 @@ describe('GraphWorkbenchView', () => {
   it('ignores stale async results after the active note changes', async () => {
     const app = makeApp();
     let activePath = 'A.md';
-    app.workspace.getActiveFile = vi.fn(() => Object.assign(new TFile(), { path: activePath }));
+    app.workspace.getActiveFile = vi.fn(() => Object.assign(createFile(), { path: activePath }));
     const semanticA = deferred<ReturnType<typeof result>[]>();
     const semanticB = deferred<ReturnType<typeof result>[]>();
     const client = {

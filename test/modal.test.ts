@@ -1,9 +1,10 @@
-import { MarkdownRenderer, TFile } from 'obsidian';
+import { MarkdownRenderer } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MatchAnchor, SearchResult } from '../src/ipc';
-import { DEFAULT_SETTINGS } from '../src/settings';
-import { SearchModal } from '../src/ui/SearchModal';
-import { BODY_PANEL_CLASSES, PANEL_OWNER_ATTR } from '../src/ui/strayPanels';
+import type { MatchAnchor, SearchResult } from '../src/search/contracts';
+import { DEFAULT_SETTINGS } from '../src/settings/model';
+import { SearchModal } from '../src/ui/search/SearchModal';
+import { BODY_PANEL_CLASSES, PANEL_OWNER_ATTR } from '../src/ui/shared/strayPanels';
+import { createFile } from './support/obsidian';
 
 const mockSearch = vi.fn();
 const mockClient = { search: mockSearch };
@@ -12,7 +13,7 @@ const mockGetCache = vi.fn().mockReturnValue(null);
 const mockCachedRead = vi.fn().mockResolvedValue('# Note Content\n\nSome body text.');
 const mockGetAbstractFileByPath = vi.fn();
 // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.fn() mock is safe to call unbound
-const mockRender = vi.mocked(MarkdownRenderer.render);
+const mockRender = vi.fn<typeof MarkdownRenderer.render>();
 
 const mockOpenFile = vi.fn();
 const mockGetLeaf = vi.fn().mockReturnValue({ openFile: mockOpenFile });
@@ -44,9 +45,13 @@ describe('SearchModal', () => {
     mockSearch.mockResolvedValue([sampleResult]);
     mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
     mockGetAbstractFileByPath.mockReturnValue(
-      Object.assign(new TFile(), { path: sampleResult.path }),
+      Object.assign(createFile(), { path: sampleResult.path }),
     );
-    mockRender.mockClear();
+    mockRender.mockImplementation((_app, source, el) => {
+      el.textContent = source;
+      return Promise.resolve();
+    });
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(mockRender);
     modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
   });
 
@@ -237,13 +242,13 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion creates title element with note name', () => {
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-name')?.textContent).toBe('Zettelkasten');
   });
 
   it('renderSuggestion renders title as internal-link anchor with data-href', () => {
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link.hybrid-search-name');
     expect(link).not.toBeNull();
@@ -252,7 +257,7 @@ describe('SearchModal', () => {
 
   it('renderSuggestion sets data-link-* attributes and CSS vars from frontmatter', () => {
     mockGetCache.mockReturnValue({ frontmatter: { status: 'done', priority: 1 } });
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link') as HTMLElement;
     expect(link.getAttribute('data-link-status')).toBe('done');
@@ -265,14 +270,14 @@ describe('SearchModal', () => {
     mockGetCache.mockReturnValue({
       frontmatter: { 'description:"bad': 'value', valid: 'ok' },
     });
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     expect(() => modal.renderSuggestion(sampleResult, el)).not.toThrow();
     const link = el.querySelector('a.internal-link') as HTMLElement;
     expect(link.getAttribute('data-link-valid')).toBe('ok');
   });
 
   it('renderSuggestion adds Supercharged Links classes', () => {
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link');
     expect(link?.classList.contains('data-link-icon')).toBe(true);
@@ -284,7 +289,7 @@ describe('SearchModal', () => {
     mockGetCache.mockReturnValue({
       frontmatter: { position: {}, tags: ['a', 'b'], status: 'active' },
     });
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     const link = el.querySelector('a.internal-link');
     expect(link?.hasAttribute('data-link-position')).toBe(false);
@@ -293,13 +298,13 @@ describe('SearchModal', () => {
   });
 
   it('renderSuggestion shows score', () => {
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-score')?.textContent).toBe('0.87');
   });
 
   it('renderSuggestion does not show tags when showMeta is false', () => {
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-meta')).toBeNull();
   });
@@ -314,7 +319,7 @@ describe('SearchModal', () => {
       },
       vi.fn(),
     );
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modalWithMeta.renderSuggestion(sampleResult, el);
     const meta = el.querySelector('.hybrid-search-meta');
     expect(meta).not.toBeNull();
@@ -330,7 +335,7 @@ describe('SearchModal', () => {
       },
       vi.fn(),
     );
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modalWithMeta.renderSuggestion(sampleResult, el);
     const path = el.querySelector('.hybrid-search-meta-path');
     expect(path?.textContent).toBe('notes/pkm');
@@ -346,7 +351,7 @@ describe('SearchModal', () => {
       },
       vi.fn(),
     );
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modalWithMeta.renderSuggestion(sampleResult, el);
     const tags = el.querySelectorAll('.hybrid-search-tag');
     expect(tags).toHaveLength(2);
@@ -363,13 +368,13 @@ describe('SearchModal', () => {
       },
       vi.fn(),
     );
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modalWithMeta.renderSuggestion({ ...sampleResult, tags: [] }, el);
     expect(el.querySelectorAll('.hybrid-search-tag')).toHaveLength(0);
   });
 
   it('renderSuggestion falls back to path when title is empty', () => {
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion({ ...sampleResult, title: '' }, el);
     expect(el.querySelector('.hybrid-search-name')?.textContent).toBe(sampleResult.path);
   });
@@ -409,16 +414,21 @@ describe('SearchModal — hover preview', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRender.mockImplementation((_app, source, el) => {
+      el.textContent = source;
+      return Promise.resolve();
+    });
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(mockRender);
     mockSearch.mockResolvedValue([sampleResult]);
     mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
     mockGetAbstractFileByPath.mockReturnValue(
-      Object.assign(new TFile(), { path: sampleResult.path }),
+      Object.assign(createFile(), { path: sampleResult.path }),
     );
     modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('renderSuggestion does not render snippet element', () => {
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-snippet')).toBeNull();
   });
@@ -450,6 +460,53 @@ describe('SearchModal — hover preview', () => {
     await internals.updatePreview(sampleResult.path);
     await internals.updatePreview(sampleResult.path);
     expect(mockRender).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards Markdown that finishes rendering after a newer preview', async () => {
+    let finish!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mockCachedRead.mockResolvedValueOnce('old note').mockResolvedValueOnce('new note');
+    mockRender.mockImplementation(async (_app, markdown, container) => {
+      if (markdown === 'old note') await blocked;
+      container.createDiv({ text: markdown });
+    });
+    const internal = modal as unknown as ModalInternals;
+    const old = internal.updatePreview('old.md');
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    await internal.updatePreview('new.md');
+    finish();
+    await old;
+    expect(internal.previewEl!.textContent).toBe('new note');
+  });
+
+  it('ignores a failed read after the preview is closed', async () => {
+    let reject!: (error: Error) => void;
+    mockCachedRead.mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+    );
+    const pending = (modal as unknown as ModalInternals).updatePreview('old.md');
+    modal.hidePreviewPanel();
+    reject(new Error('old read failed'));
+    await expect(pending).resolves.toBeUndefined();
+  });
+
+  it('does not hide a newer preview when an older read fails', async () => {
+    let reject!: (error: Error) => void;
+    mockCachedRead.mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+    );
+    const internal = modal as unknown as ModalInternals;
+    const pending = internal.updatePreview('old.md');
+    await internal.updatePreview('new.md');
+    reject(new Error('old read failed'));
+    await pending;
+    expect(internal.previewEl!.style.display).not.toBe('none');
   });
 
   it('updatePreview hides panel on cachedRead error', async () => {
@@ -546,7 +603,10 @@ describe('SearchModal — hover preview', () => {
     const updateMock = vi.fn();
     const internals = modal as unknown as ModalInternals;
     internals.updatePreview = updateMock;
+    vi.useFakeTimers();
     internals.onSelectedChange(sampleResult);
+    vi.advanceTimersByTime(100);
+    vi.useRealTimers();
     expect(updateMock).toHaveBeenCalledWith(
       sampleResult.path,
       sampleResult.snippet,
@@ -652,7 +712,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     vi.clearAllMocks();
     mockSearch.mockResolvedValue([relatedResult]);
     mockGetAbstractFileByPath.mockReturnValue(
-      Object.assign(new TFile(), { path: relatedResult.path }),
+      Object.assign(createFile(), { path: relatedResult.path }),
     );
     mockGetCache.mockReturnValue(null);
     mockGetLastOpenFiles.mockReturnValue([]);
@@ -706,7 +766,7 @@ describe('SearchModal — default behavior (S-102)', () => {
   it('getSuggestions with empty query and no activePath returns recent files without server call', async () => {
     mockGetLastOpenFiles.mockReturnValue(['notes/a.md', 'notes/b.md']);
     mockGetAbstractFileByPath.mockImplementation((p: string) =>
-      Object.assign(new TFile(), { path: p, extension: 'md' }),
+      Object.assign(createFile(), { path: p, extension: 'md' }),
     );
     const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
@@ -732,7 +792,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     ]);
     mockGetAbstractFileByPath.mockImplementation((p: string) => {
       if (p === 'notes/deleted.md') return null;
-      return Object.assign(new TFile(), { path: p, extension: 'md' });
+      return Object.assign(createFile(), { path: p, extension: 'md' });
     });
     const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
@@ -743,11 +803,11 @@ describe('SearchModal — default behavior (S-102)', () => {
   it('renderSuggestion hides score when in recent mode', async () => {
     mockGetLastOpenFiles.mockReturnValue(['notes/a.md']);
     mockGetAbstractFileByPath.mockReturnValue(
-      Object.assign(new TFile(), { path: 'notes/a.md', extension: 'md' }),
+      Object.assign(createFile(), { path: 'notes/a.md', extension: 'md' }),
     );
     const modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
     const results = await modal.getSuggestions('');
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(results[0]!, el);
     expect(el.querySelector('.hybrid-search-score')).toBeNull();
   });
@@ -758,7 +818,7 @@ describe('SearchModal — default behavior (S-102)', () => {
     const promise = modal.getSuggestions('zettel');
     vi.runAllTimers();
     await promise;
-    const el = activeDocument.createDiv();
+    const el = createDiv();
     modal.renderSuggestion(sampleResult, el);
     expect(el.querySelector('.hybrid-search-score')).not.toBeNull();
     vi.useRealTimers();
@@ -773,15 +833,15 @@ describe('getHeadingSiblings', () => {
     mockSearch.mockResolvedValue([sampleResult]);
     mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
     mockGetAbstractFileByPath.mockReturnValue(
-      Object.assign(new TFile(), { path: sampleResult.path }),
+      Object.assign(createFile(), { path: sampleResult.path }),
     );
     modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('returns siblings until next same-level heading', () => {
-    const container = activeDocument.createDiv();
+    const container = createDiv();
     const makeEl = (tag: keyof HTMLElementTagNameMap, text?: string) => {
-      const el = activeDocument.createEl(tag);
+      const el = createEl(tag);
       if (text) el.textContent = text;
       return el;
     };
@@ -809,12 +869,12 @@ describe('getHeadingSiblings', () => {
   });
 
   it('returns all remaining siblings when no closing heading', () => {
-    const container = activeDocument.createDiv();
-    const h2El = activeDocument.createEl('h2');
+    const container = createDiv();
+    const h2El = createEl('h2');
     h2El.textContent = 'Heading';
-    const p1 = activeDocument.createEl('p');
+    const p1 = createEl('p');
     p1.textContent = 'First paragraph';
-    const p2 = activeDocument.createEl('p');
+    const p2 = createEl('p');
     p2.textContent = 'Second paragraph';
     container.append(h2El, p1, p2);
     const h2 = container.querySelector('h2') as HTMLElement;
@@ -835,18 +895,18 @@ describe('findHeadingElement', () => {
     mockSearch.mockResolvedValue([sampleResult]);
     mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
     mockGetAbstractFileByPath.mockReturnValue(
-      Object.assign(new TFile(), { path: sampleResult.path }),
+      Object.assign(createFile(), { path: sampleResult.path }),
     );
     modal = new SearchModal(mockApp as never, mockClient, DEFAULT_SETTINGS, vi.fn());
   });
 
   it('finds leaf heading by headingPath', () => {
-    const preview = activeDocument.createDiv();
-    const h2 = activeDocument.createEl('h2');
+    const preview = createDiv();
+    const h2 = createEl('h2');
     h2.textContent = 'Parent';
-    const h3 = activeDocument.createEl('h3');
+    const h3 = createEl('h3');
     h3.textContent = 'Child section';
-    const p = activeDocument.createEl('p');
+    const p = createEl('p');
     p.textContent = 'Content';
     preview.append(h2, h3, p);
     (modal as unknown as { previewEl: HTMLElement }).previewEl = preview;
@@ -863,7 +923,7 @@ describe('findHeadingElement', () => {
   });
 
   it('returns undefined for null headingPath', () => {
-    (modal as unknown as { previewEl: HTMLElement }).previewEl = activeDocument.createDiv();
+    (modal as unknown as { previewEl: HTMLElement }).previewEl = createDiv();
     const result = (
       modal as unknown as {
         findHeadingElement(hp: string | null): HTMLElement | undefined;
@@ -881,9 +941,13 @@ describe('anchor-based highlight', () => {
     mockSearch.mockResolvedValue([sampleResult]);
     mockCachedRead.mockResolvedValue('# Note Content\n\nSome body text.');
     mockGetAbstractFileByPath.mockReturnValue(
-      Object.assign(new TFile(), { path: sampleResult.path }),
+      Object.assign(createFile(), { path: sampleResult.path }),
     );
-    mockRender.mockClear();
+    mockRender.mockImplementation((_app, source, el) => {
+      el.textContent = source;
+      return Promise.resolve();
+    });
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(mockRender);
     modal = new SearchModal(
       mockApp as never,
       mockClient,
