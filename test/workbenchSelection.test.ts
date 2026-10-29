@@ -329,4 +329,52 @@ describe('Workbench selected text', () => {
     await select(12);
     expect(parent.querySelector('.ohs-workbench-selection-result')?.textContent).toContain('A.md');
   });
+
+  it('omits an uncertain source match when Markdown cleanup prevents locating its range', async () => {
+    const text = 'An **earlier thought**. A *selected thought*.';
+    const { select, client, parent } = setup(text);
+    vi.mocked(client.search).mockResolvedValue([
+      {
+        ...hit('A.md'),
+        previewAnchors: [
+          {
+            kind: 'semantic',
+            headingPath: null,
+            matchText: 'An earlier thought. A selected thought.',
+            charStart: 0,
+            charEnd: 38,
+          },
+        ],
+      },
+      hit(),
+    ]);
+    await select(text.indexOf('A *selected'));
+    expect(
+      Array.from(parent.querySelectorAll('.ohs-workbench-link')).map((el) => el.textContent),
+    ).toEqual(['B.md']);
+  });
+
+  it('omits a source chunk that contains the selected Reading-view sentence', async () => {
+    const { select, source, client, parent } = setup('Selected sentence.');
+    vi.spyOn(source, 'getMode').mockReturnValue('preview');
+    vi.mocked(client.search).mockResolvedValue([
+      {
+        ...hit('A.md'),
+        previewAnchors: [
+          {
+            kind: 'semantic',
+            headingPath: null,
+            matchText: 'Before. Selected sentence. After.',
+            charStart: null,
+            charEnd: null,
+          },
+        ],
+      },
+      hit(),
+    ]);
+    await select();
+    expect(
+      Array.from(parent.querySelectorAll('.ohs-workbench-link')).map((el) => el.textContent),
+    ).toEqual(['B.md']);
+  });
 });

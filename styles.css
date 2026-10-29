@@ -1227,35 +1227,6 @@ li.hybrid-search-semantic-match {
   min-height: 0;
 }
 
-.ohs-workbench-selection .ohs-workbench-selection-expand {
-  background: none;
-  border: none;
-  box-shadow: none;
-  padding: 3px;
-  height: auto;
-  color: var(--text-faint);
-  flex: 0 0 auto;
-}
-
-.ohs-workbench-selection-details {
-  margin: 4px 4px 10px 24px;
-}
-
-.ohs-workbench-selection .ohs-workbench-selection-excerpt {
-  display: block;
-  width: 100%;
-  height: auto;
-  padding: 6px 8px;
-  text-align: start;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  line-height: 1.5;
-  font-weight: normal;
-  color: var(--text-muted);
-  background: var(--background-secondary);
-  box-shadow: none;
-}
-
 .ohs-workbench-selection-status {
   color: var(--text-muted);
   font-size: var(--font-ui-small);

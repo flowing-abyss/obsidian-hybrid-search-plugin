@@ -262,10 +262,13 @@ export class WorkbenchSelection extends Component {
       if (start >= 0 && anchor.matchText) {
         return start < captured.to && start + anchor.matchText.length > captured.from;
       }
+      // A cleaned anchor cannot prove that a same-note passage is outside the
+      // selection. Prefer omitting this uncertain self-match over repeating it.
+      return true;
     }
     const match = excerptPlainText(anchor.matchText);
     const selectedText = captured.text.normalize('NFC').replace(/\s+/gu, ' ').trim();
-    return !match || selectedText.includes(match);
+    return !match || selectedText.includes(match) || match.includes(selectedText);
   }
 
   private showStatus(message: string): void {
@@ -285,13 +288,18 @@ export class WorkbenchSelection extends Component {
     });
     item.dataset.sourcePath = captured.path;
     const row = item.createDiv({
-      cls: 'tree-item-self search-result-file-title ohs-workbench-row',
+      cls: 'tree-item-self search-result-file-title ohs-workbench-row is-clickable',
     });
-    const expand = row.createEl('button', {
-      cls: 'ohs-workbench-selection-expand',
-      attr: { 'aria-label': 'Show matching passage', 'aria-expanded': 'false' },
+    const expand = row.createDiv({
+      cls: 'tree-item-icon collapse-icon ohs-workbench-collapse ohs-workbench-selection-expand is-collapsed',
+      attr: {
+        role: 'button',
+        tabindex: '0',
+        'aria-label': 'Expand result',
+        'aria-expanded': 'false',
+      },
     });
-    setIcon(expand, 'chevron-right');
+    setIcon(expand, 'right-triangle');
     const link = createTreeItemLink(
       this.app,
       row,
@@ -312,37 +320,62 @@ export class WorkbenchSelection extends Component {
       evt.preventDefault();
       this.options.openResult(result, evt.ctrlKey || evt.metaKey, isCurrent);
     });
+    row.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      this.options.openResult(result, evt.ctrlKey || evt.metaKey, isCurrent);
+    });
     let details: HTMLElement | undefined;
-    expand.addEventListener('click', () => {
+    const toggle = () => {
       if (details) {
         details.remove();
         details = undefined;
       } else {
-        details = item.createDiv({ cls: 'ohs-workbench-selection-details' });
+        details = item.createDiv({
+          cls: 'search-result-file-matches ohs-workbench-selection-details',
+          attr: { 'data-source-path': result.path.normalize('NFC') },
+        });
+        const match = details.createDiv({
+          cls: 'search-result-file-match tappable ohs-workbench-row-meta',
+          attr: { 'data-source-path': result.path.normalize('NFC') },
+        });
         const excerpt = prepareResultExcerpt(result, createExcerptHighlighter(captured.text));
         if (excerpt) {
-          const passage = details.createEl('button', {
-            cls: 'ohs-workbench-selection-excerpt',
+          const passage = match.createDiv({
+            cls: 'ohs-workbench-expanded-text ohs-workbench-snippet ohs-workbench-selection-excerpt',
             text: excerpt.section ? `${excerpt.section} · ${excerpt.text}` : excerpt.text,
-            attr: { 'aria-label': 'Open matching passage' },
+            attr: { role: 'button', tabindex: '0', 'aria-label': 'Open matching passage' },
           });
           passage.addEventListener('click', (evt) =>
             this.options.openResult(result, evt.ctrlKey || evt.metaKey, isCurrent),
           );
+          passage.addEventListener('keydown', (evt) => {
+            if (evt.key !== 'Enter' && evt.key !== ' ') return;
+            evt.preventDefault();
+            this.options.openResult(result, evt.ctrlKey || evt.metaKey, isCurrent);
+          });
         } else {
-          details.createDiv({
+          match.createDiv({
             cls: 'ohs-workbench-selection-status',
             text: 'No passage preview available.',
           });
         }
       }
       item.toggleClass('is-collapsed', !details);
+      expand.toggleClass('is-collapsed', !details);
       expand.setAttribute('aria-expanded', String(!!details));
-      expand.setAttribute(
-        'aria-label',
-        details ? 'Hide matching passage' : 'Show matching passage',
-      );
-      setIcon(expand, details ? 'chevron-down' : 'chevron-right');
+      expand.setAttribute('aria-label', details ? 'Collapse result' : 'Expand result');
+    };
+    expand.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      toggle();
+    });
+    expand.addEventListener('keydown', (evt) => {
+      if (evt.key !== 'Enter' && evt.key !== ' ') return;
+      evt.preventDefault();
+      evt.stopPropagation();
+      toggle();
     });
   }
 }
