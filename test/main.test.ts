@@ -104,6 +104,9 @@ describe('HybridSearchPlugin', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    // Tests call onload directly, so they must also release its managers before
+    // jsdom disappears. Restore injected cleanup failures before unloading.
+    plugin.onunload();
     activeDocument.querySelectorAll(ALL_BODY_PANELS).forEach((el) => el.remove());
   });
 
