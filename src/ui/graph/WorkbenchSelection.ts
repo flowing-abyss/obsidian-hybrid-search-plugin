@@ -196,6 +196,7 @@ export class WorkbenchSelection extends Component {
     this.containerEl.empty();
     if (!this.captured) return;
     const header = this.containerEl.createDiv({ cls: 'ohs-workbench-selection-header' });
+    header.createDiv({ cls: 'ohs-workbench-selection-label', text: 'Selected text' });
     const preview = Array.from(excerptPlainText(this.captured.text));
     header.createDiv({
       cls: 'ohs-workbench-selection-quote',

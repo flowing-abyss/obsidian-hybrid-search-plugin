@@ -97,6 +97,7 @@ const TAB_DEFINITIONS: Array<{
   icon: string;
   graphLabel: string;
   subtitle: string;
+  tooltip?: string;
 }> = [
   {
     tab: 'best',
@@ -107,7 +108,8 @@ const TAB_DEFINITIONS: Array<{
   },
   {
     tab: 'missing',
-    label: 'Missing Links',
+    label: 'Missing',
+    tooltip: 'Suggested links to existing notes',
     icon: 'link-2',
     graphLabel: 'Missing-link map',
     subtitle: 'Unlinked notes with enough evidence to consider a link.',
@@ -135,10 +137,10 @@ const TAB_DEFINITIONS: Array<{
   },
   {
     tab: 'diagnostics',
-    label: 'Diagnostics',
-    icon: 'activity',
-    graphLabel: 'Graph diagnostics',
-    subtitle: 'Structure, discovery, text, and metadata signals.',
+    label: 'Statistics',
+    icon: 'chart-column',
+    graphLabel: 'Note statistics',
+    subtitle: 'This note and its recommendations',
   },
 ];
 
@@ -198,8 +200,8 @@ export class GraphWorkbenchView extends ItemView {
     this.graphTabsEl = topBar.createDiv({ cls: 'ohs-workbench-graph-context' });
     this.renderGraphTabs();
     this.createIconButton(topBar, 'refresh-cw', 'Refresh graph workbench', () => {
+      void this.refreshFromActiveFile(true);
       if (this.analysisTab === 'best' && this.selection?.hasSelection) this.selection.refresh();
-      else void this.refreshFromActiveFile(true);
     });
     this.graphEl = container.createDiv({ cls: 'ohs-workbench-graph' });
 
@@ -428,10 +430,6 @@ export class GraphWorkbenchView extends ItemView {
     const titleEl = this.graphTabsEl.createDiv({ cls: 'ohs-workbench-graph-context-title' });
     const iconEl = titleEl.createSpan({ cls: 'ohs-workbench-graph-context-icon' });
     setIcon(iconEl, definition.icon);
-    if (this.analysisTab === 'best' && this.selection?.hasSelection) {
-      titleEl.createSpan({ text: 'Selected text' });
-      return;
-    }
     titleEl.createSpan({ text: definition.graphLabel });
     this.graphTabsEl.createDiv({
       cls: 'ohs-workbench-graph-context-subtitle',
@@ -456,7 +454,12 @@ export class GraphWorkbenchView extends ItemView {
   ): void {
     const tab = parent.createEl('button', {
       cls: `ohs-workbench-tab${active ? ' is-active' : ''}`,
-      attr: { type: 'button', 'aria-pressed': String(active), 'aria-selected': String(active) },
+      attr: {
+        type: 'button',
+        'aria-pressed': String(active),
+        'aria-selected': String(active),
+        title: definition.tooltip ?? definition.label,
+      },
     });
     const iconEl = tab.createSpan({ cls: 'ohs-workbench-tab-icon' });
     setIcon(iconEl, definition.icon);
@@ -482,9 +485,7 @@ export class GraphWorkbenchView extends ItemView {
   private updateSelectionScope(): void {
     const active = this.analysisTab === 'best' && !!this.selection?.hasSelection;
     this.selection?.setVisible(active);
-    this.graphEl.hidden = active;
     this.detailsEl.hidden = active;
-    this.renderGraphTabs();
   }
 
   private renderGraph(): void {

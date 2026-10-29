@@ -87,7 +87,7 @@ describe('GraphWorkbenchView', () => {
       Array.from(view.containerEl.querySelectorAll('.ohs-workbench-tab')).map(
         (tab) => tab.querySelector('.ohs-workbench-tab-label')?.textContent,
       ),
-    ).toEqual(['Best', 'Missing Links', 'Bridges', 'Similar', 'Links', 'Diagnostics']);
+    ).toEqual(['Best', 'Missing', 'Bridges', 'Similar', 'Links', 'Statistics']);
     expect(view.containerEl.querySelector('.ohs-workbench-graph-context')?.textContent).toContain(
       'Best connection map',
     );
@@ -190,6 +190,10 @@ describe('GraphWorkbenchView', () => {
     const row = details.querySelector<HTMLElement>('.ohs-workbench-result')!;
     row.querySelector<HTMLElement>('.ohs-workbench-collapse')!.click();
     const expandedRow = details.querySelector('.ohs-workbench-result');
+    const graph = view.containerEl.querySelector<HTMLElement>('.ohs-workbench-graph')!;
+    const graphChild = graph.firstElementChild;
+    const graphHeader = view.containerEl.querySelector('.ohs-workbench-graph-context')!;
+    const headerText = graphHeader.textContent;
     details.scrollTop = 120;
     source.editor.setSelection({ line: 0, ch: 0 }, { line: 0, ch: 16 });
     const range = activeDocument.createRange();
@@ -199,6 +203,12 @@ describe('GraphWorkbenchView', () => {
     activeDocument.dispatchEvent(new Event('selectionchange'));
     await vi.advanceTimersByTimeAsync(300);
     expect(details.hidden).toBe(true);
+    expect(graph.hidden).toBe(false);
+    expect(graph.firstElementChild).toBe(graphChild);
+    expect(graphHeader.textContent).toBe(headerText);
+    expect(view.containerEl.querySelector('.ohs-workbench-selection-label')?.textContent).toBe(
+      'Selected text',
+    );
     expect(view.containerEl.querySelector('.ohs-workbench-selection-result')).not.toBeNull();
     view.containerEl
       .querySelector<HTMLElement>('.ohs-workbench-selection .ohs-workbench-link')!
@@ -210,11 +220,23 @@ describe('GraphWorkbenchView', () => {
         sourcePath: 'A.md',
       }),
     );
+    client.search.mockClear();
+    view.containerEl.querySelector<HTMLButtonElement>('.ohs-workbench-topbar button')!.click();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(client.search.mock.calls.some(([, options]) => options?.notePath === 'A.md')).toBe(true);
+    expect(client.search.mock.calls.some(([query]) => query === 'A selected idea.')).toBe(true);
+    expect(graph.hidden).toBe(false);
+    expect(graph.firstElementChild).toBe(graphChild);
+    expect(details.hidden).toBe(true);
+    expect(view.containerEl.querySelector('.ohs-workbench-selection-result')).not.toBeNull();
     view.containerEl.querySelector<HTMLButtonElement>('.ohs-workbench-selection-reset')!.click();
     expect(details.hidden).toBe(false);
     expect(details.querySelector('.ohs-workbench-result')).toBe(expandedRow);
     expect(details.querySelector('.ohs-workbench-snippet')).not.toBeNull();
     expect(details.scrollTop).toBe(120);
+    expect(graph.hidden).toBe(false);
+    expect(graph.firstElementChild).toBe(graphChild);
+
     await view.onClose();
     activeDocument.getSelection()?.removeAllRanges();
     vi.useRealTimers();

@@ -1208,6 +1208,11 @@ li.hybrid-search-semantic-match {
   gap: 8px;
 }
 
+.ohs-workbench-selection-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
 .ohs-workbench-selection-quote {
   display: -webkit-box;
   -webkit-box-orient: vertical;
