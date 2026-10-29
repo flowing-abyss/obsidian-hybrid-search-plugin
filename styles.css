@@ -1402,11 +1402,21 @@ li.hybrid-search-semantic-match {
 }
 
 .ohs-workbench-expanded-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   border-bottom: 1px solid var(--background-modifier-border);
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
   margin-bottom: 6px;
   padding-bottom: 5px;
+}
+
+.ohs-workbench-source-link {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .ohs-workbench-snippet {

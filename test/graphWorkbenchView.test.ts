@@ -325,6 +325,69 @@ describe('GraphWorkbenchView', () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it('opens co-citation sources with native link actions and keeps evidence distinct', async () => {
+    const app = createApp({
+      'A.md': '',
+      'B.md': '',
+      'Source 1.md': '',
+      'Source 2.md': '',
+      'Source 3.md': '',
+      'Source 4.md': '',
+      'Source 5.md': '',
+    });
+    app.workspace.getActiveFile = vi.fn().mockReturnValue(app.vault.getFileByPath('A.md'));
+    app.metadataCache.resolvedLinks = {
+      'Source 1.md': { 'A.md': 1, 'B.md': 1 },
+      'Source 2.md': { 'A.md': 1, 'B.md': 1 },
+      'Source 3.md': { 'A.md': 1, 'B.md': 1 },
+      'Source 4.md': { 'A.md': 1, 'B.md': 1 },
+      'Source 5.md': { 'A.md': 1, 'B.md': 1 },
+    };
+    const view = makeView(app, {
+      search: vi
+        .fn()
+        .mockImplementation((_query, options) =>
+          Promise.resolve(
+            options.notePath
+              ? [{ ...result('B.md', 0.71), scores: { semantic: 0.71, bm25: 0.32 } }]
+              : [],
+          ),
+        ),
+    });
+    const target = createLeaf(app);
+    const open = vi.spyOn(target, 'openFile').mockResolvedValue(undefined);
+    vi.mocked(app.workspace.getLeaf).mockReturnValue(target);
+    await view.onOpen();
+    view.containerEl.querySelectorAll<HTMLButtonElement>('.ohs-workbench-tab')[3]!.click();
+    view.containerEl.querySelector<HTMLElement>('.ohs-workbench-collapse')!.click();
+    const metrics = view.containerEl.querySelector<HTMLElement>('.ohs-workbench-expanded-metrics')!;
+    const links = metrics.querySelectorAll<HTMLAnchorElement>('a.internal-link');
+
+    expect(links).toHaveLength(4);
+    expect(metrics.textContent).toContain('4 of 5 shown');
+    expect(metrics.textContent).toContain('Semantic similarity 0.71');
+    expect(metrics.textContent).not.toContain('semantic 0.71');
+    expect(metrics.textContent).toContain('fulltext 0.32');
+    expect(metrics.textContent).not.toContain('. ·');
+    expect(metrics.querySelectorAll('.ohs-workbench-evidence-group').length).toBeGreaterThan(1);
+
+    links[0]!.click();
+    expect(open).toHaveBeenLastCalledWith(app.vault.getFileByPath('Source 1.md'));
+    links[1]!.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }),
+    );
+    expect(app.workspace.getLeaf).toHaveBeenLastCalledWith('tab');
+    expect(open).toHaveBeenLastCalledWith(app.vault.getFileByPath('Source 2.md'), {
+      active: false,
+    });
+    links[2]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, metaKey: true }));
+    expect(app.workspace.trigger).toHaveBeenCalledWith(
+      'hover-link',
+      expect.objectContaining({ linktext: 'Source 3', sourcePath: 'A.md' }),
+    );
+    await view.onClose();
+  });
+
   it('renders backlink mention context when a linked note is expanded', async () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi

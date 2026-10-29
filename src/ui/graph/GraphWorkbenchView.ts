@@ -76,6 +76,7 @@ interface CandidateNote {
   relatedTraversal: boolean;
   commonNeighbours: number;
   coCitations: number;
+  coCitationSources: string[];
   jaccard: number;
   adamicAdar: number;
   resourceAllocation: number;
@@ -1247,9 +1248,15 @@ export class GraphWorkbenchView extends ItemView {
       cls: 'search-result-file-match tappable ohs-workbench-row-meta',
       attr: { 'data-source-path': candidate.path.normalize('NFC') },
     });
-    if (this.analysisTab !== 'neighbors' && candidate.expandedEvidence.length > 0) {
+    if (
+      this.analysisTab !== 'neighbors' &&
+      (candidate.expandedEvidence.length > 0 || candidate.coCitationSources.length > 0)
+    ) {
       const metrics = match.createDiv({ cls: 'ohs-workbench-expanded-metrics' });
-      metrics.textContent = candidate.expandedEvidence.join(' · ');
+      for (const evidence of candidate.expandedEvidence) {
+        metrics.createDiv({ cls: 'ohs-workbench-evidence-group', text: evidence });
+      }
+      this.createCoCitationSources(metrics, candidate);
     }
     if (this.analysisTab === 'neighbors' && candidate.existingDirectLink) {
       this.createLinkContextSnippet(match, candidate);
@@ -1264,6 +1271,31 @@ export class GraphWorkbenchView extends ItemView {
       snippet.setAttribute('tabindex', '0');
       snippet.setAttribute('aria-label', `Open ${candidate.title} at matching snippet`);
       snippet.textContent = excerpt.section ? `${excerpt.section} · ${excerpt.text}` : excerpt.text;
+    }
+  }
+
+  private createCoCitationSources(parent: HTMLElement, candidate: CandidateNote): void {
+    if (candidate.coCitationSources.length === 0) return;
+    const sourcePath = this.centerPath ?? '';
+    const sources = parent.createDiv({
+      cls: 'ohs-workbench-citations',
+      attr: { 'data-source-path': sourcePath },
+    });
+    sources.createDiv({ text: 'Both notes are linked from' });
+    for (const path of candidate.coCitationSources) {
+      createInternalLink(
+        this.app,
+        sources,
+        path,
+        getTitle(this.app, path),
+        'ohs-workbench-source-link',
+        sourcePath,
+      );
+    }
+    if (candidate.coCitations > candidate.coCitationSources.length) {
+      sources.createDiv({
+        text: `${candidate.coCitationSources.length} of ${candidate.coCitations} shown`,
+      });
     }
   }
 
@@ -1754,6 +1786,7 @@ export class GraphWorkbenchView extends ItemView {
           relatedTraversal: false,
           commonNeighbours: 0,
           coCitations: 0,
+          coCitationSources: [],
           jaccard: 0,
           adamicAdar: 0,
           resourceAllocation: 0,
@@ -1768,7 +1801,7 @@ export class GraphWorkbenchView extends ItemView {
       const candidate = ensureCandidate(path);
       candidate.kind = 'neighbor';
       candidate.evidence.push(candidate.direction);
-      candidate.expandedEvidence.push(`Existing ${candidate.direction} connection.`);
+      candidate.expandedEvidence.push(`Existing ${candidate.direction} connection`);
     }
 
     for (const result of this.semanticResults) {
@@ -1780,13 +1813,13 @@ export class GraphWorkbenchView extends ItemView {
         candidate.semantic = Math.max(candidate.semantic, result.score);
         candidate.evidence.push('semantic');
         for (const signal of getSearchMatchSignals(result)) candidate.evidence.push(signal);
-        candidate.expandedEvidence.push(`Semantic similarity ${result.score.toFixed(2)}.`);
+        candidate.expandedEvidence.push(`Semantic similarity ${result.score.toFixed(2)}`);
         const searchBreakdown = formatSearchBreakdown(result);
         if (searchBreakdown) candidate.expandedEvidence.push(searchBreakdown);
       } else {
         candidate.relatedTraversal = true;
         candidate.evidence.push('structural');
-        candidate.expandedEvidence.push('Found by structural fallback.');
+        candidate.expandedEvidence.push('Found by structural fallback');
       }
     }
 
@@ -1805,17 +1838,15 @@ export class GraphWorkbenchView extends ItemView {
         candidate.evidence.push(`resource ${item.resourceAllocation.toFixed(2)}`);
       }
       candidate.expandedEvidence.push(
-        `${item.commonNeighbours} common neighbours; Jaccard ${item.jaccard.toFixed(2)}; Adamic ${item.adamicAdar.toFixed(2)}; Resource ${item.resourceAllocation.toFixed(2)}; Cosine ${item.cosine.toFixed(2)}; Preferential ${item.preferentialAttachment}.`,
+        `${item.commonNeighbours} shared neighbors · Jaccard ${item.jaccard.toFixed(2)} · Adamic–Adar ${item.adamicAdar.toFixed(2)} · Resource allocation ${item.resourceAllocation.toFixed(2)} · Graph cosine ${item.cosine.toFixed(2)} · Degree product ${item.preferentialAttachment}`,
       );
     }
 
     for (const item of this.analysis.coCitations) {
       const candidate = ensureCandidate(item.path);
       candidate.coCitations = item.count;
+      candidate.coCitationSources = item.sources;
       candidate.evidence.push(`co-cited x${item.count}`);
-      candidate.expandedEvidence.push(
-        `Co-cited with current note in ${item.sources.map((path) => getTitle(this.app, path)).join(', ')}.`,
-      );
     }
 
     for (const result of this.relatedResults) {
@@ -1823,7 +1854,7 @@ export class GraphWorkbenchView extends ItemView {
       if (candidate.kind === 'similar')
         candidate.kind = candidate.existingDirectLink ? 'neighbor' : 'bridge';
       candidate.relatedTraversal = true;
-      candidate.expandedEvidence.push('Found by local graph traversal.');
+      candidate.expandedEvidence.push('Found by local graph traversal');
     }
 
     this.candidateCache = [...candidates.values()]
@@ -2143,12 +2174,17 @@ function getBestKindIcon(kind: CandidateNote['kind']): string {
 
 function formatSearchBreakdown(result: SearchResult): string | null {
   const parts: string[] = [];
-  if (result.scores?.semantic != null) parts.push(`semantic ${result.scores.semantic.toFixed(2)}`);
+  if (
+    result.scores?.semantic != null &&
+    result.scores.semantic.toFixed(2) !== result.score.toFixed(2)
+  ) {
+    parts.push(`semantic ${result.scores.semantic.toFixed(2)}`);
+  }
   if (result.scores?.bm25 != null) parts.push(`fulltext ${result.scores.bm25.toFixed(2)}`);
   if (result.scores?.fuzzy_title != null)
     parts.push(`title ${result.scores.fuzzy_title.toFixed(2)}`);
   if (result.scores?.hybrid != null) parts.push(`hybrid ${result.scores.hybrid.toFixed(2)}`);
-  return parts.length > 0 ? `Search contribution: ${parts.join('; ')}.` : null;
+  return parts.length > 0 ? `Search contribution: ${parts.join(' · ')}` : null;
 }
 
 function unique<T>(items: T[]): T[] {
