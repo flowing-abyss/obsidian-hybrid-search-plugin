@@ -457,7 +457,6 @@ export class HybridSearchSettingTab extends PluginSettingTab {
 
     const similarEl = this.addSection(containerEl, 'Similar notes', 'git-compare');
     const updateSimilarSettingsVisibility = () => {
-      bottomSimilarSettingsEl.hidden = !this.plugin.settings.showSimilarNotesAtBottom;
       pagePreviewSimilarSettingsEl.hidden = !this.plugin.settings.showSimilarNotesInPagePreview;
       sharedSimilarSettingsEl.hidden =
         !this.plugin.settings.showSimilarNotesAtBottom &&
@@ -476,11 +475,9 @@ export class HybridSearchSettingTab extends PluginSettingTab {
         }),
       );
 
-    const bottomSimilarSettingsEl = similarEl.createDiv();
-
-    new Setting(bottomSimilarSettingsEl)
+    new Setting(similarEl)
       .setName('Similar notes limit')
-      .setDesc('Maximum number of similar notes shown at the bottom of a note.')
+      .setDesc('Maximum number of workbench recommendations and similar notes below a note.')
       .addText((text) =>
         text
           .setPlaceholder('5')

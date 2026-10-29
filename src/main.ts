@@ -229,6 +229,7 @@ export default class HybridSearchPlugin extends Plugin {
   onSimilarNotesSettingsChanged(): void {
     this.similarNotesBottom?.settingsChanged();
     this.pagePreviewSimilarNotes?.settingsChanged();
+    void this.refreshGraphWorkbenchViews(true);
   }
 
   onSearchDisplaySettingsChanged(): void {
@@ -256,11 +257,13 @@ export default class HybridSearchPlugin extends Plugin {
 
   private async refreshGraphWorkbenchViews(force = false): Promise<void> {
     if (typeof this.app.workspace.getLeavesOfType !== 'function') return;
+    const refreshes: Promise<void>[] = [];
     for (const leaf of this.app.workspace.getLeavesOfType(GRAPH_WORKBENCH_VIEW_TYPE)) {
       if (leaf.view instanceof GraphWorkbenchView) {
-        await leaf.view.refreshFromActiveFile(force);
+        refreshes.push(leaf.view.refreshFromActiveFile(force));
       }
     }
+    await Promise.all(refreshes);
   }
 
   private queueGraphWorkbenchRefresh(): void {

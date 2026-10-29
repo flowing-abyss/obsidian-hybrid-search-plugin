@@ -330,7 +330,7 @@ describe('HybridSearchSettingTab', () => {
     expect(names).toContain('Show path and tags');
   });
 
-  it('display() hides similar note limit until enabled', async () => {
+  it('display() keeps the Workbench limit visible while hiding disabled preview controls', async () => {
     const { App } = await import('obsidian');
     const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
@@ -341,7 +341,7 @@ describe('HybridSearchSettingTab', () => {
       .map((el) => el.textContent);
     expect(names).toContain('Show similar notes at bottom');
     expect(names).toContain('Show similar notes in page preview');
-    expect(names).not.toContain('Similar notes limit');
+    expect(names).toContain('Similar notes limit');
     expect(names).not.toContain('Page preview limit');
     expect(names).not.toContain('Minimum similarity');
     expect(names).not.toContain('Search panel limit');
@@ -360,7 +360,7 @@ describe('HybridSearchSettingTab', () => {
     expect(names).toContain('Minimum similarity');
   });
 
-  it('shows only page preview controls and the shared threshold when only page preview is enabled', async () => {
+  it('shows page preview controls alongside the Workbench limit when only page preview is enabled', async () => {
     const { App } = await import('obsidian');
     const app = createApp();
     const tab = new HybridSearchSettingTab(app, mockPlugin);
@@ -374,7 +374,7 @@ describe('HybridSearchSettingTab', () => {
       .map((el) => el.textContent);
     expect(names).toContain('Page preview limit');
     expect(names).toContain('Minimum similarity');
-    expect(names).not.toContain('Similar notes limit');
+    expect(names).toContain('Similar notes limit');
   });
 
   it('renders STDIO connection settings by default', async () => {
@@ -695,6 +695,20 @@ describe('HybridSearchSettingTab', () => {
     expect(plugin.settings.similarNotesPagePreviewLimit).toBe(7);
     expect(plugin.saveSettings).toHaveBeenCalledTimes(2);
     expect(plugin.onSimilarNotesSettingsChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the shared Workbench limit available when the note footer is disabled', () => {
+    const app = createApp();
+    const plugin = {
+      ...mockPlugin,
+      settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: false },
+    };
+    const tab = new HybridSearchSettingTab(app, plugin);
+    tab.display();
+    const setting = findSetting(tab, 'Similar notes limit');
+    expect(setting.closest('[hidden]')).toBeNull();
+    changeText(setting, '2');
+    expect(plugin.settings.similarNotesBottomLimit).toBe(2);
   });
 
   it('showGraphPanel toggle updates settings', async () => {

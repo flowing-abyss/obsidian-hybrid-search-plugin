@@ -34,13 +34,13 @@ function setup(text = 'First idea. Second idea.') {
   app.workspace.getActiveFile = vi.fn().mockReturnValue(source.file);
   const parent = activeDocument.body.createDiv();
   const client = { search: vi.fn().mockResolvedValue([hit()]) } as unknown as SearchService;
-  const state = { client: client as SearchService | undefined, enabled: true };
+  const state = { client: client as SearchService | undefined, enabled: true, limit: 8 };
   const open = vi.fn();
   const changed = vi.fn();
   const component = new WorkbenchSelection(app, parent, {
     getClient: () => state.client,
     isEnabled: () => state.enabled,
-    getLimit: () => 8,
+    getLimit: () => state.limit,
     onScopeChange: changed,
     openResult: open,
   });
@@ -70,7 +70,171 @@ afterEach(() => {
 });
 
 describe('Workbench selected text', () => {
-  it('uses the indexed whole note for a long selection and shows no duplicate source title or scores', async () => {
+  it('shows the final search score with modal colors, rather than the semantic component', async () => {
+    const { select, client, parent } = setup();
+    vi.mocked(client.search).mockResolvedValue([
+      { ...hit(), score: 0.94, scores: { semantic: 0.21 } },
+    ]);
+    await select();
+    const score = parent.querySelector<HTMLElement>('.ohs-workbench-flair')!;
+    expect(score.textContent).toBe('0.94');
+    expect(score.style.color).toBe('rgb(76, 175, 80)');
+    expect(score.closest('.tree-item-self')).not.toBeNull();
+  });
+
+  it('updates the retained selection when the configured result limit changes', async () => {
+    const { select, client, parent, state, component } = setup();
+    vi.mocked(client.search).mockResolvedValue([hit('One.md'), hit('Two.md'), hit('Three.md')]);
+    await select();
+    state.limit = 1;
+    component.syncSource('A.md');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(component.hasSelection).toBe(true);
+    expect(parent.querySelectorAll('.ohs-workbench-selection-result')).toHaveLength(1);
+    expect(client.search).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ limit: 2 }),
+    );
+  });
+
+  it('keeps expanded results and scroll during an unchanged refresh', async () => {
+    const { select, client, parent, component } = setup();
+    await select();
+    parent.querySelector<HTMLElement>('.ohs-workbench-selection-expand')!.click();
+    const row = parent.querySelector('.ohs-workbench-selection-result');
+    const details = parent.querySelector('.ohs-workbench-selection-details');
+    const scroller = parent.querySelector<HTMLElement>('.ohs-workbench-selection-results')!;
+    scroller.scrollTop = 120;
+    let resolve!: (results: SearchResult[]) => void;
+    vi.mocked(client.search).mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+    component.refresh();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(parent.querySelector('.ohs-workbench-selection-result')).toBe(row);
+    resolve([{ ...hit(), score: 0.81 }]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(parent.querySelector('.ohs-workbench-selection-details')).toBe(details);
+    expect(scroller.scrollTop).toBe(120);
+    expect(parent.querySelector('.ohs-workbench-flair')?.textContent).toBe('0.81');
+  });
+
+  it('retains successful results when refreshing fails, then clears the error on retry', async () => {
+    const { select, client, parent, component } = setup();
+    await select();
+    const row = parent.querySelector('.ohs-workbench-selection-result');
+    vi.mocked(client.search).mockRejectedValueOnce(new Error('offline'));
+    component.refresh();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(parent.querySelector('.ohs-workbench-selection-result')).toBe(row);
+    expect(parent.textContent).toContain('Search unavailable');
+    parent.querySelector<HTMLElement>('.ohs-workbench-selection-retry')!.click();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(parent.querySelector('.ohs-workbench-selection-result')).toBe(row);
+    expect(parent.textContent).not.toContain('Search unavailable');
+  });
+
+  it('reuses retained results when the editor restores the same selection after focus changes', async () => {
+    const { select, client, parent } = setup();
+    await select(0, 11);
+    parent.querySelector<HTMLElement>('.ohs-workbench-selection-expand')!.click();
+    const details = parent.querySelector('.ohs-workbench-selection-details');
+    activeDocument.getSelection()!.removeAllRanges();
+    activeDocument.dispatchEvent(new Event('selectionchange'));
+    await select(0, 11);
+    expect(client.search).toHaveBeenCalledTimes(1);
+    expect(parent.querySelector('.ohs-workbench-selection-details')).toBe(details);
+  });
+
+  it('cancels a pending capture when selection moves outside the source', async () => {
+    const { source, parent, client } = setup();
+    source.editor.setSelection({ line: 0, ch: 0 }, { line: 0, ch: 11 });
+    const range = activeDocument.createRange();
+    range.selectNodeContents(source.contentEl);
+    activeDocument.getSelection()!.addRange(range);
+    activeDocument.dispatchEvent(new Event('selectionchange'));
+    await vi.advanceTimersByTimeAsync(100);
+    const outside = parent.createDiv({ text: 'A different selection' });
+    const other = activeDocument.createRange();
+    other.selectNodeContents(outside);
+    activeDocument.getSelection()!.removeAllRanges();
+    activeDocument.getSelection()!.addRange(other);
+    activeDocument.dispatchEvent(new Event('selectionchange'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(client.search).not.toHaveBeenCalled();
+  });
+
+  it('waits for obsolete requests and skips queued selections before searching the latest one', async () => {
+    const { select, client, parent } = setup('a'.repeat(1200) + 'b'.repeat(1200) + 'Latest idea.');
+    const pending: Array<(results: SearchResult[]) => void> = [];
+    vi.mocked(client.search).mockImplementation(() => new Promise((r) => pending.push(r)));
+    await select(0, 1000);
+    expect(client.search).toHaveBeenCalledTimes(2);
+    await select(1200, 2200);
+    await select(2400);
+    expect(client.search).toHaveBeenCalledTimes(2);
+    expect(parent.textContent).toContain('Finding matches');
+    pending.splice(0).forEach((resolve) => resolve([hit('Old.md')]));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(client.search).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(client.search).mock.lastCall?.[0]).toBe('Latest idea.');
+    pending.splice(0).forEach((resolve) => resolve([hit()]));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(parent.textContent).toContain('B.md');
+    expect(parent.textContent).not.toContain('Old.md');
+  });
+
+  it('keeps a valid source passage when an earlier query found an overlapping source passage', async () => {
+    const text = 'a'.repeat(1000) + 'Outside idea.';
+    const { select, client, parent } = setup(text);
+    const sourceHit = (matchText: string, charStart: number): SearchResult => ({
+      ...hit('A.md'),
+      previewAnchors: [
+        {
+          kind: 'semantic',
+          headingPath: null,
+          matchText,
+          charStart,
+          charEnd: charStart + matchText.length,
+        },
+      ],
+    });
+    vi.mocked(client.search)
+      .mockResolvedValueOnce([sourceHit('aaa', 0)])
+      .mockResolvedValueOnce([sourceHit('Outside idea.', 1000)]);
+    await select(0, 1000);
+    expect(parent.querySelector('.ohs-workbench-link')?.textContent).toBe('A.md');
+    parent.querySelector<HTMLElement>('.ohs-workbench-selection-expand')!.click();
+    expect(parent.querySelector('.ohs-workbench-selection-excerpt')?.textContent).toContain(
+      'Outside idea.',
+    );
+  });
+
+  it('omits a partially overlapping source chunk in Reading view', async () => {
+    const { select, source, client, parent } = setup(
+      'Selected first sentence. Selected second sentence.',
+    );
+    vi.spyOn(source, 'getMode').mockReturnValue('preview');
+    vi.mocked(client.search).mockResolvedValue([
+      {
+        ...hit('A.md'),
+        previewAnchors: [
+          {
+            kind: 'semantic',
+            headingPath: null,
+            matchText: 'Outside sentence. Selected first sentence.',
+            charStart: null,
+            charEnd: null,
+          },
+        ],
+      },
+      hit(),
+    ]);
+    await select();
+    expect(
+      Array.from(parent.querySelectorAll('.ohs-workbench-link')).map((el) => el.textContent),
+    ).toEqual(['B.md']);
+  });
+
+  it('uses the indexed whole note for a long selection without repeating the source title', async () => {
     const text = 'Большая мысль 日本語. '.repeat(1200);
     const { select, client, parent } = setup(text);
     await select();
@@ -84,7 +248,6 @@ describe('Workbench selected text', () => {
     );
     expect(parent.querySelector('.ohs-workbench-selection-quote')?.textContent).toBeTruthy();
     expect(parent.textContent).not.toContain('A.md');
-    expect(parent.textContent).not.toContain('0.8');
     expect(parent.textContent).toContain('Use whole note');
     expect(parent.querySelector('.ohs-workbench-selection-result')).not.toBeNull();
   });

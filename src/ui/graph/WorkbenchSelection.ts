@@ -7,7 +7,7 @@ import {
   prepareResultExcerpt,
 } from '../../search/excerpts';
 import { searchSelection } from '../../search/selectionSearch';
-import { createTreeItemLink } from '../shared/noteUtils';
+import { createTreeItemLink, scoreColor } from '../shared/noteUtils';
 
 interface SelectionOptions {
   getClient(): SearchService | undefined;
@@ -32,11 +32,15 @@ export class WorkbenchSelection extends Component {
   private client?: SearchService;
   private captured?: CapturedSelection;
   private lastSelection = '';
+  private limit = 0;
   private requestId = 0;
   private closed = true;
   private timer?: number;
   private timerWindow?: Window;
   private resultsEl!: HTMLElement;
+  private statusEl!: HTMLElement;
+  private resultsSnapshot?: string;
+  private pendingSearch?: Promise<void>;
   private documentEvents?: Component;
 
   constructor(
@@ -99,7 +103,13 @@ export class WorkbenchSelection extends Component {
   syncSource(path: string | null): void {
     const normalized = path?.normalize('NFC') ?? null;
     const client = this.options.getClient();
-    if (normalized === this.sourcePath && client === this.client) return;
+    const limit = this.options.getLimit();
+    const limitChanged = limit !== this.limit;
+    this.limit = limit;
+    if (normalized === this.sourcePath && client === this.client) {
+      if (limitChanged) this.refresh();
+      return;
+    }
     this.sourcePath = normalized;
     this.client = client;
     this.lastSelection = '';
@@ -114,6 +124,7 @@ export class WorkbenchSelection extends Component {
     this.cancelCapture();
     this.requestId++;
     this.captured = undefined;
+    this.lastSelection = '';
     this.containerEl.empty();
     this.containerEl.hidden = true;
     this.options.onScopeChange();
@@ -130,13 +141,10 @@ export class WorkbenchSelection extends Component {
   }
 
   private capture(target?: EventTarget | null): void {
+    this.cancelCapture();
     if (this.closed || !this.options.isEnabled()) return;
     const selection = this.containerEl.ownerDocument.getSelection();
-    if (!selection || selection.isCollapsed) {
-      this.cancelCapture();
-      this.lastSelection = '';
-      return;
-    }
+    if (!selection || selection.isCollapsed) return;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     const path = view?.file?.path.normalize('NFC');
     if (!view || !path || path !== this.sourcePath) return;
@@ -162,16 +170,11 @@ export class WorkbenchSelection extends Component {
 
     const editing = view.getMode() === 'source';
     const text = editing ? view.editor.getSelection() : selection.toString();
-    if (!text.trim()) {
-      this.cancelCapture();
-      this.lastSelection = '';
-      return;
-    }
+    if (!text.trim()) return;
     const from = editing ? view.editor.posToOffset(view.editor.getCursor('from')) : undefined;
     const to = editing ? view.editor.posToOffset(view.editor.getCursor('to')) : undefined;
     const key = JSON.stringify([path, from, to, text]);
     if (key === this.lastSelection) return;
-    this.cancelCapture();
     const captured: CapturedSelection = {
       path,
       text,
@@ -194,6 +197,7 @@ export class WorkbenchSelection extends Component {
 
   private renderHeader(): void {
     this.containerEl.empty();
+    this.resultsSnapshot = undefined;
     if (!this.captured) return;
     const header = this.containerEl.createDiv({ cls: 'ohs-workbench-selection-header' });
     header.createDiv({ cls: 'ohs-workbench-selection-label', text: 'Selected text' });
@@ -207,6 +211,10 @@ export class WorkbenchSelection extends Component {
       text: 'Use whole note',
     });
     reset.addEventListener('click', () => this.clear());
+    this.statusEl = this.containerEl.createDiv({
+      cls: 'ohs-workbench-selection-status',
+      attr: { role: 'status' },
+    });
     this.resultsEl = this.containerEl.createDiv({ cls: 'ohs-workbench-selection-results' });
     this.containerEl.hidden = false;
   }
@@ -220,29 +228,66 @@ export class WorkbenchSelection extends Component {
       captured === this.captured &&
       client === this.options.getClient() &&
       captured.path === this.sourcePath;
-    this.resultsEl.empty();
-    this.showStatus('Finding matches…');
+    if (this.resultsSnapshot === undefined) this.showStatus('Finding matches…');
+    // SearchService cannot abort in-flight requests. Let the previous generation
+    // settle before starting the latest one, discarding any queued selections.
+    await this.pendingSearch;
+    if (!isCurrent()) return;
+    const pending = this.findMatches(captured, client, isCurrent);
+    this.pendingSearch = pending;
+    await pending;
+    if (this.pendingSearch === pending) this.pendingSearch = undefined;
+  }
+
+  private async findMatches(
+    captured: CapturedSelection,
+    client: SearchService | undefined,
+    isCurrent: () => boolean,
+  ): Promise<void> {
     try {
       if (!client) throw new Error('Search unavailable');
-      const results = await searchSelection(client, captured, this.options.getLimit(), isCurrent);
+      const results = await searchSelection(
+        client,
+        captured,
+        this.options.getLimit(),
+        isCurrent,
+        (result) => !this.isSelectedPassage(result, captured),
+      );
       if (!results || !isCurrent()) return;
-      this.resultsEl.empty();
       const seen = new Set<string>();
       const visible = results
         .filter((result) => {
           const path = result.path.normalize('NFC');
-          if (seen.has(path) || this.isSelectedPassage(result, captured)) return false;
+          if (seen.has(path)) return false;
           seen.add(path);
           return true;
         })
         .slice(0, this.options.getLimit());
-      if (!visible.length) this.showStatus('No matches for this selection.');
+      this.showStatus(visible.length ? '' : 'No matches for this selection.');
+      const snapshot = JSON.stringify(
+        visible.map(({ path, title, snippet, previewAnchors, primaryAnchorIndex }) => ({
+          path,
+          title,
+          snippet,
+          previewAnchors,
+          primaryAnchorIndex,
+        })),
+      );
+      if (snapshot === this.resultsSnapshot) {
+        this.resultsEl.querySelectorAll<HTMLElement>('.ohs-workbench-row').forEach((row, index) => {
+          this.updateScore(row, visible[index]!.score);
+        });
+        return;
+      }
+      this.resultsSnapshot = snapshot;
+      const scrollTop = this.resultsEl.scrollTop;
+      this.resultsEl.empty();
       for (const result of visible) this.renderResult(result, captured);
+      this.resultsEl.scrollTop = scrollTop;
     } catch {
       if (!isCurrent()) return;
-      this.resultsEl.empty();
       this.showStatus('Search unavailable.');
-      const retry = this.resultsEl.createEl('button', {
+      const retry = this.statusEl.createEl('button', {
         cls: 'ohs-workbench-selection-retry',
         text: 'Retry',
       });
@@ -267,17 +312,31 @@ export class WorkbenchSelection extends Component {
       // selection. Prefer omitting this uncertain self-match over repeating it.
       return true;
     }
-    const match = excerptPlainText(anchor.matchText);
-    const selectedText = captured.text.normalize('NFC').replace(/\s+/gu, ' ').trim();
-    return !match || selectedText.includes(match) || match.includes(selectedText);
+    // Reading view has no reliable source range. A chunk can overlap only part
+    // of the selection, so text containment cannot establish disjointness.
+    return true;
   }
 
   private showStatus(message: string): void {
-    this.resultsEl.createDiv({
-      cls: 'ohs-workbench-selection-status',
-      text: message,
-      attr: { role: 'status' },
-    });
+    this.statusEl.setText(message);
+    this.statusEl.hidden = !message;
+  }
+
+  private updateScore(row: HTMLElement, score: number): void {
+    let flair = row.querySelector<HTMLElement>('.ohs-workbench-flair');
+    if (!Number.isFinite(score)) {
+      flair?.parentElement?.remove();
+      return;
+    }
+    if (!flair) {
+      const outer = row.createDiv({ cls: 'tree-item-flair-outer' });
+      flair = outer.createDiv({ cls: 'tree-item-flair ohs-workbench-flair' });
+    }
+    const label = score.toFixed(2);
+    if (flair.textContent !== label) flair.setText(label);
+    flair.style.color = scoreColor(score);
+    flair.setAttribute('aria-label', `Search score ${label}`);
+    flair.setAttribute('title', 'Search score');
   }
 
   private renderResult(result: SearchResult, captured: CapturedSelection): void {
@@ -309,6 +368,7 @@ export class WorkbenchSelection extends Component {
       'ohs-workbench-link',
       captured.path,
     );
+    this.updateScore(row, result.score);
     link.setAttribute('role', 'link');
     link.tabIndex = 0;
     link.addEventListener('click', (evt) => {

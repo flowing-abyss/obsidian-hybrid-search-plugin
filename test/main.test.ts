@@ -164,6 +164,41 @@ describe('HybridSearchPlugin', () => {
     expect(settingsChanged).toHaveBeenCalledOnce();
   });
 
+  it('refreshes Workbench when the shared Similar notes settings change', async () => {
+    await plugin.onload();
+    const refreshFromActiveFile = vi.fn().mockResolvedValue(undefined);
+    const view = Object.assign(Object.create(GraphWorkbenchView.prototype), {
+      refreshFromActiveFile,
+    });
+    (mockApp.workspace as { getLeavesOfType?: ReturnType<typeof vi.fn> }).getLeavesOfType = vi
+      .fn()
+      .mockReturnValue([{ view }]);
+    plugin.onSimilarNotesSettingsChanged();
+    expect(refreshFromActiveFile).toHaveBeenCalledWith(true);
+  });
+
+  it('applies shared settings to every Workbench without waiting for a slower first view', async () => {
+    await plugin.onload();
+    let resolve!: () => void;
+    const first = vi.fn().mockReturnValue(
+      new Promise<void>((r) => {
+        resolve = r;
+      }),
+    );
+    const second = vi.fn().mockResolvedValue(undefined);
+    const views = [first, second].map((refreshFromActiveFile) => ({
+      view: Object.assign(Object.create(GraphWorkbenchView.prototype), { refreshFromActiveFile }),
+    }));
+    (mockApp.workspace as { getLeavesOfType?: ReturnType<typeof vi.fn> }).getLeavesOfType = vi
+      .fn()
+      .mockReturnValue(views);
+    plugin.onSimilarNotesSettingsChanged();
+    expect(first).toHaveBeenCalledWith(true);
+    expect(second).toHaveBeenCalledWith(true);
+    resolve();
+    await flushPromises();
+  });
+
   it('invalidates page preview results after replacing the search client', async () => {
     const clientChanged = vi.spyOn(PagePreviewSimilarNotesManager.prototype, 'clientChanged');
     await plugin.onload();

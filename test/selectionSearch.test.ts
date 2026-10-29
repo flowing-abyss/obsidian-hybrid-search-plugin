@@ -13,6 +13,28 @@ const service = () =>
   ({ search: vi.fn().mockResolvedValue([hit('B.md')]) }) as unknown as SearchService;
 
 describe('selection search policy', () => {
+  it('settles the full active batch after a rejection before releasing its request budget', async () => {
+    const client = service();
+    let resolve!: (results: SearchResult[]) => void;
+    vi.mocked(client.search)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+    let settled = false;
+    const pending = searchSelection(
+      client,
+      { path: 'A.md', text: 'x'.repeat(1000) },
+      8,
+      () => true,
+    ).catch(() => {
+      settled = true;
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBe(false);
+    resolve([]);
+    await pending;
+    expect(settled).toBe(true);
+  });
+
   it('keeps a short selection as one complete hybrid query', async () => {
     const client = service();
     await searchSelection(client, { path: 'A.md', text: 'a complete thought' }, 8, () => true);

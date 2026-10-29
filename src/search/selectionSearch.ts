@@ -18,32 +18,37 @@ export async function searchSelection(
   selection: SelectionQuery,
   limit: number,
   isCurrent: () => boolean,
+  acceptResult: (result: SearchResult) => boolean = () => true,
 ): Promise<SearchResult[] | null> {
   const options: SearchOptions = { limit: limit + 1, anchors: true, snippetLength: 400 };
   if (!isCurrent()) return null;
   if (selection.text.length <= PASSAGE_LENGTH) {
     const results = await client.search(selection.text, { ...options, mode: 'hybrid' });
-    return isCurrent() ? results : null;
+    return isCurrent() ? results.filter(acceptResult) : null;
   }
   if (isWholeNote(selection)) {
     const results = await client.search('', { ...options, notePath: selection.path });
     if (!isCurrent()) return null;
-    if (results.length) return results;
+    if (results.length) return results.filter(acceptResult);
   }
 
   const passages = splitPassages(selection.text);
   const ranked = new Map<string, { result: SearchResult; score: number; bestRank: number }>();
   for (let start = 0; start < passages.length; start += 2) {
     if (!isCurrent()) return null;
-    const results = await Promise.all(
+    const results = await Promise.allSettled(
       passages
         .slice(start, start + 2)
         .map((passage) => client.search(passage, { ...options, mode: 'hybrid' })),
     );
     if (!isCurrent()) return null;
-    for (const matches of results) {
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed) throw failed.reason;
+    for (const batch of results) {
+      if (batch.status !== 'fulfilled') continue;
       const seen = new Set<string>();
-      matches.forEach((result, rank) => {
+      batch.value.forEach((result, rank) => {
+        if (!acceptResult(result)) return;
         const path = result.path.normalize('NFC');
         if (seen.has(path)) return;
         seen.add(path);

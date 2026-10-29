@@ -51,6 +51,42 @@ function makeView(app: App, client: { search: ReturnType<typeof vi.fn> }) {
 }
 
 describe('GraphWorkbenchView', () => {
+  it.each([1, 3, 20])(
+    'uses the configured Similar notes limit of %s for Best and Similar',
+    async (limit) => {
+      const app = makeApp();
+      app.workspace.getActiveFile = vi.fn().mockReturnValue(createFile('A.md'));
+      const client = {
+        search: vi
+          .fn()
+          .mockImplementation((_query, options) =>
+            Promise.resolve(
+              options.notePath
+                ? Array.from({ length: 25 }, (_, i) => result(`Match${i}.md`, 0.9 - i / 100))
+                : [],
+            ),
+          ),
+      };
+      const plugin = {
+        app,
+        client,
+        manifest: { id: 'hybrid-search' },
+        settings: { ...DEFAULT_SETTINGS, similarNotesBottomLimit: limit },
+        saveSettings: vi.fn(),
+      };
+      const view = new GraphWorkbenchView(createLeaf(app), plugin as never);
+      await view.onOpen();
+      expect(
+        view.contentEl.querySelectorAll('.ohs-workbench-details .ohs-workbench-result'),
+      ).toHaveLength(limit);
+      view.contentEl.querySelectorAll<HTMLElement>('.ohs-workbench-tab')[3]!.click();
+      expect(
+        view.contentEl.querySelectorAll('.ohs-workbench-details .ohs-workbench-result'),
+      ).toHaveLength(limit);
+      await view.onClose();
+    },
+  );
+
   afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     activeDocument.body.empty();

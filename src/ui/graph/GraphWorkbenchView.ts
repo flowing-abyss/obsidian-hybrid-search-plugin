@@ -304,6 +304,7 @@ export class GraphWorkbenchView extends ItemView {
     ]);
     const signature = JSON.stringify({
       path,
+      limit: this.resultLimit,
       noteTextStats,
       analysis,
       results,
@@ -335,7 +336,7 @@ export class GraphWorkbenchView extends ItemView {
   }
 
   private get resultLimit(): number {
-    return Math.max(5, Math.min(50, this.plugin.settings.similarNotesBottomLimit || 12));
+    return Math.max(1, Math.min(20, this.plugin.settings.similarNotesBottomLimit || 5));
   }
 
   private get graphWatch(): SuperchargedWatch {
