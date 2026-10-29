@@ -212,8 +212,8 @@ export class GraphWorkbenchView extends ItemView {
       isEnabled: () => this.analysisTab === 'best' && this.contentEl.isShown(),
       getLimit: () => this.resultLimit,
       onScopeChange: () => this.updateSelectionScope(),
-      openResult: (result, newLeaf) => {
-        void this.openSelectionResult(result, newLeaf);
+      openResult: (result, newLeaf, isCurrent) => {
+        void this.openSelectionResult(result, newLeaf, isCurrent);
       },
     });
     this.selection.load();
@@ -1649,12 +1649,16 @@ export class GraphWorkbenchView extends ItemView {
     }
   }
 
-  private async openSelectionResult(result: SearchResult, newLeaf: boolean): Promise<void> {
+  private async openSelectionResult(
+    result: SearchResult,
+    newLeaf: boolean,
+    isCurrent: () => boolean,
+  ): Promise<void> {
+    if (!isCurrent()) return;
     const file = this.app.vault.getAbstractFileByPath(result.path.normalize('NFC'));
     if (!(file instanceof TFile)) return;
-    const request = this.requestId;
     const state = await this.getSnippetOpenState(file, result);
-    if (this.closed || request !== this.requestId) return;
+    if (this.closed || !isCurrent()) return;
     const target = newLeaf ? this.app.workspace.getLeaf('tab') : this.app.workspace.getLeaf(false);
     await target.openFile(file, state ?? { active: true });
   }

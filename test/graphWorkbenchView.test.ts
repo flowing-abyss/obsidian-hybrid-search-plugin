@@ -252,6 +252,57 @@ describe('GraphWorkbenchView', () => {
     expect(graphNode.classList.contains('is-path-hovered')).toBe(false);
   });
 
+  it('cancels delayed selection-result navigation when the scope is reset', async () => {
+    vi.useFakeTimers();
+    const app = createApp({ 'A.md': 'First idea.', 'B.md': 'matching passage' });
+    const source = new MarkdownView(createLeaf(app));
+    source.file = app.vault.getFileByPath('A.md');
+    source.editor.setValue('First idea.');
+    source.contentEl.createDiv({ text: 'First idea.' });
+    activeDocument.body.appendChild(source.containerEl);
+    vi.spyOn(app.workspace, 'getActiveViewOfType').mockReturnValue(source);
+    app.workspace.getActiveFile = vi.fn().mockReturnValue(source.file);
+    const client = {
+      search: vi.fn().mockResolvedValue([
+        {
+          ...result('B.md', 0.9),
+          previewAnchors: [
+            {
+              kind: 'semantic',
+              headingPath: null,
+              matchText: 'matching passage',
+              charStart: null,
+              charEnd: null,
+            },
+          ],
+        },
+      ]),
+    };
+    const view = makeView(app, client);
+    vi.spyOn(view.contentEl, 'isShown').mockReturnValue(true);
+    await view.onOpen();
+    source.editor.setSelection({ line: 0, ch: 0 }, { line: 0, ch: 11 });
+    const range = activeDocument.createRange();
+    range.selectNodeContents(source.contentEl);
+    activeDocument.getSelection()!.removeAllRanges();
+    activeDocument.getSelection()!.addRange(range);
+    activeDocument.dispatchEvent(new Event('selectionchange'));
+    await vi.advanceTimersByTimeAsync(300);
+    const read = deferred<string>();
+    vi.spyOn(app.vault, 'cachedRead').mockReturnValue(read.promise);
+    const target = createLeaf(app);
+    const open = vi.spyOn(target, 'openFile').mockResolvedValue(undefined);
+    vi.mocked(app.workspace.getLeaf).mockReturnValue(target);
+    view.containerEl
+      .querySelector<HTMLElement>('.ohs-workbench-selection .ohs-workbench-link')!
+      .click();
+    view.containerEl.querySelector<HTMLButtonElement>('.ohs-workbench-selection-reset')!.click();
+    read.resolve('matching passage');
+    await vi.advanceTimersByTimeAsync(1);
+    await view.onClose();
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it('renders backlink mention context when a linked note is expanded', async () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi

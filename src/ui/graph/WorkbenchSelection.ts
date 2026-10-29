@@ -14,7 +14,7 @@ interface SelectionOptions {
   isEnabled(): boolean;
   getLimit(): number;
   onScopeChange(): void;
-  openResult(result: SearchResult, newLeaf: boolean): void;
+  openResult(result: SearchResult, newLeaf: boolean, isCurrent: () => boolean): void;
 }
 
 interface CapturedSelection {
@@ -41,11 +41,11 @@ export class WorkbenchSelection extends Component {
 
   constructor(
     private app: App,
-    parent: HTMLElement,
+    private parentEl: HTMLElement,
     private options: SelectionOptions,
   ) {
     super();
-    this.containerEl = parent.createDiv({ cls: 'ohs-workbench-selection' });
+    this.containerEl = parentEl.createDiv({ cls: 'ohs-workbench-selection' });
     this.containerEl.hidden = true;
   }
 
@@ -57,7 +57,9 @@ export class WorkbenchSelection extends Component {
     this.closed = false;
     this.bindDocument();
     this.register(
-      this.containerEl.onWindowMigrated(() => {
+      // The selection region is normally hidden. Its migration notification
+      // can arrive only when the first query shows it, clearing that very query.
+      this.parentEl.onWindowMigrated(() => {
         this.clear();
         this.lastSelection = '';
         this.bindDocument();
@@ -129,13 +131,18 @@ export class WorkbenchSelection extends Component {
 
   private capture(target?: EventTarget | null): void {
     if (this.closed || !this.options.isEnabled()) return;
+    const selection = this.containerEl.ownerDocument.getSelection();
+    if (!selection || selection.isCollapsed) {
+      this.cancelCapture();
+      this.lastSelection = '';
+      return;
+    }
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     const path = view?.file?.path.normalize('NFC');
     if (!view || !path || path !== this.sourcePath) return;
     const doc = this.containerEl.ownerDocument;
     if (view.contentEl.ownerDocument !== doc) return;
     if (target && !view.contentEl.contains(target as Node)) return;
-    const selection = doc.getSelection();
     if (
       !selection?.anchorNode ||
       !selection.focusNode ||
@@ -156,6 +163,7 @@ export class WorkbenchSelection extends Component {
     const editing = view.getMode() === 'source';
     const text = editing ? view.editor.getSelection() : selection.toString();
     if (!text.trim()) {
+      this.cancelCapture();
       this.lastSelection = '';
       return;
     }
@@ -256,7 +264,8 @@ export class WorkbenchSelection extends Component {
       }
     }
     const match = excerptPlainText(anchor.matchText);
-    return !match || excerptPlainText(captured.text).includes(match);
+    const selectedText = captured.text.normalize('NFC').replace(/\s+/gu, ' ').trim();
+    return !match || selectedText.includes(match);
   }
 
   private showStatus(message: string): void {
@@ -268,6 +277,9 @@ export class WorkbenchSelection extends Component {
   }
 
   private renderResult(result: SearchResult, captured: CapturedSelection): void {
+    const client = this.options.getClient();
+    const isCurrent = () =>
+      !this.closed && this.captured === captured && client === this.options.getClient();
     const item = this.resultsEl.createDiv({
       cls: 'tree-item ohs-workbench-result ohs-workbench-selection-result is-collapsed',
     });
@@ -293,12 +305,12 @@ export class WorkbenchSelection extends Component {
     link.addEventListener('click', (evt) => {
       evt.preventDefault();
       evt.stopPropagation();
-      this.options.openResult(result, evt.ctrlKey || evt.metaKey);
+      this.options.openResult(result, evt.ctrlKey || evt.metaKey, isCurrent);
     });
     link.addEventListener('keydown', (evt) => {
       if (evt.key !== 'Enter') return;
       evt.preventDefault();
-      this.options.openResult(result, evt.ctrlKey || evt.metaKey);
+      this.options.openResult(result, evt.ctrlKey || evt.metaKey, isCurrent);
     });
     let details: HTMLElement | undefined;
     expand.addEventListener('click', () => {
@@ -315,7 +327,7 @@ export class WorkbenchSelection extends Component {
             attr: { 'aria-label': 'Open matching passage' },
           });
           passage.addEventListener('click', (evt) =>
-            this.options.openResult(result, evt.ctrlKey || evt.metaKey),
+            this.options.openResult(result, evt.ctrlKey || evt.metaKey, isCurrent),
           );
         } else {
           details.createDiv({

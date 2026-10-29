@@ -152,7 +152,10 @@ describe('Workbench selected text', () => {
   it('releases captured context and pending work when its panel moves to another window', async () => {
     let migrated!: (win: Window) => unknown;
     const unregister = vi.fn();
-    vi.spyOn(HTMLElement.prototype, 'onWindowMigrated').mockImplementation(function (callback) {
+    vi.spyOn(HTMLElement.prototype, 'onWindowMigrated').mockImplementation(function (
+      this: HTMLElement,
+      callback,
+    ) {
       migrated = callback;
       return unregister;
     });
@@ -164,6 +167,25 @@ describe('Workbench selected text', () => {
     expect(component.hasSelection).toBe(false);
     component.unload();
     expect(unregister).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not clear the first selection when a hidden result region reports migration late', async () => {
+    const callbacks = new Map<HTMLElement, (win: Window) => unknown>();
+    vi.spyOn(HTMLElement.prototype, 'onWindowMigrated').mockImplementation(function (
+      this: HTMLElement,
+      callback,
+    ) {
+      callbacks.set(this, callback);
+      return () => callbacks.delete(this);
+    });
+    const { select, component, parent } = setup();
+    // Obsidian reports visible host migration first. A hidden descendant's
+    // notification waits until the first selected-text result makes it visible.
+    callbacks.get(parent)?.(window);
+    await select();
+    callbacks.get(component.containerEl)?.(window);
+    expect(component.hasSelection).toBe(true);
+    expect(parent.querySelector('.ohs-workbench-selection-result')).not.toBeNull();
   });
 
   it('ignores an older query that resolves after a new selection', async () => {
@@ -181,6 +203,38 @@ describe('Workbench selected text', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(parent.textContent).toContain('B.md');
     expect(parent.textContent).not.toContain('Old.md');
+  });
+
+  it('keeps the retained query when a new selection collapses before settling', async () => {
+    const { select, source, client, parent } = setup();
+    await select(0, 11);
+    source.editor.setSelection({ line: 0, ch: 12 }, { line: 0, ch: 24 });
+    activeDocument.dispatchEvent(new Event('selectionchange'));
+    await vi.advanceTimersByTimeAsync(100);
+    source.editor.setCursor({ line: 0, ch: 12 });
+    activeDocument.dispatchEvent(new Event('selectionchange'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(client.search).toHaveBeenCalledTimes(1);
+    expect(parent.querySelector('.ohs-workbench-selection-quote')?.textContent).toBe('First idea.');
+  });
+
+  it('filters a selected source passage beyond the display limit in Reading view', async () => {
+    const tail = 'Unique selected tail marker.';
+    const { select, source, client, parent } = setup('Earlier selected text. '.repeat(300) + tail);
+    vi.spyOn(source, 'getMode').mockReturnValue('preview');
+    vi.mocked(client.search).mockResolvedValue([
+      {
+        ...hit('A.md'),
+        previewAnchors: [
+          { kind: 'semantic', headingPath: null, matchText: tail, charStart: null, charEnd: null },
+        ],
+      },
+      hit(),
+    ]);
+    await select();
+    expect(
+      Array.from(parent.querySelectorAll('.ohs-workbench-link')).map((el) => el.textContent),
+    ).toEqual(['B.md']);
   });
 
   it.each(['reset', 'file', 'edit', 'client', 'close'])(
@@ -219,7 +273,11 @@ describe('Workbench selected text', () => {
     expect(excerpt.textContent).toContain('The matching passage.');
     expect(excerpt.textContent).not.toContain('unrelated introduction');
     excerpt.click();
-    expect(open).toHaveBeenCalledWith(expect.objectContaining({ path: 'B.md' }), false);
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'B.md' }),
+      false,
+      expect.any(Function),
+    );
   });
 
   it('distinguishes rejected searches from empty results and allows retry', async () => {
