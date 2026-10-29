@@ -484,19 +484,34 @@ interface InsertionPoint {
 }
 
 function findInsertionPoint(markdownView: MarkdownView): InsertionPoint | null {
-  const root =
-    markdownView.containerEl.querySelector<HTMLElement>(
-      markdownView.getMode() === 'preview' ? '.markdown-preview-view' : '.markdown-source-view',
-    ) ?? markdownView.containerEl;
-  const sizer =
-    root.querySelector<HTMLElement>('.markdown-preview-sizer') ??
-    root.querySelector<HTMLElement>('.cm-sizer');
+  const preview = markdownView.getMode() === 'preview';
+  const contentEl = markdownView.contentEl;
+  // Mode hosts are direct children. Descendant queries can accidentally select
+  // a transcluded note, including one inside the retained inactive editor.
+  const modeHost = contentEl.querySelector<HTMLElement>(
+    preview
+      ? ':scope > .markdown-reading-view, :scope > .markdown-preview-view'
+      : ':scope > .markdown-source-view',
+  );
+  if (
+    !modeHost &&
+    contentEl.querySelector(
+      ':scope > .markdown-source-view, :scope > .markdown-reading-view, :scope > .markdown-preview-view',
+    )
+  ) {
+    return null;
+  }
+  const root = modeHost ?? markdownView.containerEl;
+  const sizerSelector = preview ? '.markdown-preview-sizer' : '.cm-sizer';
+  const sizer = modeHost
+    ? modeHost.querySelector<HTMLElement>(sizerSelector)
+    : root.querySelector<HTMLElement>('.markdown-preview-sizer, .cm-sizer');
+  if (modeHost && !sizer) return null;
   const footer = sizer?.querySelector<HTMLElement>(':scope > .mod-footer');
   const body = footer ?? sizer;
   const backlinksEl = body
     ? body.querySelector(':scope > .embedded-backlinks')
     : root.querySelector('.embedded-backlinks');
-  const contentEl = (markdownView as unknown as { contentEl?: HTMLElement }).contentEl;
   const parentEl =
     body ??
     backlinksEl?.parentElement ??

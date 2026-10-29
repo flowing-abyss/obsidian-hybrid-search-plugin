@@ -1192,6 +1192,22 @@ li.hybrid-search-semantic-match {
   display: none !important;
 }
 
+/* Keep footer additions above recommendations without competing for DOM placement. */
+.mod-footer:has(> .hybrid-search-similar-bottom) {
+  display: flex;
+  flex-direction: column;
+}
+
+.cm-sizer > .hybrid-search-similar-bottom,
+.mod-footer > .hybrid-search-similar-bottom {
+  order: 1;
+}
+
+.cm-sizer:has(> .hybrid-search-similar-bottom) > .embedded-backlinks,
+.mod-footer:has(> .hybrid-search-similar-bottom) > .embedded-backlinks {
+  order: 2;
+}
+
 .ohs-workbench-selection {
   display: flex;
   flex: 1 1 auto;

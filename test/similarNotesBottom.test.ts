@@ -122,6 +122,36 @@ describe('Similar notes footer placement', () => {
     expect(f.view.containerEl.querySelectorAll('.hybrid-search-similar-bottom')).toHaveLength(1);
     f.manager.unload();
   });
+
+  it.each(['source', 'preview'] as const)(
+    'keeps the %s panel outside embedded notes and hidden mode hosts',
+    async (mode) => {
+      const f = footerFixture(mode, true, true);
+      let editorRoot = f.root;
+      if (mode === 'preview') {
+        editorRoot = createDiv({ cls: 'markdown-source-view' });
+        f.view.contentEl.prepend(editorRoot);
+      }
+      const editorContent =
+        editorRoot.querySelector('.cm-contentContainer') ??
+        editorRoot.createDiv({ cls: 'cm-sizer' }).createDiv({ cls: 'cm-contentContainer' });
+      const embed = editorContent.createDiv({ cls: 'markdown-embed' });
+      const embeddedSizer = embed
+        .createDiv({ cls: 'markdown-preview-view' })
+        .createDiv({ cls: 'markdown-preview-sizer' });
+      const embeddedFooter = embeddedSizer.createDiv({ cls: 'mod-footer' });
+      embeddedFooter.createDiv({ cls: 'embedded-backlinks' });
+      f.manager.load();
+      await vi.advanceTimersByTimeAsync(150);
+
+      expect(embed.querySelector('.hybrid-search-similar-bottom')).toBeNull();
+      expect(f.footer.querySelector('.hybrid-search-similar-bottom')).not.toBeNull();
+      expect(f.footer.querySelector('.hybrid-search-similar-bottom')!.nextElementSibling).toBe(
+        f.addon,
+      );
+      f.manager.unload();
+    },
+  );
 });
 
 describe('SimilarNotesBottomManager', () => {
