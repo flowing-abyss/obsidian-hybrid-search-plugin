@@ -1,5 +1,5 @@
-import { App, TFile } from 'obsidian';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { App, MarkdownView, TFile } from 'obsidian';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computeNoteTextStats } from '../src/search/noteStats';
 import { DEFAULT_SETTINGS } from '../src/settings/model';
 import { GraphWorkbenchView } from '../src/ui/graph/GraphWorkbenchView';
@@ -51,6 +51,7 @@ function makeView(app: App, client: { search: ReturnType<typeof vi.fn> }) {
 }
 
 describe('GraphWorkbenchView', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     activeDocument.body.empty();
   });
@@ -162,6 +163,61 @@ describe('GraphWorkbenchView', () => {
     const excerpt = view.containerEl.querySelector('.ohs-workbench-snippet')!;
     expect(excerpt.textContent).toContain('The passage that actually matched.');
     expect(excerpt.textContent).not.toContain('Unrelated introduction.');
+  });
+
+  it('restores the same Best rows, expansion and scroll after using selected text', async () => {
+    vi.useFakeTimers();
+    const app = makeApp();
+    const source = new MarkdownView(createLeaf(app));
+    source.file = app.vault.getFileByPath('A.md');
+    source.editor.setValue('A selected idea.');
+    source.contentEl.createDiv({ text: 'A selected idea.' });
+    activeDocument.body.appendChild(source.containerEl);
+    vi.spyOn(app.workspace, 'getActiveViewOfType').mockReturnValue(source);
+    app.workspace.getActiveFile = vi.fn().mockReturnValue(source.file);
+    const client = {
+      search: vi.fn().mockResolvedValue([
+        {
+          ...result('Similar.md', 0.91),
+          snippet: 'A matching idea.',
+        },
+      ]),
+    };
+    const view = makeView(app, client);
+    vi.spyOn(view.contentEl, 'isShown').mockReturnValue(true);
+    await view.onOpen();
+    const details = view.containerEl.querySelector<HTMLElement>('.ohs-workbench-details')!;
+    const row = details.querySelector<HTMLElement>('.ohs-workbench-result')!;
+    row.querySelector<HTMLElement>('.ohs-workbench-collapse')!.click();
+    const expandedRow = details.querySelector('.ohs-workbench-result');
+    details.scrollTop = 120;
+    source.editor.setSelection({ line: 0, ch: 0 }, { line: 0, ch: 16 });
+    const range = activeDocument.createRange();
+    range.selectNodeContents(source.contentEl);
+    activeDocument.getSelection()!.removeAllRanges();
+    activeDocument.getSelection()!.addRange(range);
+    activeDocument.dispatchEvent(new Event('selectionchange'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(details.hidden).toBe(true);
+    expect(view.containerEl.querySelector('.ohs-workbench-selection-result')).not.toBeNull();
+    view.containerEl
+      .querySelector<HTMLElement>('.ohs-workbench-selection .ohs-workbench-link')!
+      .dispatchEvent(new MouseEvent('mouseover', { bubbles: true, metaKey: true }));
+    expect(app.workspace.trigger).toHaveBeenCalledWith(
+      'hover-link',
+      expect.objectContaining({
+        source: 'hybrid-search-graph-workbench',
+        sourcePath: 'A.md',
+      }),
+    );
+    view.containerEl.querySelector<HTMLButtonElement>('.ohs-workbench-selection-reset')!.click();
+    expect(details.hidden).toBe(false);
+    expect(details.querySelector('.ohs-workbench-result')).toBe(expandedRow);
+    expect(details.querySelector('.ohs-workbench-snippet')).not.toBeNull();
+    expect(details.scrollTop).toBe(120);
+    await view.onClose();
+    activeDocument.getSelection()?.removeAllRanges();
+    vi.useRealTimers();
   });
 
   it('cross-highlights matching graph nodes and list rows on hover', async () => {

@@ -27,6 +27,7 @@ import {
   unhookSuperchargedLinks,
   type SuperchargedWatch,
 } from '../shared/noteUtils';
+import { WorkbenchSelection } from './WorkbenchSelection';
 
 export const GRAPH_WORKBENCH_VIEW_TYPE = 'hybrid-search-graph-workbench';
 
@@ -146,6 +147,7 @@ export class GraphWorkbenchView extends ItemView {
   private analysisTabsEl!: HTMLElement;
   private graphEl!: HTMLElement;
   private detailsEl!: HTMLElement;
+  private selection?: WorkbenchSelection;
   private analysisTab: AnalysisTab = 'best';
   private centerPath: string | null = null;
   private renderedPath: string | null = null;
@@ -196,7 +198,8 @@ export class GraphWorkbenchView extends ItemView {
     this.graphTabsEl = topBar.createDiv({ cls: 'ohs-workbench-graph-context' });
     this.renderGraphTabs();
     this.createIconButton(topBar, 'refresh-cw', 'Refresh graph workbench', () => {
-      void this.refreshFromActiveFile(true);
+      if (this.analysisTab === 'best' && this.selection?.hasSelection) this.selection.refresh();
+      else void this.refreshFromActiveFile(true);
     });
     this.graphEl = container.createDiv({ cls: 'ohs-workbench-graph' });
 
@@ -204,7 +207,18 @@ export class GraphWorkbenchView extends ItemView {
       cls: 'ohs-workbench-tabs ohs-workbench-tabs-bottom',
     });
     this.renderAnalysisTabs();
+    this.selection = new WorkbenchSelection(this.app, container, {
+      getClient: () => this.plugin.client,
+      isEnabled: () => this.analysisTab === 'best' && this.contentEl.isShown(),
+      getLimit: () => this.resultLimit,
+      onScopeChange: () => this.updateSelectionScope(),
+      openResult: (result, newLeaf) => {
+        void this.openSelectionResult(result, newLeaf);
+      },
+    });
+    this.selection.load();
     this.detailsEl = container.createDiv({ cls: 'ohs-workbench-details' });
+    this.registerCleanup(this.hookWorkbenchLinks(this.selection.containerEl));
 
     this.registerDomEvent(this.detailsEl, 'click', (evt) => this.handleDetailsClick(evt));
     this.registerCleanup(this.hookWorkbenchLinks(this.detailsEl));
@@ -223,6 +237,8 @@ export class GraphWorkbenchView extends ItemView {
     await Promise.resolve();
     this.closed = true;
     this.requestId++;
+    this.selection?.unload();
+    this.selection = undefined;
     const cleanupCallbacks = this.cleanupCallbacks.splice(0);
     runAllCleanupSteps(
       () => unhookSuperchargedLinks(this.app, this.graphWatch, this.detailsWatch),
@@ -233,6 +249,7 @@ export class GraphWorkbenchView extends ItemView {
   async refreshFromActiveFile(force = false): Promise<void> {
     if (this.closed) return;
     const file = this.app.workspace.getActiveFile();
+    this.selection?.syncSource(file?.path ?? null);
     if (!file) {
       this.requestId++;
       if (this.snapshotSignature === 'empty') return;
@@ -411,6 +428,10 @@ export class GraphWorkbenchView extends ItemView {
     const titleEl = this.graphTabsEl.createDiv({ cls: 'ohs-workbench-graph-context-title' });
     const iconEl = titleEl.createSpan({ cls: 'ohs-workbench-graph-context-icon' });
     setIcon(iconEl, definition.icon);
+    if (this.analysisTab === 'best' && this.selection?.hasSelection) {
+      titleEl.createSpan({ text: 'Selected text' });
+      return;
+    }
     titleEl.createSpan({ text: definition.graphLabel });
     this.graphTabsEl.createDiv({
       cls: 'ohs-workbench-graph-context-subtitle',
@@ -449,12 +470,21 @@ export class GraphWorkbenchView extends ItemView {
   private selectAnalysisTab(tab: AnalysisTab): void {
     if (this.analysisTab === tab) return;
     this.analysisTab = tab;
+    this.updateSelectionScope();
     this.expandedPaths.clear();
     this.renderGraphTabs();
     this.renderAnalysisTabs();
     if (this.centerPath !== this.renderedPath) return;
     this.renderGraph();
     this.renderDetails();
+  }
+
+  private updateSelectionScope(): void {
+    const active = this.analysisTab === 'best' && !!this.selection?.hasSelection;
+    this.selection?.setVisible(active);
+    this.graphEl.hidden = active;
+    this.detailsEl.hidden = active;
+    this.renderGraphTabs();
   }
 
   private renderGraph(): void {
@@ -1593,7 +1623,7 @@ export class GraphWorkbenchView extends ItemView {
 
   private async getSnippetOpenState(
     file: TFile,
-    candidate: CandidateNote,
+    candidate: Pick<SearchResult, 'previewAnchors' | 'primaryAnchorIndex'>,
   ): Promise<Parameters<WorkspaceLeaf['openFile']>[1] | undefined> {
     const anchor = getPrimaryAnchor(candidate);
     if (!anchor) return undefined;
@@ -1617,6 +1647,16 @@ export class GraphWorkbenchView extends ItemView {
     } catch {
       return undefined;
     }
+  }
+
+  private async openSelectionResult(result: SearchResult, newLeaf: boolean): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(result.path.normalize('NFC'));
+    if (!(file instanceof TFile)) return;
+    const request = this.requestId;
+    const state = await this.getSnippetOpenState(file, result);
+    if (this.closed || request !== this.requestId) return;
+    const target = newLeaf ? this.app.workspace.getLeaf('tab') : this.app.workspace.getLeaf(false);
+    await target.openFile(file, state ?? { active: true });
   }
 
   private async loadLinkContext(candidate: CandidateNote): Promise<{
