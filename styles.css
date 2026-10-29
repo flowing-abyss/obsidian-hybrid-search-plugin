@@ -37,13 +37,23 @@
 }
 
 .hybrid-search-match-sources {
-  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
   font-family: var(--font-monospace);
   font-size: 0.75em;
   line-height: 1;
   white-space: nowrap;
   flex-shrink: 0;
-  margin-inline-end: var(--size-4-1);
+}
+
+.hybrid-search-match-sources::after {
+  content: '';
+  width: 2px;
+  height: 2px;
+  margin-inline: 3px;
+  border-radius: 50%;
+  background-color: currentColor;
 }
 
 .hybrid-search-meta {
