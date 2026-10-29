@@ -141,17 +141,12 @@ export class SimilarNotesBottomManager {
     if (!insertion) return false;
 
     let view = this.views.get(markdownView);
+    const firstMount = !view;
     if (!view) {
       view = new SimilarNotesBottomView(this.app, this.plugin, markdownView, insertion.parentEl);
       this.views.set(markdownView, view);
     }
-    if (
-      !view.getContainerEl().isConnected ||
-      view.getContainerEl().parentElement !== insertion.parentEl ||
-      view.getContainerEl().nextElementSibling !== insertion.beforeEl
-    ) {
-      insertion.parentEl.insertBefore(view.getContainerEl(), insertion.beforeEl);
-    }
+    placeContainer(view.getContainerEl(), insertion, firstMount);
     view.refresh(force, silent);
     return true;
   }
@@ -484,23 +479,59 @@ class SimilarNotesBottomView extends Component {
 interface InsertionPoint {
   parentEl: HTMLElement;
   beforeEl: Element | null;
+  afterEl: Element | null;
+  startOfFooter: boolean;
 }
 
 function findInsertionPoint(markdownView: MarkdownView): InsertionPoint | null {
-  const backlinksEl = markdownView.containerEl.querySelector('.embedded-backlinks');
-  if (backlinksEl?.parentElement) {
-    return { parentEl: backlinksEl.parentElement, beforeEl: backlinksEl };
-  }
-
+  const root =
+    markdownView.containerEl.querySelector<HTMLElement>(
+      markdownView.getMode() === 'preview' ? '.markdown-preview-view' : '.markdown-source-view',
+    ) ?? markdownView.containerEl;
+  const sizer =
+    root.querySelector<HTMLElement>('.markdown-preview-sizer') ??
+    root.querySelector<HTMLElement>('.cm-sizer');
+  const footer = sizer?.querySelector<HTMLElement>(':scope > .mod-footer');
+  const body = footer ?? sizer;
+  const backlinksEl = body
+    ? body.querySelector(':scope > .embedded-backlinks')
+    : root.querySelector('.embedded-backlinks');
   const contentEl = (markdownView as unknown as { contentEl?: HTMLElement }).contentEl;
   const parentEl =
-    markdownView.containerEl.querySelector<HTMLElement>('.markdown-preview-sizer') ??
-    markdownView.containerEl.querySelector<HTMLElement>('.cm-sizer') ??
-    markdownView.containerEl.querySelector<HTMLElement>('.markdown-preview-view') ??
-    markdownView.containerEl.querySelector<HTMLElement>('.markdown-source-view') ??
-    contentEl ??
-    markdownView.containerEl;
-  return parentEl ? { parentEl, beforeEl: null } : null;
+    body ??
+    backlinksEl?.parentElement ??
+    (root === markdownView.containerEl ? contentEl : root) ??
+    root;
+  return {
+    parentEl,
+    beforeEl: backlinksEl,
+    afterEl: parentEl.querySelector(':scope > .cm-contentContainer'),
+    startOfFooter: parentEl === footer,
+  };
+}
+
+function placeContainer(
+  container: HTMLElement,
+  insertion: InsertionPoint,
+  firstMount: boolean,
+): void {
+  const { parentEl, beforeEl, afterEl, startOfFooter } = insertion;
+  const follows = (first: Element, second: Element) =>
+    Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+  // Other footer extensions may live between this panel and backlinks. Requiring
+  // immediate adjacency makes both extensions repeatedly move each other's blocks.
+  if (
+    !firstMount &&
+    container.parentElement === parentEl &&
+    (!afterEl || follows(afterEl, container)) &&
+    (!beforeEl || follows(container, beforeEl))
+  ) {
+    return;
+  }
+  let anchor = beforeEl;
+  if (startOfFooter) anchor = parentEl.firstElementChild;
+  if (afterEl) anchor = afterEl.nextElementSibling;
+  if (anchor !== container) parentEl.insertBefore(container, anchor);
 }
 
 function getResultsSignature(

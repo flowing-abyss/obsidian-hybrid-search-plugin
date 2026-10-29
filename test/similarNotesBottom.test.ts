@@ -1,11 +1,11 @@
 import { MarkdownRenderer, MarkdownView } from 'obsidian';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SearchResult } from '../src/search/contracts';
 import { fetchSimilarNotesDetailed } from '../src/search/similarNotes';
 import { DEFAULT_SETTINGS } from '../src/settings/model';
 import { PANEL_OWNER_ATTR } from '../src/ui/shared/strayPanels';
 import { SimilarNotesBottomManager } from '../src/ui/similar/SimilarNotesBottom';
-import { createFile, createLeaf } from './support/obsidian';
+import { createApp, createFile, createLeaf } from './support/obsidian';
 
 const result: SearchResult = {
   path: 'related.md',
@@ -15,6 +15,114 @@ const result: SearchResult = {
   tags: [],
   aliases: [],
 };
+
+function footerFixture(mode: 'source' | 'preview', backlinks: boolean, earlyAddon = false) {
+  const app = createApp({ 'source.md': '', 'related.md': '' });
+  const leaf = createLeaf(app);
+  const view = new MarkdownView(leaf);
+  view.file = app.vault.getFileByPath('source.md');
+  leaf.view = view;
+  const getMode = vi.spyOn(view, 'getMode').mockReturnValue(mode);
+  activeDocument.body.appendChild(view.containerEl);
+  const root = view.contentEl.createDiv({
+    cls: mode === 'source' ? 'markdown-source-view' : 'markdown-preview-view',
+  });
+  const sizer = root.createDiv({ cls: mode === 'source' ? 'cm-sizer' : 'markdown-preview-sizer' });
+  const content = sizer.createDiv({ cls: mode === 'source' ? 'cm-contentContainer' : 'el-p' });
+  const footer = mode === 'source' ? sizer : sizer.createDiv({ cls: 'mod-footer' });
+  const addon = createDiv({ cls: 'external-note-addon' });
+  if (earlyAddon) footer.appendChild(addon);
+  const backlinkEl = backlinks ? footer.createDiv({ cls: 'embedded-backlinks' }) : null;
+  vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([leaf]);
+  const search = vi.fn().mockResolvedValue([result]);
+  const manager = new SimilarNotesBottomManager(app, {
+    app,
+    manifest: { id: 'hybrid-search' },
+    settings: { ...DEFAULT_SETTINGS, showSimilarNotesAtBottom: true },
+    client: { search },
+  } as never);
+  return { app, leaf, view, getMode, root, sizer, content, footer, addon, backlinkEl, manager };
+}
+
+describe('Similar notes footer placement', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    activeDocument.body.empty();
+  });
+
+  it.each([
+    ['source', true, true],
+    ['source', true, false],
+    ['source', false, true],
+    ['source', false, false],
+    ['preview', true, true],
+    ['preview', true, false],
+    ['preview', false, true],
+    ['preview', false, false],
+  ] as const)(
+    'retains footer order in %s, backlinks %s, early addon %s',
+    async (mode, backlinks, early) => {
+      const f = footerFixture(mode, backlinks, early);
+      f.manager.load();
+      await vi.advanceTimersByTimeAsync(150);
+      const panel = f.footer.querySelector<HTMLElement>('.hybrid-search-similar-bottom')!;
+      if (!early) f.footer.insertBefore(f.addon, f.backlinkEl);
+      const expected = [
+        ...(mode === 'source' ? [f.content] : []),
+        panel,
+        f.addon,
+        ...(f.backlinkEl ? [f.backlinkEl] : []),
+      ];
+      expect(panel).not.toBeNull();
+      expect([...f.footer.children]).toEqual(expected);
+      const row = panel.querySelector('.search-result-file-title');
+      const mutations: MutationRecord[] = [];
+      const observer = new MutationObserver((records) => mutations.push(...records));
+      observer.observe(f.footer, { childList: true });
+      f.app.workspace.trigger('active-leaf-change', f.leaf);
+      f.app.workspace.trigger('layout-change');
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect([...f.footer.children]).toEqual(expected);
+      expect(panel.querySelector('.search-result-file-title')).toBe(row);
+      expect(mutations).toHaveLength(0);
+      observer.disconnect();
+      f.manager.unload();
+    },
+  );
+
+  it('uses the active mode and reattaches the same panel when its host is replaced', async () => {
+    const f = footerFixture('preview', true, true);
+    const editorRoot = createDiv({ cls: 'markdown-source-view' });
+    f.view.contentEl.prepend(editorRoot);
+    const editorSizer = editorRoot.createDiv({ cls: 'cm-sizer' });
+    const editorContent = editorSizer.createDiv({ cls: 'cm-contentContainer' });
+    const editorBacklinks = editorSizer.createDiv({ cls: 'embedded-backlinks' });
+    f.manager.load();
+    await vi.advanceTimersByTimeAsync(150);
+    const panel = f.footer.querySelector('.hybrid-search-similar-bottom');
+    expect(panel).not.toBeNull();
+    const row = panel!.querySelector('.search-result-file-title');
+
+    f.getMode.mockReturnValue('source');
+    f.app.workspace.trigger('layout-change');
+    await vi.advanceTimersByTimeAsync(150);
+    expect([...editorSizer.children]).toEqual([editorContent, panel, editorBacklinks]);
+    editorSizer.remove();
+    const replacement = editorRoot.createDiv({ cls: 'cm-sizer' });
+    const replacementContent = replacement.createDiv({ cls: 'cm-contentContainer' });
+    const addon = replacement.createDiv({ cls: 'external-note-addon' });
+    f.app.workspace.trigger('layout-change');
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect([...replacement.children]).toEqual([replacementContent, panel, addon]);
+    expect(panel!.querySelector('.search-result-file-title')).toBe(row);
+    expect(f.view.containerEl.querySelectorAll('.hybrid-search-similar-bottom')).toHaveLength(1);
+    f.manager.unload();
+  });
+});
 
 describe('SimilarNotesBottomManager', () => {
   beforeEach(() => {
