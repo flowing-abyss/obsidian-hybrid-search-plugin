@@ -115,7 +115,7 @@ function boundedWindow(text: string, focus: number, limit: number): string {
 }
 
 export function prepareResultExcerpt(
-  result: SearchResult,
+  result: Pick<SearchResult, 'snippet' | 'previewAnchors' | 'primaryAnchorIndex'>,
   highlight: ExcerptHighlighter,
 ): ResultExcerpt | undefined {
   const anchor = getPrimaryAnchor(result);

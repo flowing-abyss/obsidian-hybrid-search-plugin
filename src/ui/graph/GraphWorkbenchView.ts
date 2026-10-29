@@ -14,6 +14,7 @@ import {
 import { buildGraph, type GraphData, type GraphEdge, type GraphNode } from '../../graph/buildGraph';
 import { getAnchorOffset, getPrimaryAnchor, offsetToEditorPosition } from '../../search/anchors';
 import type { MatchAnchor, SearchResult } from '../../search/contracts';
+import { createExcerptHighlighter, prepareResultExcerpt } from '../../search/excerpts';
 import { fetchSimilarNotesDetailed } from '../../search/similarNotes';
 import type { PluginContext } from '../pluginContext';
 import { runAllCleanupSteps } from '../shared/cleanup';
@@ -1221,7 +1222,9 @@ export class GraphWorkbenchView extends ItemView {
     }
     if (this.analysisTab === 'neighbors' && candidate.existingDirectLink) {
       this.createLinkContextSnippet(match, candidate);
-    } else if (candidate.snippet) {
+    } else {
+      const excerpt = prepareResultExcerpt(candidate, createExcerptHighlighter(''));
+      if (!excerpt) return;
       const snippet = match.createDiv({
         cls: 'ohs-workbench-expanded-text ohs-workbench-snippet',
       });
@@ -1229,7 +1232,7 @@ export class GraphWorkbenchView extends ItemView {
       snippet.setAttribute('role', 'button');
       snippet.setAttribute('tabindex', '0');
       snippet.setAttribute('aria-label', `Open ${candidate.title} at matching snippet`);
-      snippet.textContent = candidate.snippet;
+      snippet.textContent = excerpt.section ? `${excerpt.section} · ${excerpt.text}` : excerpt.text;
     }
   }
 

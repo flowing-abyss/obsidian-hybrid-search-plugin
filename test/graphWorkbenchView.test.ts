@@ -129,6 +129,41 @@ describe('GraphWorkbenchView', () => {
     );
   });
 
+  it('expands the anchored passage instead of an unrelated snippet', async () => {
+    const app = makeApp();
+    app.workspace.getActiveFile = vi.fn().mockReturnValue(createFile('A.md'));
+    const client = {
+      search: vi.fn().mockImplementation((_query: string, options: { notePath?: string }) =>
+        Promise.resolve(
+          options.notePath
+            ? [
+                {
+                  ...result('Similar.md', 0.91),
+                  snippet: 'Unrelated introduction.',
+                  previewAnchors: [
+                    {
+                      kind: 'semantic',
+                      headingPath: 'Useful section',
+                      matchText: 'The passage that actually matched.',
+                      charStart: null,
+                      charEnd: null,
+                    },
+                  ],
+                  primaryAnchorIndex: 0,
+                },
+              ]
+            : [],
+        ),
+      ),
+    };
+    const view = makeView(app, client);
+    await view.onOpen();
+    view.containerEl.querySelector<HTMLElement>('.ohs-workbench-collapse')!.click();
+    const excerpt = view.containerEl.querySelector('.ohs-workbench-snippet')!;
+    expect(excerpt.textContent).toContain('The passage that actually matched.');
+    expect(excerpt.textContent).not.toContain('Unrelated introduction.');
+  });
+
   it('cross-highlights matching graph nodes and list rows on hover', async () => {
     const app = makeApp();
     app.workspace.getActiveFile = vi
