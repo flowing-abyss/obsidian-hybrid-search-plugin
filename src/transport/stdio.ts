@@ -129,12 +129,12 @@ export class SearchClient implements SearchService {
     if (this.ready) return Promise.resolve();
     return new Promise((resolve, reject) => {
       const settle = (error?: Error) => {
-        clearTimeout(timer);
+        window.clearTimeout(timer);
         this.readyWaiters.delete(settle);
         if (error) reject(error);
         else resolve();
       };
-      const timer = setTimeout(() => {
+      const timer = window.setTimeout(() => {
         settle(new Error(`Search server timed out.\n${this.diagnostics()}`));
       }, timeoutMs);
       this.readyWaiters.add(settle);
@@ -159,13 +159,13 @@ export class SearchClient implements SearchService {
     if (this.terminalError) return Promise.reject(this.terminalError);
     return new Promise((resolve, reject) => {
       const id = String(++this.counter);
-      const timer = setTimeout(() => {
+      const timer = window.setTimeout(() => {
         this.pending.delete(id);
         reject(new Error('Status request timed out.'));
       }, timeoutMs);
 
       this.pending.set(id, (msg) => {
-        clearTimeout(timer);
+        window.clearTimeout(timer);
         if (msg.error) {
           reject(new Error(isUnsupportedStatusError(msg.error) ? OUTDATED_CLI_MESSAGE : msg.error));
           return;
@@ -182,7 +182,7 @@ export class SearchClient implements SearchService {
           if (this.pending.has(id)) this.write({ id, action: 'status' });
         },
         (err: unknown) => {
-          clearTimeout(timer);
+          window.clearTimeout(timer);
           this.pending.delete(id);
           reject(err instanceof Error ? err : new Error(String(err)));
         },

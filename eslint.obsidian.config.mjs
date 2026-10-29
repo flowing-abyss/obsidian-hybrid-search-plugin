@@ -28,8 +28,6 @@ export default [
     linterOptions: { reportUnusedDisableDirectives: false },
   },
   {
-    // Process timers do not belong to a DOM window.
-    files: ['src/transport/stdio.ts'],
-    rules: { 'obsidianmd/prefer-window-timers': 'off' },
+    rules: { 'obsidianmd/prefer-window-timers': 'error' },
   },
 ];

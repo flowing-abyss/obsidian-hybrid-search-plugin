@@ -23,6 +23,7 @@ export default tseslint.config(
       },
     },
     rules: {
+      'obsidianmd/prefer-window-timers': 'error',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'error',
@@ -36,10 +37,6 @@ export default tseslint.config(
       // Redundant with @typescript-eslint/no-unused-vars
       'sonarjs/no-unused-vars': 'off',
     },
-  },
-  {
-    files: ['src/transport/stdio.ts'],
-    rules: { 'obsidianmd/prefer-window-timers': 'off' },
   },
   {
     // Relax type-unsafe rules in test files — vi matchers (expect.objectContaining etc.) return any
